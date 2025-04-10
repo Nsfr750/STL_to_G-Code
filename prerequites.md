@@ -19,7 +19,7 @@ pip install numpy-stl matplotlib
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Nsfr750/python-stl-to-gcode.git
+   git clone https://github.com/Nsfr750/stl_to_gcode.git
    cd python-stl-to-gcode
    ```
 
@@ -30,7 +30,7 @@ pip install numpy-stl matplotlib
 
 3. Run the application:
    ```bash
-   python stl_to_gcode_app_with_menu.py
+   python stl_to_gcode.py
    ```
 
 ## Additional Notes

@@ -32,4 +32,4 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## Support
 
-If you encounter issues or have feature requests, please open an issue on the [GitHub repository](https://github.com/Nsfr750/python-stl-to-gcode).
+If you encounter issues or have feature requests, please open an issue on the [GitHub repository](https://github.com/Nsfr750/stl_to_gcode).
