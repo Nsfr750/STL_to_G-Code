@@ -115,17 +115,26 @@ class STLToGCodeApp:
         messagebox.showinfo("About", "STL to GCode Converter v1.2\nDeveloped by Nsfr750")
 
     def show_sponsor(self):
-        # Display sponsor information and open links
-        sponsor_message = (
-            "Support the project by sponsoring on various platforms:\n\n"
-            "1. Patreon: Exclusive benefits for members.\n"
-            "2. GitHub Sponsor: Support the development directly.\n"
-            "3. Discord: Join the community!"
-        )
-        if messagebox.askyesno("Sponsor", sponsor_message + "\n\nWould you like to visit the sponsorship page?"):
-            # Open the GitHub Sponsors page
-            webbrowser.open("https://github.com/sponsors/Nsfr750")
-
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Sponsor the Project")
+        
+        btn1 = tk.Button(dialog, text="Sponsor on GitHub", pady=5)
+        btn2 = tk.Button(dialog, text="Join Discord", pady=5)
+        btn3 = tk.Button(dialog, text="Buy Me a Coffee", pady=5)
+        btn4 = tk.Button(dialog, text="Join The Patreon", pady=5)
+        
+        btn_layout = tk.Frame(dialog)
+        btn_layout.pack(pady=10)
+        
+        btn1.pack(side=tk.LEFT)
+        btn2.pack(side=tk.LEFT)
+        btn3.pack(side=tk.LEFT)
+        btn4.pack(side=tk.LEFT)
+        
+        btn1.config(command=lambda: webbrowser.open("https://github.com/sponsors/Nsfr750"))
+        btn2.config(command=lambda: webbrowser.open("https://discord.gg/BvvkUEP9"))
+        btn3.config(command=lambda: webbrowser.open("https://paypal.me/3dmega"))
+        btn4.config(command=lambda: webbrowser.open("https://www.patreon.com/Nsfr750"))
 
 if __name__ == "__main__":
     root = tk.Tk()
