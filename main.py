@@ -1,3 +1,8 @@
+"""
+Main application class for the STL to GCode Converter.
+
+This class manages the main window, UI components, and application logic.
+"""
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
@@ -14,17 +19,35 @@ import os
 import sys
 import traceback
 
-# Configure tkinter theme
+# Configure tkinter theme with modern styling
 style = ttk.Style()
-style.theme_use('clam')
-style.configure('TButton', padding=10)
-style.configure('TLabel', padding=5)
-style.configure('TFrame', padding=10)
-style.configure('TProgressbar', thickness=10, background='#4a90e2')
-
+style.theme_use('clam')  # Use the clam theme for better visual appearance
+style.configure('TButton', padding=10)  # Add padding to buttons
+style.configure('TLabel', padding=5)    # Add padding to labels
+style.configure('TFrame', padding=10)   # Add padding to frames
+style.configure('TProgressbar', 
+                thickness=10,           # Set progress bar thickness
+                background='#4a90e2')   # Set progress bar color
 
 class STLToGCodeApp:
+    """
+    Main application class for STL to GCode Converter.
+    
+    This class handles:
+    - Main window creation and management
+    - Menu system setup
+    - File operations
+    - 3D visualization
+    - G-code conversion
+    - Status updates
+    """
     def __init__(self, root):
+        """
+        Initialize the application.
+        
+        Args:
+            root: The root Tkinter window
+        """
         self.root = root
         self.root.title("STL to GCode Converter")
         self.root.geometry("800x600")
@@ -193,20 +216,28 @@ class STLToGCodeApp:
         btn4.config(command=lambda: webbrowser.open("https://www.patreon.com/Nsfr750"))
 
     def _setup_logging(self):
-        """Configure application logging."""
+        """
+        Configure application logging system.
+        
+        Sets up both file and console logging with appropriate format and level.
+        """
         log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stl_to_gcode.log')
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
+                logging.FileHandler(log_file),  # Log to file
+                logging.StreamHandler()         # Log to console
             ]
         )
         self.logger = logging.getLogger(__name__)
 
     def show_gcode_viewer(self):
-        """Show the G-code viewer."""
+        """
+        Show the G-code viewer window.
+        
+        Creates a new G-code viewer if it doesn't exist, or brings the existing one to front.
+        """
         if not hasattr(self, 'gcode_viewer') or not self.gcode_viewer.window.winfo_exists():
             from gcode_viewer import GCodeViewer
             self.gcode_viewer = GCodeViewer(self.root)
@@ -214,6 +245,12 @@ class STLToGCodeApp:
             self.gcode_viewer.window.lift()
 
 if __name__ == "__main__":
+    """
+    Application entry point.
+    
+    Creates and runs the main application window.
+    Handles keyboard interrupts and other exceptions gracefully.
+    """
     try:
         root = tk.Tk()
         app = STLToGCodeApp(root)
@@ -221,7 +258,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nApplication closed by user")
     except Exception as e:
-        print(f"\nFatal error: {str(e)}")
+        print(f"Error: {str(e)}")
+        sys.exit(1)
         print("\nTraceback:")
         import traceback
         traceback.print_exc()
