@@ -45,10 +45,11 @@ class STLToGCodeApp:
         
         # File Menu
         self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="File", menu=self.file_menu)
         self.file_menu.add_command(label="Open STL File", command=self.open_file)
+        self.file_menu.add_command(label="View G-code", command=self.show_gcode_viewer)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=root.quit)
-        self.menu_bar.add_cascade(label="File", menu=self.file_menu)
 
         # Help Menu
         self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
@@ -203,6 +204,14 @@ class STLToGCodeApp:
             ]
         )
         self.logger = logging.getLogger(__name__)
+
+    def show_gcode_viewer(self):
+        """Show the G-code viewer."""
+        if not hasattr(self, 'gcode_viewer') or not self.gcode_viewer.window.winfo_exists():
+            from gcode_viewer import GCodeViewer
+            self.gcode_viewer = GCodeViewer(self.root)
+        else:
+            self.gcode_viewer.window.lift()
 
 if __name__ == "__main__":
     try:
