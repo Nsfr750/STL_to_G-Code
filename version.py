@@ -1,24 +1,33 @@
 """
-Version management for STL to GCode Converter application.
+Version management module for STL to GCode Converter.
 
-This module provides a centralized version tracking system 
-for the project.
+This module implements version tracking and management according to
+Semantic Versioning 2.0.0 (https://semver.org/). It provides:
+- Version number components (major, minor, patch)
+- Version qualifier support (alpha, beta, rc)
+- Version string generation
+- Version compatibility checking
+- Version information dictionary
 """
 
-# Version information follows Semantic Versioning 2.0.0 (https://semver.org/)
+# Version components following Semantic Versioning 2.0.0
+# MAJOR version when you make incompatible API changes
+# MINOR version when you add functionality in a backwards compatible manner
+# PATCH version when you make backwards compatible bug fixes
 VERSION_MAJOR = 1
 VERSION_MINOR = 1
 VERSION_PATCH = 0
 
-# Additional version qualifiers
-VERSION_QUALIFIER = 'beta'  # Could be 'alpha', 'beta', 'rc', or ''
+# Version qualifier (pre-release identifier)
+# Can be 'alpha', 'beta', 'rc' (release candidate), or empty string for final release
+VERSION_QUALIFIER = 'beta'
 
 def get_version():
     """
-    Generate a full version string.
+    Generate the full version string in semantic versioning format.
     
     Returns:
-        str: Formatted version string
+        str: Formatted version string (e.g., "1.1.0-beta")
     """
     version_parts = [str(VERSION_MAJOR), str(VERSION_MINOR), str(VERSION_PATCH)]
     version_str = '.'.join(version_parts)
@@ -30,10 +39,15 @@ def get_version():
 
 def get_version_info():
     """
-    Provide a detailed version information dictionary.
+    Get detailed version information as a dictionary.
     
     Returns:
-        dict: Comprehensive version information
+        dict: Dictionary containing:
+            - major: Major version number
+            - minor: Minor version number
+            - patch: Patch version number
+            - qualifier: Version qualifier (alpha/beta/rc)
+            - full_version: Complete version string
     """
     return {
         'major': VERSION_MAJOR,
@@ -45,17 +59,19 @@ def get_version_info():
 
 def check_version_compatibility(min_version):
     """
-    Check if the current version meets the minimum required version.
+    Check if the current version is compatible with a minimum required version.
     
     Args:
-        min_version (str): Minimum version to compare against
+        min_version (str): Minimum version requirement (e.g., "1.0.0")
     
     Returns:
-        bool: True if current version is compatible, False otherwise
+        bool: True if the current version meets or exceeds the minimum version,
+              False if it's lower than the minimum version
     """
     current_parts = [VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH]
     min_parts = [int(part) for part in min_version.split('.')]
     
+    # Compare each version component
     for current, minimum in zip(current_parts, min_parts):
         if current > minimum:
             return True
@@ -65,4 +81,5 @@ def check_version_compatibility(min_version):
     return True
 
 # Expose version as a module-level attribute for easy access
+# This allows other modules to import version directly: from version import __version__
 __version__ = get_version()
