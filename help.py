@@ -1,5 +1,14 @@
 """
 Help documentation and user guide for STL to GCode Converter.
+
+This module provides comprehensive help documentation and a user guide
+for the STL to GCode Converter application. It includes:
+- Application overview
+- Feature descriptions
+- Usage instructions
+- Configuration details
+- Support information
+- Community links
 """
 
 import tkinter as tk
@@ -78,27 +87,46 @@ Join our community on:
 """
 
 class HelpDialog:
+    """
+    Dialog window for displaying help documentation.
+    
+    Creates a modal dialog window that shows the application's help content
+    in a scrollable text widget with proper formatting.
+    """
     def __init__(self, parent):
-        """Create a help dialog window."""
+        """
+        Initialize the help dialog window.
+        
+        Args:
+            parent: The parent Tkinter window
+            
+        Creates a modal dialog with:
+        - Title: "STL to GCode Converter - Help"
+        - Size: 800x600 pixels
+        - Dark theme styling
+        - Scrollable text widget for help content
+        - Close button
+        """
         self.parent = parent
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("STL to GCode Converter - Help")
         self.dialog.geometry("800x600")
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
+        self.dialog.transient(parent)  # Makes dialog modal
+        self.dialog.grab_set()        # Focuses the dialog
         
-        # Create main frame
+        # Create main frame with padding
         main_frame = ttk.Frame(self.dialog)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Create help text widget
+        # Create help text widget with dark theme
         self.text = scrolledtext.ScrolledText(
             main_frame,
-            wrap=tk.WORD,
-            font=('Helvetica', 10),
-            bg='#333333',
-            fg='white',
-            insertbackground='white'
+            wrap=tk.WORD,              # Word wrapping
+            font=('Helvetica', 10),   # Font settings
+            bg='#333333',             # Dark background
+            fg='white',               # White text
+            insertbackground='white'  # White cursor
+        )
         )
         self.text.pack(fill=tk.BOTH, expand=True)
         
