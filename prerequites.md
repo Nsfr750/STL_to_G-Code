@@ -30,7 +30,7 @@ pip install numpy-stl matplotlib
 
 3. Run the application:
    ```bash
-   python stl_to_gcode.py
+   python main.py
    ```
 
 ## Additional Notes
