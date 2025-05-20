@@ -2,9 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.2-beta] - 2025-05-20
+## [1.1.0-beta] - 2025-05-20
 
 ### Added
+- G-code viewer with syntax highlighting and line numbers
+- View G-code option in File menu
+- Read-only view with scroll support
+- Current line indicator
 - File history tracking and recent files menu
 - Progress bar for file operations
 - Status bar for operation status
