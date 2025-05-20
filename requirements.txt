@@ -9,3 +9,4 @@ python-dateutil>=2.8.2  # Date handling
 six>=1.16.0      # Python 2 and 3 compatibility
 scipy>=1.10.0    # Scientific computing
 requests>=2.31.0 # HTTP requests for sponsor links
+tk>=8.6.0        # GUI toolkit for G-code viewer
