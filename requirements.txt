@@ -1,3 +1,11 @@
-numpy>=1.24.0
-stl>=0.1.0
-trimesh>=3.22.0
+numpy>=1.24.0  # Numerical computations
+stl>=0.1.0      # STL file processing
+trimesh>=3.22.0 # 3D mesh manipulation
+matplotlib>=3.7.0  # 3D visualization
+pillow>=10.0.0   # Image processing
+setuptools>=65.5.1  # Package management
+wheel>=0.38.4    # Package building
+python-dateutil>=2.8.2  # Date handling
+six>=1.16.0      # Python 2 and 3 compatibility
+scipy>=1.10.0    # Scientific computing
+requests>=2.31.0 # HTTP requests for sponsor links
