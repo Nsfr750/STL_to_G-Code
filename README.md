@@ -15,6 +15,12 @@ This is a Python application with a graphical user interface (GUI) for opening S
   - Auto-scaling to fit the model
   - Improved 3D rendering quality
 
+- **G-code Viewer**:
+  - View generated G-code files
+  - Syntax highlighting for G-code commands
+  - Line numbers and current line indicator
+  - Read-only view with scroll support
+
 - **G-code Conversion**:
   - Convert STL files to G-code
   - Progress tracking during conversion
@@ -27,7 +33,7 @@ This is a Python application with a graphical user interface (GUI) for opening S
   - Status bar for operation status
 
 - **Menu Options**:
-  - File menu with Open and Exit options
+  - File menu with Open, View G-code, and Exit options
   - Help menu with documentation
   - About dialog with version info
   - Sponsor options for project support
