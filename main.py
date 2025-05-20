@@ -1,5 +1,6 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
 from stl import mesh
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -19,8 +20,7 @@ style.theme_use('clam')
 style.configure('TButton', padding=10)
 style.configure('TLabel', padding=5)
 style.configure('TFrame', padding=10)
-style.configure('TProgressbar', thickness=10)
-style.configure('Horizontal.TProgressbar', background='#4a90e2')
+style.configure('TProgressbar', thickness=10, background='#4a90e2')
 
 
 class STLToGCodeApp:
@@ -209,6 +209,11 @@ if __name__ == "__main__":
         root = tk.Tk()
         app = STLToGCodeApp(root)
         root.mainloop()
+    except KeyboardInterrupt:
+        print("\nApplication closed by user")
     except Exception as e:
-        print(f"Fatal error: {str(e)}")
+        print(f"\nFatal error: {str(e)}")
+        print("\nTraceback:")
+        import traceback
+        traceback.print_exc()
         print(traceback.format_exc())
