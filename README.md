@@ -4,13 +4,33 @@ This is a Python application with a graphical user interface (GUI) for opening S
 
 ## Features
 
-- **Open STL File**: Allows users to open an STL file from their local system.
-- **3D Visualization**: Displays the STL model in a 3D plot for easy inspection.
-- **G-code Conversion**: Converts the STL file into G-code for 3D printing or CNC machining.
+- **File Management**:
+  - Open STL files from your system
+  - Recent files menu for quick access
+  - File history tracking
+  - File list display
+
+- **3D Visualization**:
+  - Interactive 3D preview of STL models
+  - Auto-scaling to fit the model
+  - Improved 3D rendering quality
+
+- **G-code Conversion**:
+  - Convert STL files to G-code
+  - Progress tracking during conversion
+  - Status updates in real-time
+
+- **UI Improvements**:
+  - Modern, clean interface using ttk widgets
+  - Organized layout with left panel controls
+  - Progress bar for operations
+  - Status bar for operation status
+
 - **Menu Options**:
-  - **Help**: Instructions for using the application.
-  - **About**: Information about the application and its developer.
-  - **Sponsor**: Provides sponsorship options to support the project.
+  - File menu with Open and Exit options
+  - Help menu with documentation
+  - About dialog with version info
+  - Sponsor options for project support
 
 ## Screenshots
 
@@ -18,13 +38,29 @@ This is a Python application with a graphical user interface (GUI) for opening S
 
 ## How to Use
 
-1. Open the application.
-2. Use the "Open STL File" button or the File menu to select an STL file.
-3. Visualize the STL model in the 3D preview area.
-4. Click "Convert to GCode" to generate a G-code file.
-5. Save the G-code file to your desired location.
+1. Launch the application
+2. Use the "Open STL File" button or File menu to select an STL file
+3. The model will appear in the 3D preview area
+4. The "Convert to GCode" button will become enabled
+5. Click "Convert to GCode" to start the conversion process
+6. Monitor progress in the status bar and progress bar
+7. Once complete, save the G-code file
 
-For more detailed instructions, refer to the [Prerequisites](./prerequites.md) file.
+## Recent Files
+Access your recently opened files through the "Recent Files" menu
+
+## Configuration
+The application maintains persistent settings including:
+- Last opened directory
+- Recent files list
+- G-code conversion settings
+- Window size and position
+
+## Error Handling
+The application includes improved error handling with:
+- Detailed error messages
+- Operation status tracking
+- Automatic logging to `stl_to_gcode.log`
 
 ## License
 
@@ -32,7 +68,21 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## Support
 
-If you encounter issues or have feature requests, please open an issue on the [GitHub repository](https://github.com/Nsfr750/stl_to_gcode).
+### Getting Help
+- Check the [Changelog](./CHANGELOG.md) for recent updates
+- View the [License](./LICENSE) for usage rights
+- Report issues on the [GitHub repository](https://github.com/Nsfr750/STL_to_G-Code)
+
+### Sponsorship Options
+- [GitHub Sponsors](https://github.com/sponsors/Nsfr750)
+- [Patreon](https://www.patreon.com/Nsfr750)
+- [Discord](https://discord.gg/BvvkUEP9)
+- [PayPal](https://paypal.me/3dmega)
+
+### Community
+Join our community on:
+- [Discord](https://discord.gg/BvvkUEP9)
+- [GitHub Discussions](https://github.com/Nsfr750/STL_to_G-Code/discussions)
 
 ## Social Links
 
@@ -40,3 +90,13 @@ If you encounter issues or have feature requests, please open an issue on the [G
 - [Patreon](https://www.patreon.com/Nsfr750)
 - [Discord](https://discord.gg/BvvkUEP9)
 - [Paypal](https://paypal.me/3dmega)
+
+## Running the Application
+
+To run the application, execute:
+
+```bash
+python main.py
+```
+
+This will launch the STL to GCode Converter GUI.
