@@ -1,50 +1,78 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.1.0-beta] - 2025-05-20
 
 ### Added
-- G-code viewer with syntax highlighting and line numbers
-- View G-code option in File menu
-- Read-only view with scroll support
-- Current line indicator
-- File history tracking and recent files menu
-- Progress bar for file operations
-- Status bar for operation status
-- Improved error handling and logging
-- Configuration system for persistent settings
-- Better UI layout with left panel for controls
-- File list to track opened files
-- Renamed main application file to `main.py` for better clarity
+- **G-code Viewer**
+  - Syntax-highlighted G-code viewing with color-coded commands
+  - Line numbers with current line indicator
+  - Search functionality with highlighting
+  - Read-only view with scroll support
+  - Status bar showing line and character counts
+  - Support for multiple file formats (G-code, NC)
+  - Save As functionality for modified G-code
+
+- **UI Improvements**
+  - Modern ttk-themed interface with improved styling
+  - Left panel controls for better organization
+  - Status bar with operation status
+  - Progress bar for file operations
+  - File history tracking and recent files menu
+  - Persistent configuration system
+  - Improved menu structure and organization
+
+- **Features**
+  - File list with status indicators
+  - Enhanced 3D preview with rotation controls
+  - Auto-scaling for better visualization
+  - Improved error handling and logging
+  - Configuration system for persistent settings
 
 ### Changed
-- Modernized UI with ttk themed widgets
-- Improved menu structure and organization
-- Enhanced 3D preview area layout
-- Better button styling and spacing
-- Removed customtkinter dependency for better compatibility
+- **UI/UX**
+  - Modernized UI with ttk themed widgets
+  - Improved button styling and spacing
+  - Enhanced menu organization
+  - Better layout for 3D preview area
+  - Removed customtkinter dependency for better compatibility
+
+- **Code**
+  - Restructured main application file for better clarity
+  - Improved error handling patterns
+  - Enhanced logging system
+  - Better code organization
 
 ### Fixed
-- Removed duplicated menu definitions
-- Fixed ttk import issues
-- Improved error handling for file operations
-- Better progress tracking during conversions
+- **Bugs**
+  - Removed duplicated menu definitions
+  - Fixed ttk import issues
+  - Enhanced error handling for file operations
+  - Improved progress tracking during conversions
+  - Fixed window resizing issues
+  - Enhanced file dialog handling
+
+### Removed
+- Customtkinter dependency for better compatibility
 
 ## [1.0.1-beta] - 2025-05-20
 
 ### Added
-- Initial version with core functionality
-- Basic STL file opening and visualization
-- G-code conversion capabilities
-- Menu system with Help, About, and Sponsor options
-- Basic UI with file open and convert buttons
+- **Core Functionality**
+  - STL file opening and visualization
+  - Basic G-code conversion
+  - Menu system with Help, About, and Sponsor options
+  - Basic UI with file open and convert buttons
+  - Version tracking system
+  - Basic error handling
 
 ### Known Issues
 - No file history tracking
 - No progress indication during conversions
 - Basic error handling only
 - No persistent configuration
+- Limited file format support
 
 ## [1.0.0-beta] - 2025-05-20
 
@@ -54,7 +82,15 @@ All notable changes to this project will be documented in this file.
 - 3D visualization using matplotlib
 - Basic GUI structure with Tkinter
 - Version tracking system
+- Initial error handling
+- Basic logging capabilities
 
-[1.0.2-beta]: https://github.com/Nsfr750/STL_to_G-Code/compare/v1.0.1-beta...v1.0.2-beta
-[1.0.1-beta]: https://github.com/Nsfr750/STL_to_G-Code/compare/v1.0.0-beta...v1.0.1-beta
+### Known Issues
+- Basic UI implementation
+- Limited error handling
+- No configuration persistence
+- Basic file operations only
+
+[1.1.0-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.1.0-beta
+[1.0.1-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.0.1-beta
 [1.0.0-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.0.0-beta
