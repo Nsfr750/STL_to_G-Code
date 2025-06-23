@@ -10,6 +10,7 @@ A powerful Python application for converting STL files to G-code, designed for 3
 - Persistent file history tracking
 - File list display with status
 - Support for multiple file formats
+- Automatic update checking
 
 ### 3D Visualization
 - Interactive 3D preview with rotation and zoom
@@ -38,6 +39,8 @@ A powerful Python application for converting STL files to G-code, designed for 3
 - Progress bar for operations
 - Status bar with operation status
 - Responsive design
+- Automatic update notifications
+- Check for updates manually from the Help menu
 
 ### Menu System
 - File menu with Open, View G-code, and Exit options
@@ -47,6 +50,57 @@ A powerful Python application for converting STL files to G-code, designed for 3
 - Recent files menu
 
 ## Installation
+
+### Prerequisites
+- Python 3.8 or later (3.12 recommended)
+- See [PREREQUISITES.md](PREREQUISITES.md) for detailed system requirements
+
+### Quick Start
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Nsfr750/STL_to_G-Code.git
+   cd STL_to_G-Code
+   ```
+
+2. (Recommended) Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   # On Windows:
+   .\venv\Scripts\activate
+   # On macOS/Linux:
+   # source venv/bin/activate
+   ```
+
+3. Install the required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Run the application:
+   ```bash
+   python main.py
+   ```
+
+## Updating
+
+The application will automatically check for updates on startup. You can also manually check for updates from the Help menu.
+
+## Version Information
+- **Current Version**: 1.2.0
+- **License**: [MIT License](LICENSE)
+- **Python Version**: 3.8+ (3.12 recommended)
+
+## Support
+
+For issues and feature requests, please [open an issue](https://github.com/Nsfr750/STL_to_G-Code/issues) on GitHub.
+
+## Contributing
+
+Contributions are welcome! Please read our [contributing guidelines](CONTRIBUTING.md) before submitting pull requests.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ### Requirements
 - Python 3.8 or higher

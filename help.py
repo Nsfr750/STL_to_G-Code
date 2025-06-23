@@ -127,7 +127,6 @@ class HelpDialog:
             fg='white',               # White text
             insertbackground='white'  # White cursor
         )
-        )
         self.text.pack(fill=tk.BOTH, expand=True)
         
         # Insert help content

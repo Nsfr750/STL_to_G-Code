@@ -2,9 +2,41 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2025-06-23
+
+### Added
+
+- **Update System**
+  - Automatic update checking on startup
+  - Manual update check from Help menu
+  - Version comparison functionality
+  - User notifications for available updates
+  - GitHub release integration for update checking
+
+### Changed
+
+- Updated to stable release (removed beta status)
+- Improved error handling for update checks
+- Enhanced version management system
+
+### Fixed
+
+- Fixed STL import issue by switching from `stl` to `numpy-stl` package
+- Improved compatibility with Python 3.12
+- Fixed various UI responsiveness issues
+
+### Dependencies
+
+- Replaced `stl` with `numpy-stl` for better compatibility
+- Updated minimum required versions for several dependencies
+- Removed redundant dependencies
+
+---
+
 ## [1.1.0-beta] - 2025-05-20
 
 ### Added
+
 - **G-code Viewer**
   - Syntax-highlighted G-code viewing with color-coded commands
   - Line numbers with current line indicator

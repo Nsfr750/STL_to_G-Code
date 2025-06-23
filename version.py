@@ -15,12 +15,12 @@ Semantic Versioning 2.0.0 (https://semver.org/). It provides:
 # MINOR version when you add functionality in a backwards compatible manner
 # PATCH version when you make backwards compatible bug fixes
 VERSION_MAJOR = 1
-VERSION_MINOR = 1
+VERSION_MINOR = 2
 VERSION_PATCH = 0
 
 # Version qualifier (pre-release identifier)
 # Can be 'alpha', 'beta', 'rc' (release candidate), or empty string for final release
-VERSION_QUALIFIER = 'beta'
+VERSION_QUALIFIER = ''
 
 def get_version():
     """

@@ -3,6 +3,10 @@ Main application class for the STL to GCode Converter.
 
 This class manages the main window, UI components, and application logic.
 """
+# Set matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('TkAgg')  # Set the backend to TkAgg
+
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
@@ -10,10 +14,12 @@ from stl import mesh
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d import art3d  # Import art3d for 3D plotting
-from version import get_version
+import threading
+from version import get_version, __version__
 from about import About
 from sponsor import Sponsor
 from help import show_help
+from updates import check_for_updates
 import logging
 import os
 import sys
@@ -76,6 +82,8 @@ class STLToGCodeApp:
 
         # Help Menu
         self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.help_menu.add_command(label="Check for Updates", command=self.check_for_updates)
+        self.help_menu.add_separator()
         self.help_menu.add_command(label="Help", command=lambda: show_help(root))
         self.help_menu.add_command(label="About", command=lambda: About.show_about(root))
         self.help_menu.add_command(label="Sponsor", command=lambda: Sponsor(root).show_sponsor())
@@ -244,6 +252,48 @@ class STLToGCodeApp:
         else:
             self.gcode_viewer.window.lift()
 
+    def check_for_updates(self, force_check: bool = False) -> None:
+        """Check for application updates.
+        
+        Args:
+            force_check: If True, skip the cache and force a check.
+        """
+        try:
+            # Import here to avoid circular imports
+            from updates import check_for_updates as check_updates
+            # Run in a separate thread to avoid freezing the UI
+            threading.Thread(
+                target=check_updates,
+                args=(self.root, __version__, force_check),
+                daemon=True
+            ).start()
+        except Exception as e:
+            logging.error(f"Error checking for updates: {e}")
+            messagebox.showerror(
+                "Update Error",
+                f"Failed to check for updates: {e}",
+                parent=self.root
+            )
+
+def check_updates_in_background(root):
+    """Check for updates in a background thread."""
+    try:
+        # Only check for updates if the root window is properly initialized
+        if root and root.winfo_exists():
+            # Check for updates but don't show any messages if no update is available
+            update_available, _ = check_for_updates(
+                parent=root, 
+                current_version=__version__, 
+                force_check=False, 
+                silent_if_no_update=True
+            )
+            return update_available
+        return False
+    except Exception as e:
+        # Don't show error messages for failed update checks
+        logging.debug(f"Background update check failed: {e}", exc_info=True)
+        return False
+
 if __name__ == "__main__":
     """
     Application entry point.
@@ -254,6 +304,11 @@ if __name__ == "__main__":
     try:
         root = tk.Tk()
         app = STLToGCodeApp(root)
+        
+        # Check for updates in a background thread after a short delay
+        # to avoid slowing down the application startup
+        root.after(2000, lambda: check_updates_in_background(root))
+        
         root.mainloop()
     except KeyboardInterrupt:
         print("\nApplication closed by user")
