@@ -1,53 +1,5 @@
 # STL to GCode Converter - Development Roadmap
 
-## High Priority
-
-### Core Functionality
-- [ ] Implement advanced G-code optimization algorithms
-- [ ] Add support for multi-material 3D printing
-- [ ] Implement support for more 3D file formats (OBJ, 3MF, AMF)
-- [ ] Add G-code simulation and visualization
-- [ ] Implement automatic bed leveling support
-
-### UI/UX Improvements
-- [ ] Add customizable keyboard shortcuts
-- [ ] Implement a proper settings/preferences dialog
-- [ ] Add support for multiple color schemes
-- [ ] Implement a proper plugin system for UI extensions
-- [ ] Add tooltips and in-app tutorials
-
-## Medium Priority
-
-### Performance
-- [ ] Optimize 3D rendering performance
-- [ ] Implement background processing for large files
-- [ ] Add support for GPU acceleration
-- [ ] Optimize memory usage for large STL files
-- [ ] Implement incremental loading for large G-code files
-
-### Features
-- [ ] Add support for custom printer profiles
-- [ ] Implement support for different nozzle sizes
-- [ ] Add support for different filament types
-- [ ] Implement support for dual extrusion
-- [ ] Add support for custom start/end G-code
-
-## Code Quality & Maintenance
-
-### Testing
-- [ ] Add comprehensive unit tests
-- [ ] Implement integration tests
-- [ ] Add UI automation tests
-- [ ] Set up code coverage reporting
-- [ ] Add performance benchmarks
-
-### Documentation
-- [ ] Write API documentation
-- [ ] Create user guide
-- [ ] Add developer documentation
-- [ ] Create video tutorials
-- [ ] Add example projects
-
 ## Completed (v2.0.0)
 
 ### PyQt6 Migration
@@ -70,6 +22,21 @@
 - [x] Better separation of concerns
 - [x] Updated dependencies
 - [x] Modernized build system
+
+### Performance
+- [x] Implement advanced G-code optimization algorithms
+- [x] Optimize 3D rendering performance
+- [x] Implement background processing for large files
+- [x] Add support for GPU acceleration
+- [x] Optimize memory usage for large STL files
+- [x] Implement incremental loading for large G-code files
+- [x] Add support for custom start/end G-code
+- [x] Write API documentation
+- [x] Create user guide
+- [x] Add developer documentation
+
+### Core Functionality
+- [x] Add G-code simulation and visualization
 
 ## How to Contribute
 

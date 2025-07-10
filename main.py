@@ -8,7 +8,7 @@ from pathlib import Path
 import datetime
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -24,6 +24,15 @@ from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
 from scripts.workers import GCodeGenerationWorker
 from scripts.gcode_visualizer import GCodeVisualizer
+from scripts.stl_processor import load_stl, MemoryEfficientSTLProcessor
+import numpy as np
+
+try:
+    from scripts.opengl_visualizer import OpenGLGCodeVisualizer
+    OPENGL_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"OpenGL visualization not available: {e}")
+    OPENGL_AVAILABLE = False
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -63,6 +72,21 @@ class STLToGCodeApp(QMainWindow):
         # Log application start
         logging.info("Application started")
         
+        # Add this to the __init__ method where other UI elements are created
+        self.use_opengl = OPENGL_AVAILABLE  # Whether to use OpenGL for visualization
+        self.opengl_visualizer = None
+        
+        # Add progressive loading attributes
+        self.progressive_loading = True  # Enable progressive loading
+        self.loading_progress = 0
+        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        self.loading_timer = QTimer(self)
+        self.loading_timer.timeout.connect(self._process_loading_queue)
+        self.loading_queue = []
+        self.is_loading = False
+        self.current_stl_processor = None
+    
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
         # Set up the menu bar
@@ -161,6 +185,16 @@ class STLToGCodeApp(QMainWindow):
         # Add panels to main layout with stretch factors
         main_layout.addWidget(left_panel, stretch=1)
         main_layout.addWidget(right_panel, stretch=3)
+        
+        # Add this after creating the visualization tab
+        if self.use_opengl:
+            try:
+                self.opengl_visualizer = OpenGLGCodeVisualizer()
+                self.visualization_tab.layout().addWidget(self.opengl_visualizer)
+                logging.info("OpenGL visualization initialized")
+            except Exception as e:
+                logging.error(f"Failed to initialize OpenGL visualizer: {e}")
+                self.use_opengl = False
     
     def _setup_stl_view(self):
         """Set up the STL view tab."""
@@ -325,116 +359,257 @@ class STLToGCodeApp(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
     
-    def open_file(self):
-        """Open an STL file and display it in the 3D viewer."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open STL File",
-            "",
-            "STL Files (*.stl);;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                self.file_path = file_path
-                self._load_stl(file_path)
-                self.convert_button.setEnabled(True)
-                # Enable save button if it exists
-                if hasattr(self, 'save_button'):
-                    self.save_button.setEnabled(True)
-                self.statusBar().showMessage(f"Loaded: {os.path.basename(file_path)}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load STL file: {str(e)}")
-                self.statusBar().showMessage("Error loading file")
+    def open_file(self, file_path=None):
+        """Open an STL file and load it into the viewer with progressive loading."""
+        if file_path is None:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Open STL File", "", "STL Files (*.stl);;All Files (*)"
+            )
+            
+        if not file_path:
+            return
+            
+        try:
+            # Reset loading state
+            self._reset_loading_state()
+            self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
+            QApplication.processEvents()
+            
+            # Initialize the STL processor
+            self.current_stl_processor = load_stl(file_path)
+            mesh_info = self.current_stl_processor.get_mesh_info()
+            
+            # Update UI with mesh info
+            self.update_mesh_info(mesh_info)
+            
+            # Enable UI elements
+            self.ui.convert_button.setEnabled(True)
+            self.ui.export_button.setEnabled(False)
+            
+            # Store file info
+            self.file_path = file_path
+            self.current_file = os.path.basename(file_path)
+            self.setWindowTitle(f"STL to GCode - {self.current_file}")
+            
+            # Add to recent files
+            self.add_to_recent_files(file_path)
+            
+            # Start progressive loading
+            self._start_progressive_loading()
+            
+        except Exception as e:
+            self._handle_loading_error(e, file_path)
     
-    def _load_stl(self, file_path):
-        """Load and display an STL file in the 3D viewer with infill preview."""
+    def _reset_loading_state(self):
+        """Reset the state for a new loading operation."""
+        if self.current_stl_processor:
+            try:
+                self.current_stl_processor.close()
+            except:
+                pass
+            self.current_stl_processor = None
+            
+        self.loading_progress = 0
+        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        self.loading_queue = []
+        self.is_loading = False
+        self.loading_timer.stop()
+        self.ax.clear()
+        self.canvas.draw()
+    
+    def _start_progressive_loading(self):
+        """Start the progressive loading process in a background thread."""
+        if not self.current_stl_processor:
+            return
+            
+        # Setup progress dialog
+        self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
+        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.canceled.connect(self._cancel_loading)
+        
+        # Start loading in a separate thread
+        self.loading_thread = QThread()
+        self.loading_worker = STLLoadingWorker(self.current_stl_processor)
+        self.loading_worker.moveToThread(self.loading_thread)
+        
+        # Connect signals
+        self.loading_worker.chunk_loaded.connect(self._on_chunk_loaded)
+        self.loading_worker.loading_finished.connect(self._on_loading_finished)
+        self.loading_worker.error_occurred.connect(self._on_loading_error)
+        
+        # Start the thread and worker
+        self.loading_thread.started.connect(self.loading_worker.start_loading)
+        self.loading_thread.start()
+        
+        # Start the processing timer
+        self.loading_timer.start(100)  # Process queue every 100ms
+        self.is_loading = True
+    
+    def _process_loading_queue(self):
+        """Process the loading queue to update the 3D view."""
+        if not self.loading_queue:
+            return
+            
+        # Process chunks in the queue
+        while self.loading_queue:
+            chunk = self.loading_queue.pop(0)
+            self._process_chunk(chunk)
+            
+        # Update the 3D view
+        self._update_3d_view()
+    
+    def _process_chunk(self, chunk_data):
+        """Process a single chunk of STL data."""
+        if not chunk_data or 'vertices' not in chunk_data:
+            return
+            
+        # Update progress
+        if 'progress' in chunk_data:
+            self.loading_progress = chunk_data['progress']
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.setValue(self.loading_progress)
+        
+        # Update mesh data
+        if len(chunk_data['vertices']) > 0:
+            if len(self.current_vertices) == 0:
+                self.current_vertices = chunk_data['vertices']
+                self.current_faces = chunk_data['faces']
+            else:
+                vertex_offset = len(self.current_vertices)
+                self.current_vertices = np.vstack((self.current_vertices, chunk_data['vertices']))
+                
+                # Update face indices with the correct offset
+                new_faces = chunk_data['faces'] + vertex_offset
+                self.current_faces = np.vstack((self.current_faces, new_faces))
+    
+    def _update_3d_view(self):
+        """Update the 3D view with the current mesh data."""
+        if len(self.current_vertices) == 0:
+            return
+            
+        try:
+            self.ax.clear()
+            
+            # Only show a subset of triangles for better performance
+            if len(self.current_faces) > 50000:
+                # For large meshes, show a simplified version
+                step = max(1, len(self.current_faces) // 10000)
+                faces = self.current_faces[::step]
+                self.ax.add_collection3d(art3d.Poly3DCollection(
+                    self.current_vertices[faces],
+                    alpha=0.5,
+                    linewidths=0.1,
+                    edgecolor='#666666'
+                ))
+            else:
+                # For smaller meshes, show all triangles
+                self.ax.add_collection3d(art3d.Poly3DCollection(
+                    self.current_vertices[self.current_faces],
+                    alpha=0.5,
+                    linewidths=0.5,
+                    edgecolor='#666666'
+                ))
+            
+            # Auto-scale the plot
+            scale = self.current_vertices.flatten()
+            self.ax.auto_scale_xyz(scale, scale, scale)
+            
+            # Set labels and title
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
+            self.ax.set_title('3D View - ' + self.current_file)
+            
+            # Redraw the canvas
+            self.canvas.draw()
+            
+        except Exception as e:
+            logger.error(f"Error updating 3D view: {e}")
+    
+    def _on_chunk_loaded(self, chunk_data):
+        """Handle a new chunk of STL data."""
+        self.loading_queue.append(chunk_data)
+    
+    def _on_loading_finished(self):
+        """Handle completion of the loading process."""
+        self.loading_timer.stop()
+        self.is_loading = False
+        
+        # Process any remaining chunks
+        while self.loading_queue:
+            chunk = self.loading_queue.pop(0)
+            self._process_chunk(chunk)
+        
+        # Final update
+        self._update_3d_view()
+        
+        # Close progress dialog
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            
+        self.statusBar().showMessage(f"Loaded {self.current_file}", 5000)
+    
+    def _on_loading_error(self, error_message):
+        """Handle errors during loading."""
+        self.loading_timer.stop()
+        self.is_loading = False
+        
+        if hasattr(self, 'progress_dialog'):
+            self.progress_dialog.close()
+            
+        QMessageBox.critical(self, "Loading Error", error_message)
+        self.statusBar().showMessage("Error loading file", 5000)
+    
+    def _cancel_loading(self):
+        """Cancel the current loading operation."""
+        self.loading_timer.stop()
+        self.is_loading = False
+        
+        if hasattr(self, 'loading_worker'):
+            self.loading_worker.stop_loading()
+            
+        if hasattr(self, 'loading_thread'):
+            self.loading_thread.quit()
+            self.loading_thread.wait()
+            
+        self._reset_loading_state()
+        self.statusBar().showMessage("Loading cancelled", 3000)
+    
+    def update_mesh_info(self, mesh_info):
+        """Update the UI with mesh information."""
+        # Update mesh info in the UI
+        self.ui.mesh_info_widget.clear()
+        self.ui.mesh_info_widget.addItem(f"Triangles: {mesh_info['num_triangles']:,}")
+        
+        bounds = mesh_info['bounds']
+        self.ui.mesh_info_widget.addItem(f"Size: {bounds['size'][0]:.2f} x {bounds['size'][1]:.2f} x {bounds['size'][2]:.2f} mm")
+        self.ui.mesh_info_widget.addItem(f"Bounding Box:")
+        self.ui.mesh_info_widget.addItem(f"  Min: {bounds['min'][0]:.2f}, {bounds['min'][1]:.2f}, {bounds['min'][2]:.2f}")
+        self.ui.mesh_info_widget.addItem(f"  Max: {bounds['max'][0]:.2f}, {bounds['max'][1]:.2f}, {bounds['max'][2]:.2f}")
+        self.ui.mesh_info_widget.addItem(f"  Center: {bounds['center'][0]:.2f}, {bounds['center'][1]:.2f}, {bounds['center'][2]:.2f}")
+    
+    def update_3d_view(self, vertices, faces):
+        """Update the 3D view with the given vertices and faces."""
         # Clear previous plot
         self.ax.clear()
         
-        # Load the STL file
-        stl_mesh = mesh.Mesh.from_file(file_path) 
-        
         # Create a 3D plot of the mesh
-        self.ax.add_collection3d(art3d.Poly3DCollection(stl_mesh.vectors, alpha=0.5, linewidths=0.5, edgecolor='#666666'))
+        self.ax.add_collection3d(art3d.Poly3DCollection(vertices[faces], alpha=0.5, linewidths=0.5, edgecolor='#666666'))
         
         # Auto-scale the plot
-        scale = stl_mesh.points.flatten()
+        scale = vertices.flatten()
         self.ax.auto_scale_xyz(scale, scale, scale)
-        
-        # Get the current settings for infill
-        settings = self.get_current_settings()
-        
-        # If infill is enabled, show a preview of the infill pattern
-        if settings['infill_density'] > 0 and self.optimize_infill_checkbox.isChecked():
-            try:
-                # Get bounding box of the model
-                min_x, max_x = stl_mesh.vectors[:,:,0].min(), stl_mesh.vectors[:,:,0].max()
-                min_y, max_y = stl_mesh.vectors[:,:,1].min(), stl_mesh.vectors[:,:,1].max()
-                
-                # Get the middle layer for preview
-                mid_z = (stl_mesh.vectors[:,:,2].min() + stl_mesh.vectors[:,:,2].max()) / 2
-                
-                # Generate the infill pattern
-                infill_lines = GCodeOptimizer.generate_optimized_infill(
-                    bounds=(min_x, min_y, max_x, max_y),
-                    angle=settings['infill_angle'],
-                    spacing=settings['extrusion_width'] / settings['infill_density'],
-                    resolution=self.infill_resolution_spin.value()
-                )
-                
-                # Debug: Log the structure of infill_lines
-                logging.info(f"Infill lines type: {type(infill_lines)}")
-                if hasattr(infill_lines, '__len__'):
-                    logging.info(f"Number of infill lines: {len(infill_lines)}")
-                    if len(infill_lines) > 0:
-                        logging.info(f"First line type: {type(infill_lines[0])}")
-                        logging.info(f"First line: {infill_lines[0]}")
-                
-                # Plot the infill lines at the middle Z height
-                for i, line in enumerate(infill_lines):
-                    try:
-                        # Debug: Log the current line being processed
-                        logging.debug(f"Processing line {i}: {line}")
-                        # Ensure we have exactly 4 values (x1, y1, x2, y2)
-                        if len(line) == 4:
-                            x1, y1, x2, y2 = line
-                            self.ax.plot([x1, x2], [y1, y2], [mid_z, mid_z], 'b-', linewidth=1, alpha=0.6)
-                        else:
-                            logging.warning(f"Skipping invalid infill line (length {len(line)}): {line}")
-                    except (ValueError, TypeError) as e:
-                        logging.warning(f"Error processing infill line {i}: {e} - Line: {line}")
-                    except Exception as e:
-                        logging.error(f"Unexpected error processing line {i}: {e} - Line: {line}")
-                        raise
-            except Exception as e:
-                logging.warning(f"Could not generate infill preview: {str(e)}")
         
         # Set labels and title
         self.ax.set_xlabel('X')
         self.ax.set_ylabel('Y')
         self.ax.set_zlabel('Z')
-        self.ax.set_title('3D View - ' + os.path.basename(file_path))
+        self.ax.set_title('3D View - ' + os.path.basename(self.file_path))
         
         # Redraw the canvas
         self.canvas.draw()
-    
-    def _update_visualization(self):
-        """Update the G-code visualization."""
-        if not self.gcode:
-            return
-            
-        try:
-            show_travel = self.show_travel_moves.isChecked()
-            self.gcode_visualizer.visualize_gcode(self.gcode, show_travel)
-        except Exception as e:
-            logging.error(f"Error updating visualization: {e}", exc_info=True)
-            QMessageBox.critical(self, "Visualization Error", 
-                               f"Error updating visualization: {str(e)}")
-    
-    def _reset_visualization_view(self):
-        """Reset the G-code visualization view."""
-        self.gcode_visualizer.reset_view()
     
     def convert_to_gcode(self):
         """Convert the loaded STL to GCode with proper slicing and path planning."""
@@ -946,6 +1121,139 @@ class STLToGCodeApp(QMainWindow):
         
         # Disable settings during processing
         self.ui.settings_group.setEnabled(not is_processing)
+
+    def parse_gcode_for_visualization(self, gcode_text):
+        """Parse G-code text into print and travel moves for OpenGL visualization."""
+        print_moves = []
+        travel_moves = []
+        
+        # Current position
+        current_pos = [0.0, 0.0, 0.0]
+        
+        for line in gcode_text.split('\n'):
+            line = line.split(';', 1)[0].strip()  # Remove comments
+            if not line:
+                continue
+                
+            # Handle G0/G1 commands (movement)
+            if line.startswith('G0') or line.startswith('G1'):
+                # Extract coordinates
+                x = None
+                y = None
+                z = None
+                e = None
+                
+                # Parse parameters
+                for part in line.split():
+                    if part.startswith('X'):
+                        x = float(part[1:])
+                    elif part.startswith('Y'):
+                        y = float(part[1:])
+                    elif part.startswith('Z'):
+                        z = float(part[1:])
+                    elif part.startswith('E'):
+                        e = float(part[1:])
+                
+                # Update current position
+                if x is not None:
+                    current_pos[0] = x
+                if y is not None:
+                    current_pos[1] = y
+                if z is not None:
+                    current_pos[2] = z
+                
+                # Add to appropriate list
+                if e is not None and e > 0:  # Print move (extrusion)
+                    print_moves.append((current_pos[0], current_pos[1], current_pos[2]))
+                else:  # Travel move (no extrusion)
+                    travel_moves.append((current_pos[0], current_pos[1], current_pos[2]))
+        
+        return np.array(print_moves), np.array(travel_moves)
+
+    def toggle_visualization_mode(self, use_opengl):
+        """Toggle between OpenGL and Matplotlib visualization."""
+        if not OPENGL_AVAILABLE and use_opengl:
+            QMessageBox.warning(self, "OpenGL Not Available",
+                              "OpenGL visualization is not available on this system. "
+                              "Falling back to Matplotlib visualization.")
+            self.use_opengl = False
+            return
+            
+        self.use_opengl = use_opengl
+        
+        # Update the visualization if we have G-code loaded
+        if hasattr(self, 'current_gcode') and self.current_gcode:
+            self.update_visualization(self.current_gcode)
+
+    def closeEvent(self, event):
+        """Handle window close event."""
+        # Clean up OpenGL resources if they were used
+        if hasattr(self, 'opengl_visualizer') and self.opengl_visualizer:
+            self.opengl_visualizer.cleanup()
+        
+        # Call parent close event
+        super().closeEvent(event)
+
+class STLLoadingWorker(QObject):
+    """Worker class for loading STL files in the background."""
+    chunk_loaded = pyqtSignal(dict)
+    loading_finished = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+    
+    def __init__(self, stl_processor):
+        super().__init__()
+        self.stl_processor = stl_processor
+        self._is_running = False
+    
+    def start_loading(self):
+        """Start the loading process."""
+        self._is_running = True
+        
+        try:
+            # Process the STL file in chunks
+            for chunk in self.stl_processor.iter_progressive_chunks(
+                progress_callback=self._on_progress
+            ):
+                if not self._is_running:
+                    break
+                    
+                # Emit the chunk for processing
+                self.chunk_loaded.emit(chunk)
+                
+                # Allow the main thread to process events
+                QThread.msleep(10)
+                
+            if self._is_running:
+                self.loading_finished.emit()
+                
+        except Exception as e:
+            if self._is_running:
+                self.error_occurred.emit(str(e))
+        finally:
+            self._cleanup()
+    
+    def stop_loading(self):
+        """Stop the loading process."""
+        self._is_running = False
+    
+    def _on_progress(self, progress, total):
+        """Handle progress updates."""
+        if not self._is_running:
+            return
+            
+        self.chunk_loaded.emit({
+            'progress': progress,
+            'total_triangles': total
+        })
+    
+    def _cleanup(self):
+        """Clean up resources."""
+        if self.stl_processor:
+            try:
+                self.stl_processor.close()
+            except:
+                pass
+            self.stl_processor = None
 
 def main():
     """Application entry point."""

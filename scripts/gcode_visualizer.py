@@ -13,7 +13,7 @@ import time
 logger = logging.getLogger(__name__)
 
 class GCodeVisualizer(QWidget):
-    """Widget for 3D visualization of G-code toolpaths with performance optimizations."""
+    """Widget for 3D visualization of G-code toolpaths with performance optimizations and incremental loading support."""
     
     def __init__(self, parent=None):
         """Initialize the G-code visualizer with performance optimizations."""
@@ -26,24 +26,209 @@ class GCodeVisualizer(QWidget):
         self._min_render_interval = 0.1  # Minimum time between renders (seconds)
         self._last_render_data = None
         
+        # Store print and travel moves incrementally
+        self._print_moves = []
+        self._travel_moves = []
+        self._bounds = None  # Will store (min_x, max_x, min_y, max_y, min_z, max_z)
+        
         # Set up the matplotlib figure and axes with optimized settings
         self.figure = Figure(figsize=(8, 6), dpi=100)
         self.figure.set_facecolor('none')  # Transparent background
         
-        # Use a more efficient backend if available
-        try:
-            import matplotlib
-            matplotlib.use('Qt5Agg', force=True)
-        except ImportError:
-            pass
+        # Use constrained layout to prevent label cutoff
+        self.figure.set_layout_engine('constrained')
         
-        self.canvas = FigureCanvas(self.figure)
+        # Create 3D axes with optimized settings
         self.axes = self.figure.add_subplot(111, projection='3d')
         
-        # Configure the axes for better performance
-        self.axes.set_axis_off()  # Turn off axis for better performance
-        self.axes.grid(False)
+        # Optimize rendering performance
+        self.figure.set_tight_layout(True)
         
+        # Create canvas and add to layout
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setStyleSheet("background-color: transparent;")
+        
+        # Set up the UI
+        self._setup_ui()
+        
+        # Initialize visualization state
+        self.reset_view()
+    
+    def clear(self):
+        """Clear all loaded G-code data."""
+        self._print_moves = []
+        self._travel_moves = []
+        self._bounds = None
+        self._last_render_data = None
+        self.axes.clear()
+        self.canvas.draw_idle()
+    
+    def append_gcode(self, gcode_chunk: str):
+        """Append a chunk of G-code to the visualization.
+        
+        Args:
+            gcode_chunk: A string containing G-code to be parsed and added to the visualization
+        """
+        if not gcode_chunk.strip():
+            return
+            
+        try:
+            # Parse the G-code chunk
+            commands = self._parse_gcode(gcode_chunk)
+            
+            # Process commands and update internal state
+            current_pos = {'X': 0, 'Y': 0, 'Z': 0, 'E': 0, 'F': 0}
+            is_absolute = True
+            
+            for cmd in commands:
+                # Update current position based on command
+                if 'X' in cmd or 'Y' in cmd or 'Z' in cmd:
+                    # Handle movement command
+                    is_extruding = 'E' in cmd and cmd['E'] > 0
+                    
+                    # Get target position
+                    target_pos = dict(current_pos)
+                    for axis in ['X', 'Y', 'Z', 'E', 'F']:
+                        if axis in cmd:
+                            if is_absolute or axis == 'F':
+                                target_pos[axis] = cmd[axis]
+                            else:
+                                target_pos[axis] += cmd[axis]
+                    
+                    # Add to appropriate move list
+                    if is_extruding:
+                        self._add_print_move(current_pos, target_pos)
+                    else:
+                        self._add_travel_move(current_pos, target_pos)
+                    
+                    current_pos.update(target_pos)
+                
+                # Handle G90/G91 (absolute/relative positioning)
+                elif cmd.get('G') == 90:
+                    is_absolute = True
+                elif cmd.get('G') == 91:
+                    is_absolute = False
+            
+            # Update visualization
+            self._update_visualization()
+            
+        except Exception as e:
+            logger.error(f"Error processing G-code chunk: {e}", exc_info=True)
+    
+    def _add_print_move(self, start_pos, end_pos):
+        """Add a print move to the visualization."""
+        if not self._print_moves:
+            self._print_moves = []
+            
+        # Add line segment
+        segment = np.array([
+            [start_pos['X'], start_pos['Y'], start_pos['Z']],
+            [end_pos['X'], end_pos['Y'], end_pos['Z']]
+        ])
+        self._print_moves.append(segment)
+        
+        # Update bounds
+        self._update_bounds(segment)
+    
+    def _add_travel_move(self, start_pos, end_pos):
+        """Add a travel move to the visualization."""
+        if not self._travel_moves:
+            self._travel_moves = []
+            
+        # Add line segment
+        segment = np.array([
+            [start_pos['X'], start_pos['Y'], start_pos['Z']],
+            [end_pos['X'], end_pos['Y'], end_pos['Z']]
+        ])
+        self._travel_moves.append(segment)
+        
+        # Update bounds
+        self._update_bounds(segment)
+    
+    def _update_bounds(self, points):
+        """Update the bounding box to include the given points."""
+        if self._bounds is None:
+            min_vals = np.min(points, axis=0)
+            max_vals = np.max(points, axis=0)
+            self._bounds = np.column_stack((min_vals, max_vals)).flatten()
+        else:
+            min_vals = np.minimum(self._bounds[::2], np.min(points, axis=0))
+            max_vals = np.maximum(self._bounds[1::2], np.max(points, axis=0))
+            self._bounds = np.column_stack((min_vals, max_vals)).flatten()
+    
+    def _update_visualization(self):
+        """Update the visualization with the current data."""
+        current_time = time.time()
+        if current_time - self._last_render_time < self._min_render_interval:
+            return  # Skip render if we're rendering too frequently
+            
+        self._last_render_time = current_time
+        
+        try:
+            self.axes.clear()
+            
+            # Plot print moves (extrusion)
+            if self._print_moves:
+                print_segments = np.vstack(self._print_moves)
+                print_lines = self.axes.plot(
+                    print_segments[:, 0], 
+                    print_segments[:, 1], 
+                    print_segments[:, 2],
+                    'b-',  # Blue lines for print moves
+                    linewidth=1.0,
+                    alpha=0.7
+                )
+            
+            # Plot travel moves (non-extrusion)
+            if self._show_travel_moves and self._travel_moves:
+                travel_segments = np.vstack(self._travel_moves)
+                travel_lines = self.axes.plot(
+                    travel_segments[:, 0],
+                    travel_segments[:, 1],
+                    travel_segments[:, 2],
+                    'r--',  # Red dashed lines for travel moves
+                    linewidth=0.5,
+                    alpha=0.5
+                )
+            
+            # Auto-scale the view if we have bounds
+            if self._bounds is not None:
+                padding = 10  # mm padding
+                min_x, max_x, min_y, max_y, min_z, max_z = self._bounds
+                
+                # Add padding
+                min_x -= padding
+                max_x += padding
+                min_y -= padding
+                max_y += padding
+                min_z = max(0, min_z - padding)  # Don't go below z=0
+                max_z += padding
+                
+                # Set axis limits
+                self.axes.set_xlim(min_x, max_x)
+                self.axes.set_ylim(min_y, max_y)
+                self.axes.set_zlim(min_z, max_z)
+            
+            # Set labels and title
+            self.axes.set_xlabel('X (mm)')
+            self.axes.set_ylabel('Y (mm)')
+            self.axes.set_zlabel('Z (mm)')
+            self.axes.set_title('G-code Toolpath Visualization')
+            
+            # Update status
+            point_count = len(self._print_moves) * 2 + len(self._travel_moves) * 2
+            self.status_label.setText(
+                f"Points: {point_count:,} | "
+                f"Detail: {self.detail_combo.currentText()}"
+            )
+            
+            # Use draw_idle instead of draw for better performance
+            self.canvas.draw_idle()
+            
+        except Exception as e:
+            logger.error(f"Error updating visualization: {e}", exc_info=True)
+    
+    def _setup_ui(self):
         # Set up the layout
         layout = QVBoxLayout()
         
@@ -81,9 +266,6 @@ class GCodeVisualizer(QWidget):
         layout.addWidget(self.canvas)
         
         self.setLayout(layout)
-        
-        # Initialize visualization state
-        self.reset_view()
     
     def _on_detail_changed(self, index):
         """Handle changes to the detail level."""
@@ -100,12 +282,6 @@ class GCodeVisualizer(QWidget):
         self._show_travel_moves = (state == 2)  # 2 is checked state
         self._update_visualization()
     
-    def _decimate_points(self, points, factor):
-        """Decimate points to improve rendering performance."""
-        if factor <= 1 or len(points) < 10:
-            return points
-        return points[::factor]
-    
     def reset_view(self):
         """Reset the 3D view to default settings with performance optimizations."""
         try:
@@ -114,10 +290,10 @@ class GCodeVisualizer(QWidget):
                 artist.remove()
             
             # Set labels and title
-            self.axes.set_xlabel('X (mm)', fontsize=8)
-            self.axes.set_ylabel('Y (mm)', fontsize=8)
-            self.axes.set_zlabel('Z (mm)', fontsize=8)
-            self.axes.set_title('G-code Toolpath Visualization', fontsize=10)
+            self.axes.set_xlabel('X (mm)')
+            self.axes.set_ylabel('Y (mm)')
+            self.axes.set_zlabel('Z (mm)')
+            self.axes.set_title('G-code Toolpath Visualization')
             
             # Set grid with reduced alpha for better performance
             self.axes.grid(True, alpha=0.3)
@@ -139,138 +315,6 @@ class GCodeVisualizer(QWidget):
             
         except Exception as e:
             logger.error(f"Error resetting view: {e}", exc_info=True)
-    
-    def visualize_gcode(self, gcode: str, show_travel_moves: bool = True):
-        """Visualize G-code with performance optimizations.
-        
-        Args:
-            gcode: The G-code string to visualize
-            show_travel_moves: Whether to show travel moves (G0)
-        """
-        current_time = time.time()
-        if current_time - self._last_render_time < self._min_render_interval:
-            return  # Skip render if we're rendering too frequently
-            
-        self._last_render_time = current_time
-        self._show_travel_moves = show_travel_moves
-        
-        try:
-            # Parse the G-code
-            commands = self._parse_gcode(gcode)
-            if not commands:
-                self.status_label.setText("No valid G-code commands to visualize")
-                return
-            
-            # Extract coordinates for different move types
-            print_segments = []
-            travel_segments = []
-            
-            for cmd in commands:
-                segment = (cmd['x'], cmd['y'], cmd['z'])
-                if cmd['type'] == 'print':
-                    print_segments.append(segment)
-                elif cmd['type'] == 'move' and self._show_travel_moves:
-                    travel_segments.append(segment)
-            
-            # Convert to numpy arrays for plotting
-            print_segments = np.array(print_segments) if print_segments else None
-            travel_segments = np.array(travel_segments) if travel_segments else None
-            
-            # Skip if no data to plot
-            if print_segments is None and travel_segments is None:
-                return
-            
-            # Clear previous plots more efficiently
-            for artist in self.axes.lines + self.axes.collections:
-                artist.remove()
-            
-            # Plot print moves with line collection for better performance
-            if print_segments is not None and len(print_segments) > 1:
-                # Apply decimation
-                if self._decimation_factor > 1 and len(print_segments) > 1000:
-                    print_segments = print_segments[::self._decimation_factor]
-                
-                # Use line collection for better performance with many lines
-                lines = []
-                for i in range(len(print_segments) - 1):
-                    lines.append([print_segments[i], print_segments[i+1]])
-                
-                if lines:
-                    lc = mcoll.LineCollection(
-                        lines, 
-                        colors='b', 
-                        linewidths=0.5, 
-                        alpha=0.8,
-                        linestyles='solid'
-                    )
-                    self.axes.add_collection3d(lc)
-            
-            # Plot travel moves with line collection
-            if travel_segments is not None and len(travel_segments) > 1 and self._show_travel_moves:
-                # Apply more aggressive decimation to travel moves
-                decimation = max(1, self._decimation_factor * 2)
-                if decimation > 1 and len(travel_segments) > 100:
-                    travel_segments = travel_segments[::decimation]
-                
-                # Use line collection for travel moves
-                lines = []
-                for i in range(len(travel_segments) - 1):
-                    lines.append([travel_segments[i], travel_segments[i+1]])
-                
-                if lines:
-                    lc = mcoll.LineCollection(
-                        lines,
-                        colors='r',
-                        linewidths=0.3,
-                        alpha=0.3,
-                        linestyles='dashed'
-                    )
-                    self.axes.add_collection3d(lc)
-            
-            # Auto-scale the view if this is a new visualization
-            if self._last_render_data is None:
-                self._auto_scale_view(print_segments, travel_segments)
-            
-            # Update status
-            point_count = (0 if print_segments is None else len(print_segments)) + \
-                         (0 if travel_segments is None or not self._show_travel_moves else len(travel_segments))
-            self.status_label.setText(f"Points: {point_count:,} | "
-                                   f"Detail: {self.detail_combo.currentText()}")
-            
-            # Store the last render data for incremental updates
-            self._last_render_data = (print_segments, travel_segments)
-            
-            # Use draw_idle instead of draw for better performance
-            self.canvas.draw_idle()
-            
-        except Exception as e:
-            logger.error(f"Error in visualize_gcode: {e}", exc_info=True)
-            self.status_label.setText(f"Error: {str(e)}")
-    
-    def _auto_scale_view(self, print_segments, travel_segments):
-        """Auto-scale the view to fit all points."""
-        all_points = []
-        
-        if print_segments is not None and len(print_segments) > 0:
-            all_points.append(print_segments)
-        
-        if travel_segments is not None and len(travel_segments) > 0 and self._show_travel_moves:
-            all_points.append(travel_segments)
-        
-        if not all_points:
-            return
-        
-        all_points = np.vstack(all_points)
-        min_vals = np.min(all_points, axis=0)
-        max_vals = np.max(all_points, axis=0)
-        ranges = max_vals - min_vals
-        
-        # Add 10% padding, but at least 1mm
-        padding = np.maximum(ranges * 0.1, [1, 1, 1])
-        
-        self.axes.set_xlim(min_vals[0] - padding[0], max_vals[0] + padding[0])
-        self.axes.set_ylim(min_vals[1] - padding[1], max_vals[1] + padding[1])
-        self.axes.set_zlim(max(0, min_vals[2] - padding[2]), max_vals[2] + padding[2])
     
     def _parse_gcode(self, gcode: str) -> List[Dict[str, Any]]:
         """Parse G-code into a list of commands with coordinates."""
@@ -331,8 +375,3 @@ class GCodeVisualizer(QWidget):
                 pass
         
         return commands
-    
-    def _update_visualization(self):
-        """Update the visualization with current settings."""
-        if hasattr(self, '_last_render_data'):
-            self.visualize_gcode(self._last_render_data[0], self._show_travel_moves)

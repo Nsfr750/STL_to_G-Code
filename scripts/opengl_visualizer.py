@@ -5,13 +5,14 @@ from PyQt6.QtCore import Qt, QSize, QTimer
 from OpenGL import GL as gl
 import ctypes
 import logging
+import re
 from typing import List, Tuple, Optional, Dict, Any
 import time
 
 logger = logging.getLogger(__name__)
 
 class OpenGLGCodeVisualizer(QOpenGLWidget):
-    """OpenGL-based G-code visualizer with GPU acceleration."""
+    """OpenGL-based G-code visualizer with GPU acceleration and incremental loading support."""
     
     def __init__(self, parent=None):
         """Initialize the OpenGL visualizer."""
@@ -31,22 +32,24 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         self.point_size = 1.5
         self.line_width = 1.0
         self.background_color = (0.1, 0.1, 0.1, 1.0)
-        self.print_color = (0.2, 0.6, 1.0, 1.0)  # Blue for print moves
-        self.travel_color = (1.0, 0.2, 0.2, 0.3)  # Red for travel moves with transparency
         
         # Camera settings
-        self.camera_distance = 300.0
-        self.camera_yaw = 45.0
+        self.camera_distance = 200.0
         self.camera_pitch = 30.0
+        self.camera_yaw = 45.0
         self.camera_target = QVector3D(0, 0, 0)
         
-        # Mouse interaction
-        self.last_pos = None
-        self.rotation_speed = 0.5
-        self.zoom_speed = 0.01
-        self.pan_speed = 0.01
+        # Interaction state
+        self.last_mouse_pos = None
+        self.is_panning = False
+        self.is_rotating = False
         
-        # Data buffers
+        # Data storage
+        self.print_points = []
+        self.travel_points = []
+        self._bounds = None  # (min_x, max_x, min_y, max_y, min_z, max_z)
+        
+        # OpenGL resources
         self.print_vao = None
         self.print_vbo = None
         self.travel_vao = None
@@ -169,43 +172,275 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         except Exception as e:
             logger.error(f"Error in resizeGL: {e}", exc_info=True)
     
+    def clear(self):
+        """Clear all loaded G-code data."""
+        self.print_points = []
+        self.travel_points = []
+        self._bounds = None
+        self.update_gpu_buffers()
+        self.update()
+    
+    def append_gcode(self, gcode_chunk: str):
+        """Append a chunk of G-code to the visualization.
+        
+        Args:
+            gcode_chunk: A string containing G-code to be parsed and added to the visualization
+        """
+        if not gcode_chunk.strip():
+            return
+            
+        try:
+            # Parse the G-code chunk
+            commands = self._parse_gcode(gcode_chunk)
+            
+            # Process commands and update internal state
+            current_pos = {'X': 0, 'Y': 0, 'Z': 0, 'E': 0, 'F': 0}
+            is_absolute = True
+            
+            for cmd in commands:
+                # Update current position based on command
+                if 'X' in cmd or 'Y' in cmd or 'Z' in cmd:
+                    # Handle movement command
+                    is_extruding = 'E' in cmd and cmd['E'] > 0
+                    
+                    # Get target position
+                    target_pos = dict(current_pos)
+                    for axis in ['X', 'Y', 'Z', 'E', 'F']:
+                        if axis in cmd:
+                            if is_absolute or axis == 'F':
+                                target_pos[axis] = cmd[axis]
+                            else:
+                                target_pos[axis] += cmd[axis]
+                    
+                    # Add to appropriate move list
+                    if is_extruding:
+                        self._add_print_move(current_pos, target_pos)
+                    else:
+                        self._add_travel_move(current_pos, target_pos)
+                    
+                    current_pos.update(target_pos)
+                
+                # Handle G90/G91 (absolute/relative positioning)
+                elif cmd.get('G') == 90:
+                    is_absolute = True
+                elif cmd.get('G') == 91:
+                    is_absolute = False
+            
+            # Update GPU buffers if we have an OpenGL context
+            if self.isValid():
+                self.makeCurrent()
+                self.update_gpu_buffers()
+                self.update()
+                self.doneCurrent()
+            
+        except Exception as e:
+            logger.error(f"Error processing G-code chunk: {e}", exc_info=True)
+    
+    def _add_print_move(self, start_pos, end_pos):
+        """Add a print move to the visualization."""
+        # Add line segment
+        self.print_points.extend([
+            start_pos['X'], start_pos['Y'], start_pos['Z'],
+            end_pos['X'], end_pos['Y'], end_pos['Z']
+        ])
+        
+        # Update bounds
+        self._update_bounds([
+            [start_pos['X'], start_pos['Y'], start_pos['Z']],
+            [end_pos['X'], end_pos['Y'], end_pos['Z']]
+        ])
+    
+    def _add_travel_move(self, start_pos, end_pos):
+        """Add a travel move to the visualization."""
+        # Add line segment
+        self.travel_points.extend([
+            start_pos['X'], start_pos['Y'], start_pos['Z'],
+            end_pos['X'], end_pos['Y'], end_pos['Z']
+        ])
+        
+        # Update bounds
+        self._update_bounds([
+            [start_pos['X'], start_pos['Y'], start_pos['Z']],
+            [end_pos['X'], end_pos['Y'], end_pos['Z']]
+        ])
+    
+    def _update_bounds(self, points):
+        """Update the bounding box to include the given points."""
+        points = np.array(points)
+        if len(points) == 0:
+            return
+            
+        min_vals = np.min(points, axis=0)
+        max_vals = np.max(points, axis=0)
+        
+        if self._bounds is None:
+            self._bounds = np.column_stack((min_vals, max_vals)).flatten()
+        else:
+            min_vals = np.minimum(self._bounds[::2], min_vals)
+            max_vals = np.maximum(self._bounds[1::2], max_vals)
+            self._bounds = np.column_stack((min_vals, max_vals)).flatten()
+        
+        # Update camera target if we have valid bounds
+        if self._bounds is not None:
+            center = (self._bounds[1::2] + self._bounds[::2]) / 2
+            self.camera_target = QVector3D(center[0], center[1], center[2])
+            
+            # Adjust camera distance to fit the model
+            size = max(self._bounds[1::2] - self._bounds[::2])
+            if size > 0:
+                self.camera_distance = size * 1.5  # Add some padding
+    
+    def update_gpu_buffers(self):
+        """Update the GPU buffers with the current data."""
+        if not self.isValid():
+            return
+            
+        self.makeCurrent()
+        
+        # Update print moves buffer
+        if self.print_points:
+            print_data = np.array(self.print_points, dtype=np.float32)
+            self.num_print_points = len(print_data) // 3
+            
+            if self.print_vbo is None:
+                self.print_vbo = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
+                self.print_vbo.create()
+            
+            self.print_vbo.bind()
+            self.print_vbo.allocate(print_data.tobytes(), print_data.nbytes)
+            
+            if self.print_vao is None:
+                self.print_vao = QOpenGLVertexArrayObject()
+                self.print_vao.create()
+            
+            self.print_vao.bind()
+            self.shader_program.enableAttributeArray(0)
+            self.shader_program.setAttributeBuffer(0, gl.GL_FLOAT, 0, 3, 0)
+            self.print_vao.release()
+            self.print_vbo.release()
+        
+        # Update travel moves buffer
+        if self.travel_points:
+            travel_data = np.array(self.travel_points, dtype=np.float32)
+            self.num_travel_points = len(travel_data) // 3
+            
+            if self.travel_vbo is None:
+                self.travel_vbo = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
+                self.travel_vbo.create()
+            
+            self.travel_vbo.bind()
+            self.travel_vbo.allocate(travel_data.tobytes(), travel_data.nbytes)
+            
+            if self.travel_vao is None:
+                self.travel_vao = QOpenGLVertexArrayObject()
+                self.travel_vao.create()
+            
+            self.travel_vao.bind()
+            self.shader_program.enableAttributeArray(0)
+            self.shader_program.setAttributeBuffer(0, gl.GL_FLOAT, 0, 3, 0)
+            self.travel_vao.release()
+            self.travel_vbo.release()
+        
+        self.doneCurrent()
+    
     def paintGL(self):
-        """Render the scene."""
+        """Render the G-code visualization."""
         try:
             # Clear the screen and depth buffer
+            gl.glClearColor(*self.background_color)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             
-            # If no shader program, nothing to render
-            if not self.shader_program or not self.shader_program.isLinked():
-                return
+            # Set up the viewport
+            gl.glViewport(0, 0, self.width(), self.height())
             
-            # Bind shader program
+            # Enable depth testing
+            gl.glEnable(gl.GL_DEPTH_TEST)
+            gl.glDepthFunc(gl.GL_LEQUAL)
+            
+            # Enable line smoothing
+            gl.glEnable(gl.GL_LINE_SMOOTH)
+            gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
+            gl.glEnable(gl.GL_BLEND)
+            gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+            
+            # Set up the shader program
             self.shader_program.bind()
             
-            # Update model-view-projection matrix
+            # Update the model-view-projection matrix
+            self.update_view()
             self.shader_program.setUniformValue(self.mvp_matrix_location, self.mvp_matrix)
             
-            # Render print moves
-            if self.print_vao and self.num_print_points > 0:
-                self.shader_program.setUniformValue(self.color_location, 
-                                                  QVector4D(*self.print_color))
+            # Draw print moves (blue)
+            if self.num_print_points > 0:
+                self.shader_program.setUniformValue("color", QVector4D(0.0, 0.5, 1.0, 0.8))  # Blue
+                gl.glLineWidth(self.line_width * 1.5)
                 self.print_vao.bind()
-                gl.glDrawArrays(gl.GL_LINE_STRIP, 0, self.num_print_points)
+                gl.glDrawArrays(gl.GL_LINES, 0, self.num_print_points)
                 self.print_vao.release()
             
-            # Render travel moves if enabled
-            if self.show_travel_moves and self.travel_vao and self.num_travel_points > 0:
-                self.shader_program.setUniformValue(self.color_location,
-                                                  QVector4D(*self.travel_color))
+            # Draw travel moves (red)
+            if self.show_travel_moves and self.num_travel_points > 0:
+                self.shader_program.setUniformValue("color", QVector4D(1.0, 0.2, 0.2, 0.5))  # Red
+                gl.glLineWidth(self.line_width)
+                gl.glEnable(gl.GL_LINE_STIPPLE)
+                gl.glLineStipple(2, 0xAAAA)
                 self.travel_vao.bind()
-                gl.glDrawArrays(gl.GL_LINE_STRIP, 0, self.num_travel_points)
+                gl.glDrawArrays(gl.GL_LINES, 0, self.num_travel_points)
                 self.travel_vao.release()
+                gl.glDisable(gl.GL_LINE_STIPPLE)
             
-            # Release shader program
+            # Release the shader program
             self.shader_program.release()
             
         except Exception as e:
             logger.error(f"Error in paintGL: {e}", exc_info=True)
+    
+    def _parse_gcode(self, gcode: str) -> List[Dict[str, Any]]:
+        """Parse G-code into a list of commands with coordinates."""
+        commands = []
+        lines = gcode.strip().split('\n')
+        
+        # Current position (absolute coordinates)
+        current_pos = {'X': 0, 'Y': 0, 'Z': 0, 'E': 0, 'F': 0}
+        is_absolute = True  # Default to absolute positioning (G90)
+        
+        for line in lines:
+            line = line.split(';', 1)[0].strip()  # Remove comments
+            if not line:
+                continue
+                
+            # Parse G-code commands
+            g_match = re.match(r'^G(\d+)', line)
+            if g_match:
+                gcode_num = int(g_match.group(1))
+                
+                # Handle movement commands (G0, G1, G2, G3)
+                if gcode_num in [0, 1, 2, 3]:
+                    # Parse coordinates
+                    coords = {}
+                    for m in re.finditer(r'([XYZEF])([\d\.\-]+)', line):
+                        coords[m.group(1)] = float(m.group(2))
+                    
+                    commands.append({
+                        'G': gcode_num,
+                        **coords
+                    })
+                
+                # Handle absolute/relative positioning
+                elif gcode_num == 90:  # G90 - Absolute positioning
+                    is_absolute = True
+                elif gcode_num == 91:  # G91 - Relative positioning
+                    is_absolute = False
+            
+            # Handle M-codes if needed
+            m_match = re.match(r'^M(\d+)', line)
+            if m_match:
+                mcode = int(m_match.group(1))
+                # Handle M-codes like M82/M83 (extruder mode)
+                # Add handlers as needed
+                pass
+        
+        return commands
     
     def update_view(self):
         """Update the view and projection matrices."""
@@ -237,158 +472,6 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         except Exception as e:
             logger.error(f"Error updating view: {e}", exc_info=True)
     
-    def set_gcode_data(self, print_points, travel_points):
-        """Set the G-code data to be rendered.
-        
-        Args:
-            print_points: List of (x, y, z) tuples for print moves
-            travel_points: List of (x, y, z) tuples for travel moves
-        """
-        try:
-            # Ensure we have a valid OpenGL context
-            self.makeCurrent()
-            
-            # Convert points to numpy arrays if they aren't already
-            if print_points is not None:
-                print_points = np.array(print_points, dtype=np.float32)
-                if len(print_points.shape) == 1:
-                    print_points = print_points.reshape(-1, 3)
-            
-            if travel_points is not None:
-                travel_points = np.array(travel_points, dtype=np.float32)
-                if len(travel_points.shape) == 1:
-                    travel_points = travel_points.reshape(-1, 3)
-            
-            # Process print points
-            if print_points is not None and len(print_points) > 0:
-                # Apply decimation if needed
-                if self.decimation_factor > 1 and len(print_points) > 1000:
-                    print_points = print_points[::self.decimation_factor]
-                
-                self.num_print_points = len(print_points)
-                
-                # Create or update VBO for print moves
-                if self.print_vbo is None:
-                    self.print_vbo = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
-                    self.print_vbo.create()
-                
-                self.print_vbo.bind()
-                self.print_vbo.allocate(print_points.tobytes(), 
-                                      print_points.nbytes)
-                
-                # Create or update VAO for print moves
-                if self.print_vao is None:
-                    self.print_vao = QOpenGLVertexArrayObject()
-                    self.print_vao.create()
-                
-                self.print_vao.bind()
-                
-                # Configure vertex attributes
-                gl.glEnableVertexAttribArray(0)
-                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 
-                                      3 * 4, None)  # 3 floats, 4 bytes each
-                
-                self.print_vao.release()
-                self.print_vbo.release()
-                
-                # Update camera to fit the model
-                self.fit_view_to_model(print_points, travel_points if travel_points is not None else [])
-            else:
-                self.num_print_points = 0
-            
-            # Process travel points
-            if travel_points is not None and len(travel_points) > 0:
-                # Apply more aggressive decimation to travel moves
-                decimation = max(1, self.decimation_factor * 2)
-                if decimation > 1 and len(travel_points) > 100:
-                    travel_points = travel_points[::decimation]
-                
-                self.num_travel_points = len(travel_points)
-                
-                # Create or update VBO for travel moves
-                if self.travel_vbo is None:
-                    self.travel_vbo = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
-                    self.travel_vbo.create()
-                
-                self.travel_vbo.bind()
-                self.travel_vbo.allocate(travel_points.tobytes(),
-                                       travel_points.nbytes)
-                
-                # Create or update VAO for travel moves
-                if self.travel_vao is None:
-                    self.travel_vao = QOpenGLVertexArrayObject()
-                    self.travel_vao.create()
-                
-                self.travel_vao.bind()
-                
-                # Configure vertex attributes
-                gl.glEnableVertexAttribArray(0)
-                gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE,
-                                      3 * 4, None)  # 3 floats, 4 bytes each
-                
-                self.travel_vao.release()
-                self.travel_vbo.release()
-                
-                # Update camera to fit the model if we don't have print points
-                if self.num_print_points == 0:
-                    self.fit_view_to_model(travel_points, [])
-            else:
-                self.num_travel_points = 0
-            
-            # Request a redraw
-            self.update()
-            
-        except Exception as e:
-            logger.error(f"Error setting G-code data: {e}", exc_info=True)
-    
-    def fit_view_to_model(self, points1, points2=None):
-        """Adjust the camera to fit the model in the view."""
-        try:
-            if len(points1) == 0 and (points2 is None or len(points2) == 0):
-                return
-            
-            # Combine points from both arrays
-            if points2 is not None and len(points2) > 0:
-                all_points = np.vstack((points1, points2))
-            else:
-                all_points = points1
-            
-            # Calculate bounding box
-            min_vals = np.min(all_points, axis=0)
-            max_vals = np.max(all_points, axis=0)
-            
-            # Calculate center of the model
-            center = (min_vals + max_vals) * 0.5
-            
-            # Calculate the size of the model
-            size = max(max_vals - min_vals)
-            
-            # Update camera target to center of the model
-            self.camera_target = QVector3D(center[0], center[1], center[2])
-            
-            # Adjust camera distance to fit the model
-            if size > 0:
-                self.camera_distance = size * 1.5  # Add some padding
-            
-            # Reset rotation
-            self.camera_yaw = 45.0
-            self.camera_pitch = 30.0
-            
-            # Update the view
-            self.update_view()
-            
-        except Exception as e:
-            logger.error(f"Error fitting view to model: {e}", exc_info=True)
-    
-    def set_decimation_factor(self, factor):
-        """Set the decimation factor for reducing the number of points."""
-        self.decimation_factor = max(1, int(factor))
-    
-    def set_show_travel_moves(self, show):
-        """Set whether to show travel moves."""
-        self.show_travel_moves = show
-        self.update()
-    
     def wheelEvent(self, event):
         """Handle mouse wheel events for zooming."""
         try:
@@ -408,7 +491,7 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
     def mousePressEvent(self, event):
         """Handle mouse press events for rotation and panning."""
         try:
-            self.last_pos = event.pos()
+            self.last_mouse_pos = event.pos()
             
         except Exception as e:
             logger.error(f"Error in mousePressEvent: {e}", exc_info=True)
@@ -416,12 +499,12 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
     def mouseMoveEvent(self, event):
         """Handle mouse move events for rotation and panning."""
         try:
-            if self.last_pos is None:
+            if self.last_mouse_pos is None:
                 return
             
             # Calculate mouse movement delta
-            dx = event.pos().x() - self.last_pos.x()
-            dy = event.pos().y() - self.last_pos.y()
+            dx = event.pos().x() - self.last_mouse_pos.x()
+            dy = event.pos().y() - self.last_mouse_pos.y()
             
             # Rotate on left button drag
             if event.buttons() & Qt.LeftButton:
@@ -445,7 +528,7 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
                 self.camera_target += right * pan_dx + up * pan_dy
             
             # Update last position
-            self.last_pos = event.pos()
+            self.last_mouse_pos = event.pos()
             
             # Update the view
             self.update_view()
@@ -457,7 +540,7 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
     def mouseReleaseEvent(self, event):
         """Handle mouse release events."""
         try:
-            self.last_pos = None
+            self.last_mouse_pos = None
             
         except Exception as e:
             logger.error(f"Error in mouseReleaseEvent: {e}", exc_info=True)
