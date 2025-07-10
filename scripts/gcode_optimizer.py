@@ -8,6 +8,7 @@ import math
 from typing import List, Tuple, Dict, Optional
 import numpy as np
 from scipy.spatial import distance
+import logging
 
 class GCodeOptimizer:
     """
@@ -655,96 +656,143 @@ class GCodeOptimizer:
             resolution: Grid resolution in mm
             
         Returns:
-            List of (x1, y1, x2, y2) line segments in optimal order
+            List of (x1, y1, x2, y2) line segments
         """
-        from skimage.draw import line_aa
-        import numpy as np
-        
-        x_min, y_min, x_max, y_max = bounds
-        width = x_max - x_min
-        height = y_max - y_min
-        
-        # Create a grid with higher resolution for better accuracy
-        grid_width = int(np.ceil(width / resolution)) + 1
-        grid_height = int(np.ceil(height / resolution)) + 1
-        
-        # Generate the base pattern
-        base_lines = GCodeOptimizer.generate_infill_pattern(bounds, angle, spacing)
-        
-        # Rasterize lines to grid
-        grid = np.zeros((grid_height, grid_width), dtype=np.uint8)
-        
-        for x1, y1, x2, y2 in base_lines:
-            # Convert world coordinates to grid coordinates
-            gx1 = int((x1 - x_min) / resolution)
-            gy1 = int((y1 - y_min) / resolution)
-            gx2 = int((x2 - x_min) / resolution)
-            gy2 = int((y2 - y_min) / resolution)
+        try:
+            # Convert angle to radians
+            angle_rad = math.radians(angle)
             
-            # Draw line on grid
-            rr, cc = line_aa(gy1, gx1, gy2, gx2)
-            valid = (rr >= 0) & (rr < grid_height) & (cc >= 0) & (cc < grid_width)
-            grid[rr[valid], cc[valid]] = 1
-        
-        # Find connected components
-        from scipy.ndimage import label
-        labeled, num_features = label(grid, structure=np.ones((3,3)))
-        
-        # Find start and end points for each line segment
-        segments = []
-        for i in range(1, num_features + 1):
-            points = np.argwhere(labeled == i)
-            if len(points) < 2:
-                continue
+            # Generate grid points based on resolution
+            x_min, y_min, x_max, y_max = bounds
+            width = x_max - x_min
+            height = y_max - y_min
+            diagonal = math.sqrt(width**2 + height**2)
+            
+            # Generate infill lines
+            lines = []
+            d = 0
+            
+            while d < diagonal:
+                # Calculate line endpoints
+                if angle_rad <= math.pi/4 or angle_rad >= 3*math.pi/4:
+                    # More horizontal lines
+                    x1 = x_min - height / math.tan(angle_rad)
+                    y1 = y_min
+                    x2 = x_min + height / math.tan(angle_rad)
+                    y2 = y_max
+                    
+                    # Offset the line
+                    x1 += d * math.cos(angle_rad)
+                    y1 += d * math.sin(angle_rad)
+                    x2 += d * math.cos(angle_rad)
+                    y2 += d * math.sin(angle_rad)
+                else:
+                    # More vertical lines
+                    x1 = x_min
+                    y1 = y_min - width * math.tan(angle_rad)
+                    x2 = x_max
+                    y2 = y_min + width * math.tan(angle_rad)
+                    
+                    # Offset the line
+                    x1 += d * math.cos(angle_rad)
+                    y1 += d * math.sin(angle_rad)
+                    x2 += d * math.cos(angle_rad)
+                    y2 += d * math.sin(angle_rad)
                 
-            # Find endpoints (points with only one neighbor)
-            endpoints = []
-            for p in points:
-                y, x = p
-                neighbors = 0
-                for dy, dx in [(-1,0), (1,0), (0,-1), (0,1)]:
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < grid_height and 0 <= nx < grid_width and labeled[ny, nx] == i:
-                        neighbors += 1
-                if neighbors == 1 or neighbors == 0:
-                    endpoints.append((y, x))
+                # Clip line to bounds
+                line = GCodeOptimizer._clip_line_to_bounds((x1, y1, x2, y2), bounds)
+                if line:
+                    lines.append(line)
+                
+                d += spacing
             
-            # If we found exactly 2 endpoints, it's a line segment
-            if len(endpoints) == 2:
-                segments.append((endpoints[0], endpoints[1]))
+            if not lines:
+                return []
+            
+            # Optimize path using nearest neighbor
+            optimized = []
+            remaining = lines.copy()
+            
+            # Start with the first line
+            current = remaining.pop(0)
+            optimized.append(current)
+            
+            while remaining:
+                # Find the closest line to the current end point
+                last_x2, last_y2 = current[2], current[3]
+                
+                # Find closest line (start or end point)
+                closest = min(remaining, 
+                             key=lambda s: min(
+                                 (s[0] - last_x2)**2 + (s[1] - last_y2)**2,  # Start to last end
+                                 (s[2] - last_x2)**2 + (s[3] - last_y2)**2   # End to last end
+                             ))
+                remaining.remove(closest)
+                
+                # Add the closest segment in the optimal direction
+                start_dist = (closest[0] - last_x2)**2 + (closest[1] - last_y2)**2
+                end_dist = (closest[2] - last_x2)**2 + (closest[3] - last_y2)**2
+                
+                if start_dist <= end_dist:
+                    optimized.append(closest)
+                else:
+                    # Reverse the segment
+                    optimized.append((closest[2], closest[3], closest[0], closest[1]))
+                
+                current = optimized[-1]
+            
+            # Ensure all lines are tuples of 4 floats
+            return [tuple(float(x) for x in line) for line in optimized]
+            
+        except Exception as e:
+            logging.error(f"Error in generate_optimized_infill: {e}")
+            # Fall back to basic infill pattern if optimization fails
+            return GCodeOptimizer.generate_infill_pattern(bounds, angle, spacing)
+
+    @staticmethod
+    def _clip_line_to_bounds(line: Tuple[float, float, float, float], 
+                           bounds: Tuple[float, float, float, float]) -> Optional[Tuple[float, float, float, float]]:
+        """Clip a line segment to the given bounds using Liang-Barsky algorithm."""
+        x1, y1, x2, y2 = line
+        x_min, y_min, x_max, y_max = bounds
         
-        # Convert segments back to world coordinates
-        world_segments = []
-        for (y1, x1), (y2, x2) in segments:
-            wx1, wy1 = GCodeOptimizer._raster_to_world((y1, x1), resolution, bounds)
-            wx2, wy2 = GCodeOptimizer._raster_to_world((y2, x2), resolution, bounds)
-            world_segments.append((wx1, wy1, wx2, wy2))
+        # Check if line is completely outside bounds
+        if (x1 < x_min and x2 < x_min) or (x1 > x_max and x2 > x_max) or \
+           (y1 < y_min and y2 < y_min) or (y1 > y_max and y2 > y_max):
+            return None
         
-        # Sort segments for optimal travel (nearest neighbor)
-        if not world_segments:
-            return []
-            
-        # Start with the first segment
-        optimized = [world_segments[0]]
-        remaining = set(world_segments[1:])
+        # Check if line is completely inside bounds
+        if (x_min <= x1 <= x_max and x_min <= x2 <= x_max and
+            y_min <= y1 <= y_max and y_min <= y2 <= y_max):
+            return (x1, y1, x2, y2)
         
-        while remaining:
-            last_x2, last_y2 = optimized[-1][2], optimized[-1][3]
-            closest = min(remaining, 
-                         key=lambda s: min(
-                             (s[0] - last_x2)**2 + (s[1] - last_y2)**2,  # Start to last end
-                             (s[2] - last_x2)**2 + (s[3] - last_y2)**2   # End to last end
-                         ))
-            remaining.remove(closest)
-            
-            # Add the closest segment in the optimal direction
-            start_dist = (closest[0] - last_x2)**2 + (closest[1] - last_y2)**2
-            end_dist = (closest[2] - last_x2)**2 + (closest[3] - last_y2)**2
-            
-            if start_dist <= end_dist:
-                optimized.append(closest)
+        # Use Liang-Barsky algorithm to clip the line
+        dx = x2 - x1
+        dy = y2 - y1
+        p = [-dx, dx, -dy, dy]
+        q = [x1 - x_min, x_max - x1, y1 - y_min, y_max - y1]
+        
+        u1 = 0.0
+        u2 = 1.0
+        
+        for i in range(4):
+            if p[i] == 0:
+                if q[i] < 0:
+                    return None  # Line is parallel and outside the boundary
             else:
-                # Reverse the segment
-                optimized.append((closest[2], closest[3], closest[0], closest[1]))
+                t = q[i] / p[i]
+                if p[i] < 0:
+                    u1 = max(u1, t)
+                else:
+                    u2 = min(u2, t)
+                    
+                if u1 > u2:
+                    return None  # Line is outside the boundary
         
-        return optimized
+        # Calculate new endpoints
+        nx1 = x1 + u1 * dx
+        ny1 = y1 + u1 * dy
+        nx2 = x1 + u2 * dx
+        ny2 = y1 + u2 * dy
+        
+        return (nx1, ny1, nx2, ny2)

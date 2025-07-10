@@ -7,23 +7,13 @@ import logging
 from pathlib import Path
 import datetime
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication
-
-# Set matplotlib backend to Qt5Agg before importing pyplot
-import matplotlib
-matplotlib.use('Qt5Agg')  # Use Qt5Agg backend
-
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QPushButton, QLabel, QFileDialog, QMessageBox, QListWidget,
-                            QProgressBar, QStatusBar, QMenuBar, QMenu, QDockWidget, QSizePolicy)
+from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import art3d
 from stl import mesh
-
-# Import other modules from scripts directory
 from scripts.version import __version__
 from scripts.about import About
 from scripts.sponsor import Sponsor
@@ -32,6 +22,8 @@ from scripts.updates import check_for_updates
 from scripts.ui_qt import UI  # Import the new UI module
 from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
+from scripts.workers import GCodeGenerationWorker
+from scripts.gcode_visualizer import GCodeVisualizer
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -40,6 +32,12 @@ class STLToGCodeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.file_path = None
+        self.stl_mesh = None
+        self.gcode = ""
+        self.current_file = ""
+        self.settings = {}
+        self.worker_thread = None
+        self.worker = None
         
         # Initialize the UI manager
         self.ui = UI()
@@ -141,6 +139,33 @@ class STLToGCodeApp(QMainWindow):
         # Right panel for 3D preview
         right_panel, right_layout = self.ui.create_frame(central_widget, "vertical")
         
+        # Tab widget
+        self.tab_widget = QTabWidget()
+        right_layout.addWidget(self.tab_widget)
+        
+        # STL View Tab
+        self.stl_view_tab = QWidget()
+        self.tab_widget.addTab(self.stl_view_tab, "STL View")
+        self._setup_stl_view()
+        
+        # G-code View Tab
+        self.gcode_view_tab = QWidget()
+        self.tab_widget.addTab(self.gcode_view_tab, "G-code View")
+        self._setup_gcode_view()
+        
+        # G-code Visualization Tab
+        self.visualization_tab = QWidget()
+        self.tab_widget.addTab(self.visualization_tab, "3D Toolpath")
+        self._setup_visualization_view()
+        
+        # Add panels to main layout with stretch factors
+        main_layout.addWidget(left_panel, stretch=1)
+        main_layout.addWidget(right_panel, stretch=3)
+    
+    def _setup_stl_view(self):
+        """Set up the STL view tab."""
+        layout = QVBoxLayout(self.stl_view_tab)
+        
         # Matplotlib Figure
         self.figure = Figure(figsize=(5, 4))
         self.canvas = FigureCanvas(self.figure)
@@ -149,12 +174,41 @@ class STLToGCodeApp(QMainWindow):
         # Add navigation toolbar with custom styling
         self.toolbar = NavigationToolbar(self.canvas, self)
         self._style_matplotlib_toolbar()
-        right_layout.addWidget(self.toolbar)
-        right_layout.addWidget(self.canvas)
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+    
+    def _setup_gcode_view(self):
+        """Set up the G-code view tab."""
+        layout = QVBoxLayout(self.gcode_view_tab)
         
-        # Add panels to main layout with stretch factors
-        main_layout.addWidget(left_panel, stretch=1)
-        main_layout.addWidget(right_panel, stretch=3)
+        # G-code text editor
+        self.gcode_editor = self.ui.create_text_editor(self.gcode_view_tab)
+        layout.addWidget(self.gcode_editor)
+    
+    def _setup_visualization_view(self):
+        """Set up the G-code visualization tab."""
+        layout = QVBoxLayout(self.visualization_tab)
+        
+        # Create visualization controls
+        controls_layout = QHBoxLayout()
+        
+        self.show_travel_moves = QCheckBox("Show Travel Moves")
+        self.show_travel_moves.setChecked(True)
+        self.show_travel_moves.stateChanged.connect(self._update_visualization)
+        controls_layout.addWidget(self.show_travel_moves)
+        
+        reset_view_btn = QPushButton("Reset View")
+        reset_view_btn.clicked.connect(self._reset_visualization_view)
+        controls_layout.addWidget(reset_view_btn)
+        
+        controls_layout.addStretch()
+        
+        # Add controls to layout
+        layout.addLayout(controls_layout)
+        
+        # Create G-code visualizer
+        self.gcode_visualizer = GCodeVisualizer()
+        layout.addWidget(self.gcode_visualizer)
     
     def _style_matplotlib_toolbar(self):
         """Apply custom styling to the matplotlib toolbar."""
@@ -199,9 +253,16 @@ class STLToGCodeApp(QMainWindow):
         
         file_menu.addSeparator()
         
+        # Add Settings action
+        settings_action = file_menu.addAction("&Settings...")
+        settings_action.triggered.connect(self.show_settings)
+        settings_action.setShortcut("Ctrl+,")
+        
+        file_menu.addSeparator()
+        
         exit_action = file_menu.addAction("E&xit")
         exit_action.triggered.connect(self.close)
-        exit_action.setShortcut("Ctrl+Q")
+        exit_action.setShortcut("Alt+F4")
         
         # View menu
         view_menu = menubar.addMenu("&View")
@@ -322,11 +383,30 @@ class STLToGCodeApp(QMainWindow):
                     resolution=self.infill_resolution_spin.value()
                 )
                 
-                # Plot the infill lines at the middle Z height
-                for line in infill_lines:
-                    x1, y1, x2, y2 = line
-                    self.ax.plot([x1, x2], [y1, y2], [mid_z, mid_z], 'b-', linewidth=1, alpha=0.6)
+                # Debug: Log the structure of infill_lines
+                logging.info(f"Infill lines type: {type(infill_lines)}")
+                if hasattr(infill_lines, '__len__'):
+                    logging.info(f"Number of infill lines: {len(infill_lines)}")
+                    if len(infill_lines) > 0:
+                        logging.info(f"First line type: {type(infill_lines[0])}")
+                        logging.info(f"First line: {infill_lines[0]}")
                 
+                # Plot the infill lines at the middle Z height
+                for i, line in enumerate(infill_lines):
+                    try:
+                        # Debug: Log the current line being processed
+                        logging.debug(f"Processing line {i}: {line}")
+                        # Ensure we have exactly 4 values (x1, y1, x2, y2)
+                        if len(line) == 4:
+                            x1, y1, x2, y2 = line
+                            self.ax.plot([x1, x2], [y1, y2], [mid_z, mid_z], 'b-', linewidth=1, alpha=0.6)
+                        else:
+                            logging.warning(f"Skipping invalid infill line (length {len(line)}): {line}")
+                    except (ValueError, TypeError) as e:
+                        logging.warning(f"Error processing infill line {i}: {e} - Line: {line}")
+                    except Exception as e:
+                        logging.error(f"Unexpected error processing line {i}: {e} - Line: {line}")
+                        raise
             except Exception as e:
                 logging.warning(f"Could not generate infill preview: {str(e)}")
         
@@ -339,51 +419,22 @@ class STLToGCodeApp(QMainWindow):
         # Redraw the canvas
         self.canvas.draw()
     
-    def _setup_status_bar(self):
-        """Set up the status bar with the UI module."""
-        self.status_bar = self.ui.create_status_bar(self)
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+    def _update_visualization(self):
+        """Update the G-code visualization."""
+        if not self.gcode:
+            return
+            
+        try:
+            show_travel = self.show_travel_moves.isChecked()
+            self.gcode_visualizer.visualize_gcode(self.gcode, show_travel)
+        except Exception as e:
+            logging.error(f"Error updating visualization: {e}", exc_info=True)
+            QMessageBox.critical(self, "Visualization Error", 
+                               f"Error updating visualization: {str(e)}")
     
-    def get_current_settings(self):
-        """Get the current settings from the UI."""
-        # Default settings - these would typically come from a config file or UI
-        settings = {
-            'layer_height': 0.2,  # mm
-            'nozzle_diameter': 0.4,  # mm
-            'extrusion_width': 0.48,  # 120% of nozzle diameter
-            'filament_diameter': 1.75,  # mm
-            'extrusion_multiplier': 1.0,
-            'print_speed': 60,  # mm/s
-            'travel_speed': 120,  # mm/s
-            'infill_speed': 80,  # mm/s
-            'first_layer_speed': 30,  # mm/s
-            'retraction_length': 5.0,  # mm
-            'retraction_speed': 45,  # mm/s
-            'infill_density': 0.2,  # 20%
-            'infill_pattern': 'grid',  # grid, lines, triangles, etc.
-            'infill_angle': 45,  # degrees
-            'infill_optimization': True,  # Enable A* optimized infill
-            'infill_resolution': 1.0,  # mm per grid cell for optimized infill
-            'brim_width': 0,  # mm
-            'skirt_distance': 5.0,  # mm
-            'skirt_line_count': 1,
-            'support_enabled': False,
-            'support_angle': 60,  # degrees
-            'support_density': 0.15,
-            'support_gap': 0.2,  # mm
-            'z_hop': 0.4,  # mm
-            'temperature': 200,  # °C
-            'bed_temperature': 60,  # °C
-            'fan_speed': 100,  # %
-            'fan_layer': 2,  # Layer to turn on fan
-        }
-        
-        # Update settings from UI
-        settings['infill_density'] = 0.2 if self.optimize_infill_checkbox.isChecked() else 0.0
-        settings['infill_resolution'] = self.infill_resolution_spin.value()
-        
-        return settings
+    def _reset_visualization_view(self):
+        """Reset the G-code visualization view."""
+        self.gcode_visualizer.reset_view()
     
     def convert_to_gcode(self):
         """Convert the loaded STL to GCode with proper slicing and path planning."""
@@ -403,45 +454,17 @@ class STLToGCodeApp(QMainWindow):
             min_z = stl_mesh.vectors[:,:,2].min()
             max_z = stl_mesh.vectors[:,:,2].max()
             
-            # Default settings - these would typically come from a config file or UI
-            settings = {
-                'layer_height': 0.2,  # mm
-                'nozzle_diameter': 0.4,  # mm
-                'extrusion_width': 0.48,  # 120% of nozzle diameter
-                'filament_diameter': 1.75,  # mm
-                'extrusion_multiplier': 1.0,
-                'print_speed': 60,  # mm/s
-                'travel_speed': 120,  # mm/s
-                'infill_speed': 80,  # mm/s
-                'first_layer_speed': 30,  # mm/s
-                'retraction_length': 5.0,  # mm
-                'retraction_speed': 45,  # mm/s
-                'infill_density': 0.2,  # 20%
-                'infill_pattern': 'grid',  # grid, lines, triangles, etc.
-                'infill_angle': 45,  # degrees
-                'infill_optimization': True,  # Enable A* optimized infill
-                'infill_resolution': 1.0,  # mm per grid cell for optimized infill
-                'brim_width': 0,  # mm
-                'skirt_distance': 5.0,  # mm
-                'skirt_line_count': 1,
-                'support_enabled': False,
-                'support_angle': 60,  # degrees
-                'support_density': 0.15,
-                'support_gap': 0.2,  # mm
-                'z_hop': 0.4,  # mm
-                'temperature': 200,  # °C
-                'bed_temperature': 60,  # °C
-                'fan_speed': 100,  # %
-                'fan_layer': 2,  # Layer to turn on fan
-            }
+            # Get current settings
+            settings = self.get_current_settings()
             
             # Calculate number of layers
             num_layers = int((max_z - min_z) / settings['layer_height']) + 1
             
-            # Start G-code generation
+            # Initialize G-code content
             self.gcode_content = f"; GCode generated by STL to GCode Converter v{__version__}\n"
             self.gcode_content += f"; Source: {os.path.basename(self.file_path)}\n"
-            self.gcode_content += f"; Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            self.gcode_content += f"; Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            self.gcode_content += f"; Optimizations: Arc Detection, Redundant Move Removal, Extrusion Smoothing\n\n"
             
             # Initial setup
             self.gcode_content += "G21 ; Set units to millimeters\n"
@@ -463,170 +486,235 @@ class STLToGCodeApp(QMainWindow):
             self.gcode_content += "G92 E0 ; Reset extruder position\n"
             self.gcode_content += "G1 F1500 E-6 ; Retract filament slightly\n"
             
+            # Initialize variables for optimization
+            last_pos = {'X': 0, 'Y': 0, 'Z': 0, 'E': 0, 'F': 0}
+            gcode_commands = []
+            
             # Generate G-code for each layer
             for layer_num in range(num_layers):
                 current_z = min_z + (layer_num * settings['layer_height'])
                 is_first_layer = (layer_num == 0)
                 
-                # Move to layer height
+                # Layer header
+                layer_comment = f"\n; Layer {layer_num} (Z={current_z:.3f}mm)"
                 if is_first_layer:
-                    self.gcode_content += f"\n; Layer 0 (first layer)\n"
-                    self.gcode_content += f"G1 Z{settings['layer_height']} F{settings['first_layer_speed']*60} ; Move to first layer height\n"
-                    current_speed = settings['first_layer_speed']
-                    current_height = settings['layer_height']
-                else:
-                    self.gcode_content += f"\n; Layer {layer_num}\n"
-                    self.gcode_content += f"G1 Z{current_z:.3f} F{settings['print_speed']*60} ; Move to layer height\n"
-                    current_speed = settings['print_speed']
-                    current_height = current_z
+                    layer_comment += " (first layer)"
+                gcode_commands.append(layer_comment)
+                
+                # Move to layer height
+                move_cmd = {
+                    'Z': current_z,
+                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
+                }
+                gcode_commands.append(self._format_g1_command(move_cmd, last_pos))
+                last_pos.update(move_cmd)
                 
                 # Get contours for this layer
-                contours = self._get_layer_contours(stl_mesh, current_height)
+                contours = self._get_layer_contours(stl_mesh, current_z)
                 
-                # Optimize travel path using nearest-neighbor algorithm
                 if contours:
-                    # Flatten contours to points for optimization
-                    points = [point for contour in contours for point in contour]
-                    current_pos = (0, 0, current_height)  # Assume starting at origin
-                    optimized_points = GCodeOptimizer.optimize_travel_path(points, current_pos)
+                    # Optimize contour order
+                    optimized_contours = GCodeOptimizer.optimize_contour_order(contours, (last_pos['X'], last_pos['Y']))
                     
-                    # Generate G-code for optimized path
-                    for point in optimized_points:
-                        x, y, z = point
-                        self.gcode_content += f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} E0.1 ; Extrude contour\n"
+                    # Generate G-code for contours
+                    for contour in optimized_contours:
+                        # Add travel move to start of contour
+                        if len(contour) > 0:
+                            first_point = contour[0]
+                            move_cmd = {
+                                'X': first_point[0],
+                                'Y': first_point[1],
+                                'F': settings['travel_speed'] * 60
+                            }
+                            gcode_commands.append(self._format_g1_command(move_cmd, last_pos, is_travel=True))
+                            last_pos.update(move_cmd)
+                        
+                        # Add contour with arc detection
+                        gcode_commands.extend(
+                            self._generate_contour_gcode(
+                                contour, 
+                                settings,
+                                last_pos,
+                                is_outer=contour == optimized_contours[0],  # First contour is outer wall
+                                is_first_layer=is_first_layer
+                            )
+                        )
                 
                 # Add infill if needed
                 if settings['infill_density'] > 0 and not is_first_layer:
-                    # Get bounding box of the model
-                    min_x = stl_mesh.vectors[:,:,0].min()
-                    max_x = stl_mesh.vectors[:,:,0].max()
-                    min_y = stl_mesh.vectors[:,:,1].min()
-                    max_y = stl_mesh.vectors[:,:,1].max()
-                    
-                    # Generate optimized infill pattern using A* path planning
-                    try:
-                        infill_lines = GCodeOptimizer.generate_optimized_infill(
-                            bounds=(min_x, min_y, max_x, max_y),
-                            angle=settings['infill_angle'],
-                            spacing=settings['extrusion_width'] / settings['infill_density'],
-                            resolution=settings.get('infill_resolution', 1.0)  # Default 1mm resolution
+                    infill_lines = self._generate_infill(stl_mesh, current_z, settings)
+                    if infill_lines:
+                        gcode_commands.append("\n; Infill")
+                        gcode_commands.extend(
+                            self._generate_infill_gcode(infill_lines, settings, last_pos)
                         )
-                        
-                        # Add infill to G-code with optimized path
-                        self.gcode_content += "; Optimized infill with A* path planning\n"
-                        last_x, last_y = None, None
-                        
-                        for line in infill_lines:
-                            x1, y1, x2, y2 = line
-                            
-                            # Add travel move to start of line if needed
-                            if last_x is not None and (abs(last_x - x1) > 0.01 or abs(last_y - y1) > 0.01):
-                                self.gcode_content += f"G0 X{x1:.3f} Y{y1:.3f} F{settings['travel_speed']*60}\n"
-                            
-                            # Add the infill line
-                            self.gcode_content += f"G1 X{x2:.3f} Y{y2:.3f} E0.1 F{settings['infill_speed']*60}\n"
-                            
-                            last_x, last_y = x2, y2
-                            
-                    except ImportError as e:
-                        # Fall back to basic infill if scikit-image is not available
-                        logging.warning("scikit-image not available, using basic infill pattern")
-                        infill_lines = GCodeOptimizer.generate_infill_pattern(
-                            bounds=(min_x, min_y, max_x, max_y),
-                            angle=settings['infill_angle'],
-                            spacing=settings['extrusion_width'] / settings['infill_density']
-                        )
-                        
-                        # Add basic infill to G-code
-                        self.gcode_content += "; Basic infill (fallback)\n"
-                        for line in infill_lines:
-                            x1, y1, x2, y2 = line
-                            self.gcode_content += f"G1 X{x1:.3f} Y{y1:.3f} F{settings['travel_speed']*60}\n"
-                            self.gcode_content += f"G1 X{x2:.3f} Y{y2:.3f} E0.1 F{settings['infill_speed']*60}\n"
-                
-                # Update progress
-                progress = int((layer_num + 1) / num_layers * 100)
-                self.statusBar().showMessage(f"Generating G-code... {progress}%")
-                QApplication.processEvents()
             
-            # End of print
-            self.gcode_content += "\n; End of print\n"
-            self.gcode_content += "M104 S0 ; Turn off extruder\n"
-            self.gcode_content += "M140 S0 ; Turn off bed\n"
-            self.gcode_content += "G91 ; Relative positioning\n"
-            self.gcode_content += "G1 E-1 F300 ; Retract filament\n"
-            self.gcode_content += f"G1 Z{settings['layer_height']+5} E-5 F9000 ; Lift and retract\n"
-            self.gcode_content += "G90 ; Absolute positioning\n"
-            self.gcode_content += "G28 X0 Y0 ; Home X and Y axes\n"
-            self.gcode_content += "M84 ; Disable stepper motors\n"
-            self.gcode_content += "M107 ; Turn off fan\n"
-            # Enable the view G-code button
-            self.view_gcode_button.setEnabled(True)
+            # Apply post-processing optimizations
+            gcode_commands = GCodeOptimizer.optimize_gcode(gcode_commands)
             
-            # Show completion message
-            QMessageBox.information(
-                self,
-                "Conversion Complete",
-                f"Successfully converted {os.path.basename(self.file_path)} to GCode.\n"
-                f"Layers: {num_layers}\n"
-                f"Layer height: {settings['layer_height']}mm\n"
-                f"Total height: {max_z-min_z:.2f}mm"
-            )
+            # Add footer
+            gcode_commands.extend([
+                "\n; End of G-code",
+                "M104 S0 ; Turn off extruder",
+                "M140 S0 ; Turn off bed",
+                "M107 ; Turn off fan",
+                "G1 X0 Y0 F5000 ; Move to origin",
+                "M84 ; Disable steppers"
+            ])
             
-            self.statusBar().showMessage("Ready")
+            # Combine all commands
+            self.gcode_content = '\n'.join(gcode_commands)
+            
+            # Enable save button
+            self.save_action.setEnabled(True)
+            self.statusBar().showMessage("G-code generation complete")
             
         except Exception as e:
-            self.statusBar().showMessage("Error during conversion")
-            QMessageBox.critical(self, "Error", f"Failed to convert to GCode: {str(e)}")
-            logging.error(f"Error converting to GCode: {str(e)}")
-    
-    def _get_layer_contours(self, stl_mesh, z_height):
-        """
-        Get the contours for a specific layer height from the STL mesh.
-        This is a simplified version - a real implementation would use a proper slicing algorithm.
+            QMessageBox.critical(self, "Error", f"Failed to generate G-code: {str(e)}")
+            self.statusBar().showMessage("Error generating G-code")
+            logging.error(f"Error in convert_to_gcode: {str(e)}", exc_info=True)
+
+    # Helper methods for G-code generation
+    def _format_g1_command(self, params, last_pos, is_travel=False):
+        """Format a G1 command with only changed parameters."""
+        cmd = ["G1"]
+        for axis in ['X', 'Y', 'Z', 'E', 'F']:
+            if axis in params and (axis not in last_pos or abs(params[axis] - last_pos[axis]) > 0.0001):
+                cmd.append(f"{axis}{params[axis]:.3f}")
         
-        Args:
-            stl_mesh: The STL mesh object
-            z_height: The Z height to slice at
+        # Add comment for travel moves
+        comment = "; Travel" if is_travel else ""
+        return ' '.join(cmd) + comment
+
+    def _generate_contour_gcode(self, contour, settings, last_pos, is_outer=True, is_first_layer=False):
+        """Generate G-code for a contour with arc detection."""
+        commands = []
+        current_pos = dict(last_pos)
+        
+        # Add contour start comment
+        contour_type = "Outer wall" if is_outer else "Inner wall"
+        commands.append(f"; {contour_type} - {len(contour)} points")
+        
+        # Detect arcs and generate G2/G3 commands
+        points = contour + [contour[0]]  # Close the loop
+        i = 0
+        
+        while i < len(points) - 1:
+            # Try to detect an arc starting at this point
+            arc = GCodeOptimizer.detect_arc(points[i:i+5])
             
-        Returns:
-            List of contours, where each contour is a list of (x, y, z) points
-        """
-        contours = []
+            if arc and len(arc['points']) > 2:
+                # Generate arc command
+                cmd = {
+                    'X': points[i + len(arc['points']) - 1][0],
+                    'Y': points[i + len(arc['points']) - 1][1],
+                    'I': arc['center'][0] - current_pos['X'],
+                    'J': arc['center'][1] - current_pos['Y'],
+                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
+                }
+                
+                # Add extrusion
+                if not is_travel:
+                    distance = math.sqrt(
+                        (cmd['X'] - current_pos['X'])**2 + 
+                        (cmd['Y'] - current_pos['Y'])**2
+                    )
+                    extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
+                    cmd['E'] = current_pos['E'] + extrusion
+                
+                # Add arc command (G2 for CW, G3 for CCW)
+                arc_cmd = "G3" if arc['direction'] == 'ccw' else "G2"
+                cmd_str = [arc_cmd]
+                for axis in ['X', 'Y', 'I', 'J', 'E', 'F']:
+                    if axis in cmd:
+                        cmd_str.append(f"{axis}{cmd[axis]:.3f}")
+                
+                commands.append(' '.join(cmd_str))
+                current_pos.update(cmd)
+                i += len(arc['points']) - 1
+            else:
+                # No arc detected, use linear move
+                cmd = {
+                    'X': points[i+1][0],
+                    'Y': points[i+1][1],
+                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
+                }
+                
+                # Add extrusion for non-travel moves
+                if not is_travel:
+                    distance = math.sqrt(
+                        (cmd['X'] - current_pos['X'])**2 + 
+                        (cmd['Y'] - current_pos['Y'])**2
+                    )
+                    extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
+                    cmd['E'] = current_pos['E'] + extrusion
+                
+                commands.append(self._format_g1_command(cmd, current_pos, is_travel=is_travel))
+                current_pos.update(cmd)
+                i += 1
         
-        # This is a simplified approach - in a real implementation, you would:
-        # 1. Find all triangles that intersect with the current Z plane
-        # 2. Calculate the intersection lines
-        # 3. Connect the lines into closed contours
-        # 4. Sort the contours (outer first, then holes)
+        return commands
+
+    def _generate_infill(self, stl_mesh, z, settings):
+        """Generate infill lines for the current layer."""
+        # Get bounds of the model
+        min_x, min_y = stl_mesh.vectors[:,:,0].min(), stl_mesh.vectors[:,:,1].min()
+        max_x, max_y = stl_mesh.vectors[:,:,0].max(), stl_mesh.vectors[:,:,1].max()
+        bounds = (min_x, min_y, max_x, max_y)
         
-        # For demonstration, we'll just return a simple square contour
-        # In a real implementation, this would be replaced with actual contour extraction
-        if z_height <= 10:  # Only add contours for the first 10mm
-            # Outer contour (square)
-            size = 20
-            offset = 50
-            outer = [
-                (offset, offset, z_height),
-                (offset + size, offset, z_height),
-                (offset + size, offset + size, z_height),
-                (offset, offset + size, z_height)
-            ]
-            contours.append(outer)
-            
-            # Inner contour (smaller square inside)
-            if z_height > 2:  # Only add inner contour after a few layers
-                inner_size = 10
-                inner_offset = offset + (size - inner_size) / 2
-                inner = [
-                    (inner_offset, inner_offset, z_height),
-                    (inner_offset + inner_size, inner_offset, z_height),
-                    (inner_offset + inner_size, inner_offset + inner_size, z_height),
-                    (inner_offset, inner_offset + inner_size, z_height)
-                ]
-                contours.append(inner)
+        # Generate infill pattern
+        if settings.get('infill_optimization', True):
+            try:
+                return GCodeOptimizer.generate_optimized_infill(
+                    bounds=bounds,
+                    angle=settings['infill_angle'],
+                    spacing=settings['extrusion_width'] / settings['infill_density'],
+                    resolution=settings.get('infill_resolution', 1.0)
+                )
+            except Exception as e:
+                logging.warning(f"Optimized infill failed, falling back to basic infill: {e}")
         
-        return contours
+        # Fall back to basic infill
+        return GCodeOptimizer.generate_infill_pattern(
+            bounds=bounds,
+            angle=settings['infill_angle'],
+            spacing=settings['extrusion_width'] / settings['infill_density']
+        )
+
+    def _generate_infill_gcode(self, infill_lines, settings, last_pos):
+        """Generate G-code for infill lines."""
+        commands = []
+        current_pos = dict(last_pos)
+        
+        for i, line in enumerate(infill_lines):
+            if len(line) == 4:  # Should be (x1, y1, x2, y2)
+                x1, y1, x2, y2 = line
+                
+                # Travel to start of line
+                move_cmd = {
+                    'X': x1,
+                    'Y': y1,
+                    'F': settings['travel_speed'] * 60
+                }
+                commands.append(self._format_g1_command(move_cmd, current_pos, is_travel=True))
+                current_pos.update(move_cmd)
+                
+                # Extrude to end of line
+                move_cmd = {
+                    'X': x2,
+                    'Y': y2,
+                    'F': settings['infill_speed'] * 60
+                }
+                
+                # Calculate extrusion
+                distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
+                move_cmd['E'] = current_pos['E'] + extrusion
+                
+                commands.append(self._format_g1_command(move_cmd, current_pos))
+                current_pos.update(move_cmd)
+        
+        return commands
     
     def view_gcode(self):
         """Open the G-code viewer with the current G-code."""
@@ -713,6 +801,151 @@ class STLToGCodeApp(QMainWindow):
         """Show the documentation viewer."""
         from scripts.markdown_viewer import show_documentation
         show_documentation(self)
+
+    def show_settings(self):
+        """Show the settings dialog."""
+        from scripts.settings_dialog import SettingsDialog
+        
+        # Get current settings
+        current_settings = self.get_current_settings()
+        
+        # Create and show the settings dialog
+        dialog = SettingsDialog(current_settings, self)
+        
+        # Connect the settings_changed signal
+        dialog.settings_changed.connect(self._on_settings_changed)
+        
+        # Show the dialog
+        dialog.exec()
+    
+    def _on_settings_changed(self, settings):
+        """Handle settings changes."""
+        # Update the settings in the application
+        self.settings = settings
+        
+        # Update the UI to reflect the new settings
+        self._update_ui_from_settings()
+        
+        # Save settings to disk if needed
+        self._save_settings()
+    
+    def _update_ui_from_settings(self):
+        """Update the UI to reflect the current settings."""
+        # Update any UI elements that depend on settings
+        if hasattr(self, 'infill_density_slider'):
+            self.infill_density_slider.setValue(int(self.settings.get('infill_density', 0.2) * 100))
+        
+        if hasattr(self, 'layer_height_spin'):
+            self.layer_height_spin.setValue(self.settings.get('layer_height', 0.2))
+        
+        # Update other UI elements as needed...
+    
+    def _save_settings(self):
+        """Save settings to disk."""
+        # In a real application, you would save these to a config file
+        # For now, we'll just store them in memory
+        pass
+
+    def _start_gcode_generation(self):
+        """Start G-code generation in a background thread."""
+        if self.stl_mesh is None:
+            return
+        
+        # Clear previous G-code
+        self.gcode = ""
+        
+        # Create worker and thread
+        self.worker = GCodeGenerationWorker(self.stl_mesh, self.get_current_settings())
+        self.worker_thread = QThread()
+        
+        # Move worker to thread
+        self.worker.moveToThread(self.worker_thread)
+        
+        # Connect signals
+        self.worker.finished.connect(self._on_generation_finished)
+        self.worker.error.connect(self._on_generation_error)
+        self.worker.progress.connect(self._on_generation_progress)
+        self.worker.gcode_chunk.connect(self._on_gcode_chunk)
+        self.worker.preview_ready.connect(self._on_preview_ready)
+        
+        # Start the thread
+        self.worker_thread.started.connect(self.worker.generate)
+        self.worker_thread.finished.connect(self.worker_thread.deleteLater)
+        
+        # Update UI
+        self._update_ui_state()
+        self.ui.statusBar().showMessage("Generating G-code...")
+        
+        # Start the thread
+        self.worker_thread.start()
+    
+    def _on_generation_finished(self):
+        """Handle successful completion of G-code generation."""
+        self.worker_thread.quit()
+        self.worker_thread.wait()
+        self.worker = None
+        self.worker_thread = None
+        
+        # Update UI
+        self._update_ui_state()
+        self.ui.statusBar().showMessage("G-code generation completed", 5000)
+        
+        # Enable save and view buttons
+        self.ui.save_button.setEnabled(True)
+        self.ui.view_button.setEnabled(True)
+    
+    def _on_generation_error(self, error_msg):
+        """Handle errors during G-code generation."""
+        if self.worker_thread is not None:
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+            self.worker = None
+            self.worker_thread = None
+        
+        # Show error message
+        QMessageBox.critical(self, "G-code Generation Error", 
+                            f"An error occurred during G-code generation:\n\n{error_msg}")
+        
+        # Update UI
+        self._update_ui_state()
+        self.ui.statusBar().showMessage("G-code generation failed", 5000)
+    
+    def _on_generation_progress(self, current, total):
+        """Update progress during G-code generation."""
+        self.ui.progress_bar.setMaximum(total)
+        self.ui.progress_bar.setValue(current)
+        self.ui.statusBar().showMessage(
+            f"Generating G-code... Layer {current} of {total}")
+    
+    def _on_gcode_chunk(self, chunk):
+        """Append a chunk of generated G-code to the output."""
+        self.gcode += chunk
+    
+    def _on_preview_ready(self, preview_data):
+        """Update the 3D preview with the generated paths."""
+        # This would be implemented to update the 3D view with the preview data
+        pass
+    
+    def _update_ui_state(self):
+        """Update the UI state based on current application state."""
+        # Enable/disable buttons based on state
+        has_stl = self.stl_mesh is not None
+        has_gcode = bool(self.gcode)
+        is_processing = self.worker_thread is not None
+        
+        self.ui.action_convert.setEnabled(has_stl and not is_processing)
+        self.ui.convert_button.setEnabled(has_stl and not is_processing)
+        self.ui.action_save.setEnabled(has_gcode and not is_processing)
+        self.ui.save_button.setEnabled(has_gcode and not is_processing)
+        self.ui.action_view_gcode.setEnabled(has_gcode)
+        self.ui.view_button.setEnabled(has_gcode)
+        self.ui.cancel_button.setEnabled(is_processing)
+        
+        # Update progress bar visibility
+        self.ui.progress_bar.setVisible(is_processing)
+        
+        # Disable settings during processing
+        self.ui.settings_group.setEnabled(not is_processing)
 
 def main():
     """Application entry point."""
