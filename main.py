@@ -33,21 +33,26 @@ from PyQt6.QtCore import Qt, QTimer
 from scripts.gcode_editor import GCodeEditorWidget
 from scripts.gcode_validator import PrinterLimits
 
+# Try to import OpenGL components with better error handling
+OPENGL_AVAILABLE = False
+OPENGL_ERROR = ""
 try:
     # Try importing from QtOpenGLWidgets first (PyQt6 >= 6.2.0)
     from PyQt6.QtOpenGLWidgets import QOpenGLWidget
     from PyQt6.QtOpenGL import QOpenGLContext, QOpenGLVersionProfile
     from scripts.opengl_visualizer import OpenGLGCodeVisualizer
     OPENGL_AVAILABLE = True
-except (ImportError, AttributeError) as e:
+except (ImportError, AttributeError) as e1:
     try:
         # Fall back to QtOpenGL for older versions
         from PyQt6.QtOpenGL import QOpenGLWidget, QOpenGLContext, QOpenGLVersionProfile
         from scripts.opengl_visualizer import OpenGLGCodeVisualizer
         OPENGL_AVAILABLE = True
-    except (ImportError, AttributeError) as e:
-        logging.warning(f"OpenGL visualization not available: {e}")
-        OPENGL_AVAILABLE = False
+    except (ImportError, AttributeError) as e2:
+        OPENGL_ERROR = str(e2)
+        if not OPENGL_ERROR:
+            OPENGL_ERROR = "OpenGL components not found"
+        logging.info(f"Using matplotlib 3D renderer: {OPENGL_ERROR}")
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -100,16 +105,21 @@ class STLToGCodeApp(QMainWindow):
         self.use_opengl = OPENGL_AVAILABLE  # Whether to use OpenGL for visualization
         self.opengl_visualizer = None
         
+        # Log OpenGL status
+        if not OPENGL_AVAILABLE:
+            logging.info(f"OpenGL visualization not available: {OPENGL_ERROR}")
+        
         # Add progressive loading attributes
         self.progressive_loading = True  # Enable progressive loading
         self.loading_progress = 0
         self.current_vertices = np.zeros((0, 3), dtype=np.float32)
         self.current_faces = np.zeros((0, 3), dtype=np.uint32)
-        self.loading_timer = QTimer(self)
-        self.loading_timer.timeout.connect(self._process_loading_queue)
         self.loading_queue = []
         self.is_loading = False
-        self.current_stl_processor = None
+        self.loading_timer = QTimer(self)
+        self.loading_timer.setSingleShot(False)  # Make it a repeating timer
+        self.loading_timer.setInterval(100)  # 100ms interval for processing queue
+        self.loading_timer.timeout.connect(self._process_loading_queue)
         
         # G-code generation state
         self.gcode_worker = None
@@ -371,9 +381,26 @@ class STLToGCodeApp(QMainWindow):
         # Add controls to layout
         layout.addLayout(controls_layout)
         
-        # Create G-code visualizer
-        self.gcode_visualizer = GCodeVisualizer()
-        layout.addWidget(self.gcode_visualizer)
+        # Create matplotlib Figure and Canvas for 3D visualization
+        self.figure = Figure(figsize=(5, 4), tight_layout=True)
+        self.canvas = FigureCanvas(self.figure)
+        self.ax = self.figure.add_subplot(111, projection='3d')
+        
+        # Set up the 3D axes
+        self.ax.set_xlabel('X')
+        self.ax.set_ylabel('Y')
+        self.ax.set_zlabel('Z')
+        
+        # Add navigation toolbar with custom styling
+        self.toolbar = NavigationToolbar(self.canvas, self.visualization_tab)
+        self._style_matplotlib_toolbar()
+        
+        # Add widgets to layout
+        layout.addWidget(self.toolbar)
+        layout.addWidget(self.canvas)
+        
+        # Initialize with empty plot
+        self._update_visualization()
     
     def _style_matplotlib_toolbar(self):
         """Apply custom styling to the matplotlib toolbar."""
@@ -580,11 +607,10 @@ class STLToGCodeApp(QMainWindow):
             self.loading_worker.progress_updated.connect(self._update_loading_progress)
             
             # Clean up thread when done
-            self.loading_worker.finished.connect(self.loading_thread.quit)
-            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
             self.loading_thread.finished.connect(self.loading_thread.deleteLater)
+            self.loading_worker.deleteLater.connect(self.loading_thread.quit)
             
-            # Start the thread and worker
+            # Start the thread
             self.loading_thread.start()
             
             # Use a single-shot timer to start the worker in its thread
@@ -602,24 +628,27 @@ class STLToGCodeApp(QMainWindow):
     
     def _process_loading_queue(self):
         """Process the loading queue to update the 3D view."""
-        if not self.loading_queue:
-            logging.debug("No chunks in queue to process")
-            return
-            
-        logging.debug(f"Processing {len(self.loading_queue)} chunks from queue")
         try:
-            # Process chunks in the queue
-            while self.loading_queue:
-                chunk = self.loading_queue.pop(0)
-                self._process_chunk(chunk)
+            if not self.loading_queue:
+                return
                 
-            # Update the 3D view
-            logging.debug("Updating 3D view")
-            self._update_visualization()
+            logging.debug(f"Processing loading queue with {len(self.loading_queue)} items")
             
+            # Process all available chunks in the queue
+            while self.loading_queue:
+                chunk_data = self.loading_queue.pop(0)
+                self._process_chunk(chunk_data)
+                
+                # Update visualization after processing each chunk
+                self._update_visualization()
+                
+                # Process events to keep the UI responsive
+                QApplication.processEvents()
+                
         except Exception as e:
             logging.error(f"Error processing loading queue: {str(e)}", exc_info=True)
-
+            self._handle_loading_error(e, "Error processing STL data")
+    
     def _on_chunk_loaded(self, chunk_data):
         """Handle a new chunk of STL data."""
         try:
@@ -647,18 +676,25 @@ class STLToGCodeApp(QMainWindow):
             if len(chunk_data['vertices']) > 0:
                 logging.debug(f"Processing chunk with {len(chunk_data['vertices'])} vertices, "
                            f"{len(chunk_data['faces'])} faces")
+                
+                # Convert chunk data to numpy arrays if they aren't already
+                new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
+                new_faces = np.array(chunk_data['faces'], dtype=np.uint32)
+                
                 if len(self.current_vertices) == 0:
-                    self.current_vertices = chunk_data['vertices']
-                    self.current_faces = chunk_data['faces']
+                    # First chunk
+                    self.current_vertices = new_vertices
+                    self.current_faces = new_faces
                     logging.debug("Initialized vertex and face arrays")
                 else:
+                    # Append new vertices
                     vertex_offset = len(self.current_vertices)
-                    logging.debug(f"Appending to existing arrays. Current vertices: {vertex_offset}")
-                    self.current_vertices = np.vstack((self.current_vertices, chunk_data['vertices']))
+                    self.current_vertices = np.vstack((self.current_vertices, new_vertices))
                     
-                    # Update face indices with the correct offset
-                    new_faces = chunk_data['faces'] + vertex_offset
-                    self.current_faces = np.vstack((self.current_faces, new_faces))
+                    # Update face indices with the correct offset and append
+                    new_faces_offset = new_faces + vertex_offset
+                    self.current_faces = np.vstack((self.current_faces, new_faces_offset))
+                    
                     logging.debug(f"Updated arrays. Total vertices: {len(self.current_vertices)}, "
                                f"Total faces: {len(self.current_faces)}")
         except Exception as e:
