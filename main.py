@@ -489,7 +489,7 @@ class STLToGCodeApp(QMainWindow):
         if file_path is None:
             file_path, _ = QFileDialog.getOpenFileName(
                 self, "Open STL File", "", "STL Files (*.stl);;All Files (*)")
-            
+        
         if not file_path:
             logging.debug("No file selected")
             return
@@ -499,27 +499,22 @@ class STLToGCodeApp(QMainWindow):
             self._reset_loading_state()
             self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
             QApplication.processEvents()
-            
+        
             # Initialize the STL processor
-            logging.debug("Initializing STL processor")
-            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path)
-            
-            # Enable UI elements
-            self.ui.convert_button.setEnabled(True)
-            self.ui.export_button.setEnabled(False)
-            
+            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path, chunk_size=1000)
+        
             # Store file info
             self.file_path = file_path
             self.current_file = os.path.basename(file_path)
             self.setWindowTitle(f"STL to GCode - {self.current_file}")
-            
+        
             # Add to recent files
             self.add_to_recent_files(file_path)
-            
+        
             # Start progressive loading
             logging.debug("Starting progressive loading")
             self._start_progressive_loading()
-            
+        
         except Exception as e:
             logging.error(f"Error opening file: {str(e)}", exc_info=True)
             self._handle_loading_error(e, file_path)
@@ -551,30 +546,53 @@ class STLToGCodeApp(QMainWindow):
     def _start_progressive_loading(self):
         """Start the progressive loading process in a background thread."""
         if not self.current_stl_processor:
+            logging.error("No STL processor available")
             return
+        
+        try:
+            # Setup progress dialog
+            self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
+            self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.progress_dialog.setMinimumDuration(0)
+            self.progress_dialog.canceled.connect(self._cancel_loading)
             
-        # Setup progress dialog
-        self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
-        self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self.progress_dialog.setMinimumDuration(0)
-        
-        # Start loading in a separate thread
-        self.loading_thread = QThread()
-        self.loading_worker = STLLoadingWorker(self.current_stl_processor)
-        self.loading_worker.moveToThread(self.loading_thread)
-        
-        # Connect signals
-        self.loading_worker.chunk_loaded.connect(self._on_chunk_loaded)
-        self.loading_worker.loading_finished.connect(self._on_loading_finished)
-        self.loading_worker.error_occurred.connect(self._on_loading_error)
-        
-        # Start the thread and worker
-        self.loading_thread.started.connect(self.loading_worker.start_loading)
-        self.loading_thread.start()
-        
-        # Start the processing timer
-        self.loading_timer.start(100)  # Process queue every 100ms
-        self.is_loading = True
+            # Configure chunk size (triangles per chunk)
+            chunk_size = 1000  # Process 1000 triangles per chunk
+            
+            # Create and configure worker thread
+            self.loading_thread = QThread()
+            self.loading_worker = STLLoadingWorker(
+                stl_processor=self.current_stl_processor,
+                chunk_size=chunk_size
+            )
+            self.loading_worker.moveToThread(self.loading_thread)
+            
+            # Connect signals
+            self.loading_worker.chunk_loaded.connect(self._on_chunk_loaded)
+            self.loading_worker.loading_finished.connect(self._on_loading_finished)
+            self.loading_worker.error_occurred.connect(self._on_loading_error)
+            self.loading_worker.progress_updated.connect(self._update_loading_progress)
+            
+            # Clean up thread when done
+            self.loading_worker.finished.connect(self.loading_thread.quit)
+            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
+            self.loading_thread.finished.connect(self.loading_thread.deleteLater)
+            
+            # Start the thread and worker
+            self.loading_thread.start()
+            
+            # Use a single-shot timer to start the worker in its thread
+            QTimer.singleShot(0, self.loading_worker.start_loading)
+            
+            # Start the processing timer
+            self.loading_timer.start(100)  # Process queue every 100ms
+            self.is_loading = True
+            
+            logging.info("Started progressive loading thread")
+            
+        except Exception as e:
+            logging.error(f"Error starting progressive loading: {str(e)}", exc_info=True)
+            self._handle_loading_error(e, "Error starting loading process")
     
     def _process_loading_queue(self):
         """Process the loading queue to update the 3D view."""
@@ -667,7 +685,7 @@ class STLToGCodeApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Error finalizing loading: {str(e)}", exc_info=True)
-    
+
     def _process_gcode_buffer(self):
         """Process the G-code buffer and update the editor."""
         if not self.gcode_buffer:
@@ -735,6 +753,7 @@ class STLToGCodeApp(QMainWindow):
         try:
             # Import the settings dialog here to avoid circular imports
             from scripts.settings_dialog import SettingsDialog
+            from PyQt6.QtWidgets import QDialog  # Add this import
             
             # Initialize settings if not already set
             if not hasattr(self, 'settings') or not self.settings:
@@ -742,7 +761,7 @@ class STLToGCodeApp(QMainWindow):
             
             # Create and show the settings dialog with settings as first argument
             dialog = SettingsDialog(settings=self.settings, parent=self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
+            if dialog.exec() == QDialog.DialogCode.Accepted:  # Use QDialog.DialogCode
                 # Save the settings
                 self.settings = dialog.get_settings()
                 self.statusBar().showMessage("Settings saved", 3000)
