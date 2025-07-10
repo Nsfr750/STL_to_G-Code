@@ -27,6 +27,11 @@ from scripts.gcode_visualizer import GCodeVisualizer
 from scripts.stl_processor import load_stl, MemoryEfficientSTLProcessor
 from scripts.gcode_simulator import GCodeSimulator, PrinterState
 import numpy as np
+from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
+from PyQt6.QtGui import QColor, QFont, QIcon
+from PyQt6.QtCore import Qt, QTimer
+from scripts.gcode_editor import GCodeEditorWidget
+from scripts.gcode_validator import PrinterLimits
 
 try:
     from scripts.opengl_visualizer import OpenGLGCodeVisualizer
@@ -57,9 +62,12 @@ class STLToGCodeApp(QMainWindow):
         
         # Initialize G-code simulator
         self.gcode_simulator = GCodeSimulator()
+        self.simulation_worker = None
+        self.simulation_thread = None
         self.simulation_running = False
         self.simulation_paused = False
-        self.simulation_speed = 1.0  # 1x speed
+        self.current_sim_line = 0
+        self.total_sim_lines = 0
         
         # Set application icon
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
@@ -108,7 +116,15 @@ class STLToGCodeApp(QMainWindow):
         
         # Show the window
         self.show()
-    
+        
+        # Add default printer limits
+        self.printer_limits = PrinterLimits(
+            max_x=200, max_y=200, max_z=200,
+            max_feedrate=300, max_acceleration=3000,
+            max_temperature=300, min_extrusion_temp=170,
+            max_fan_speed=255
+        )
+        
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
         # Set up the menu bar
@@ -204,6 +220,11 @@ class STLToGCodeApp(QMainWindow):
         self.tab_widget.addTab(self.visualization_tab, "3D Toolpath")
         self._setup_visualization_view()
         
+        # G-code Editor Tab
+        self.editor_tab = QWidget()
+        self.tab_widget.addTab(self.editor_tab, "G-code Editor")
+        self._setup_editor_tab()
+        
         # Add panels to main layout with stretch factors
         main_layout.addWidget(left_panel, stretch=1)
         main_layout.addWidget(right_panel, stretch=3)
@@ -217,6 +238,81 @@ class STLToGCodeApp(QMainWindow):
             except Exception as e:
                 logging.error(f"Failed to initialize OpenGL visualizer: {e}")
                 self.use_opengl = False
+    
+    def _setup_editor_tab(self):
+        """Set up the G-code editor tab."""
+        if not hasattr(self, 'editor_widget'):
+            self.editor_widget = GCodeEditorWidget()
+            self.editor_widget.set_printer_limits(self.printer_limits)
+            
+            # Connect signals
+            self.editor_widget.editor.textChanged.connect(self._on_editor_text_changed)
+            
+            # Add to tab widget
+            self.tab_widget.addTab(self.editor_widget, "G-code Editor")
+    
+    def _on_editor_text_changed(self):
+        """Handle text changes in the editor."""
+        # Enable/disable save button based on modifications
+        self.save_gcode_action.setEnabled(True)
+    
+    def validate_gcode(self):
+        """Validate the G-code in the editor."""
+        if hasattr(self, 'editor_widget'):
+            # Validation happens automatically in the editor
+            # Just ensure the issues panel is visible
+            if self.editor_widget.issues_list.count() > 0:
+                self.editor_widget.issues_panel.show()
+    
+    def open_gcode_in_editor(self):
+        """Open a G-code file in the editor."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open G-code File", "", "G-code Files (*.gcode *.nc *.txt);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                self.editor_widget.set_text(content)
+                self.current_file = file_path
+                self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(file_path)}")
+                self.statusBar().showMessage(f"Loaded {os.path.basename(file_path)}", 3000)
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+    
+    def save_gcode_from_editor(self):
+        """Save the current editor content to a file."""
+        if not hasattr(self, 'current_file') or not self.current_file:
+            self.save_gcode()
+            return
+        
+        try:
+            with open(self.current_file, 'w') as f:
+                f.write(self.editor_widget.get_text())
+            
+            self.statusBar().showMessage(f"Saved {os.path.basename(self.current_file)}", 3000)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
+    
+    def simulate_from_editor(self):
+        """Run a simulation from the editor content."""
+        if not hasattr(self, 'editor_widget'):
+            return
+        
+        gcode = self.editor_widget.get_text()
+        if not gcode.strip():
+            QMessageBox.warning(self, "Simulation", "No G-code to simulate")
+            return
+        
+        # Switch to simulation tab
+        self.tab_widget.setCurrentWidget(self.simulation_tab)
+        
+        # Run simulation
+        self._start_simulation(gcode)
     
     def _setup_stl_view(self):
         """Set up the STL view tab."""
@@ -1420,6 +1516,7 @@ class STLToGCodeApp(QMainWindow):
             
         except Exception as e:
             logger.error(f"Error handling G-code generation error: {e}", exc_info=True)
+            self.statusBar().showMessage(f'Error: {str(e)}')
     
     def cancel_operation(self):
         """Cancel the current operation (STL loading or G-code generation)."""

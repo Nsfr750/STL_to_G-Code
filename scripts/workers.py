@@ -115,64 +115,118 @@ class GCodeGenerationWorker(QObject):
 
 
 class SimulationWorker(QObject):
-    """
-    Worker class for simulating G-code execution in a background thread.
-    
-    This class processes G-code line by line, updates the printer state,
-    and emits progress updates and simulation results.
-    """
-    update_progress = pyqtSignal(int, int)  # current, total
+    """Worker class for simulating G-code execution in a background thread."""
+    # Signals
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    progress = pyqtSignal(int, int)  # current_line, total_lines
+    state_updated = pyqtSignal(object)  # Emits PrinterState
     
     def __init__(self, gcode: str, simulator):
-        """
-        Initialize the simulation worker.
+        """Initialize the simulation worker.
         
         Args:
             gcode: The G-code to simulate
-            simulator: An instance of GCodeSimulator to use for simulation
+            simulator: Instance of GCodeSimulator to use for simulation
         """
         super().__init__()
         self.gcode = gcode
         self.simulator = simulator
-        self._is_running = True
-    
+        self._is_running = False
+        self._should_pause = False
+        self._step = False
+        self._speed = 1.0  # 1x speed by default
+        self._delay_ms = 50  # Base delay between commands in ms
+        
     def run(self):
-        """Run the G-code simulation."""
+        """Run the simulation."""
         try:
-            # Split G-code into lines and filter out comments and empty lines
+            self._is_running = True
+            self._should_pause = False
+            
+            # Reset the simulator
+            self.simulator.reset()
+            
+            # Split G-code into lines and filter out comments/empty lines
             lines = [line.strip() for line in self.gcode.split('\n') if line.strip() and not line.strip().startswith(';')]
             total_lines = len(lines)
             
+            # Emit initial state
+            self.state_updated.emit(self.simulator.state)
+            
             # Process each line
-            for i, line in enumerate(lines):
+            for i, line in enumerate(lines, 1):
                 if not self._is_running:
                     break
                     
-                try:
-                    # Process the line with the simulator
-                    self.simulator.process_line(line)
-                    
-                    # Update progress
-                    self.update_progress.emit(i + 1, total_lines)
-                    
-                    # Small delay to keep the UI responsive
-                    QThread.msleep(10)
-                    
-                except Exception as e:
-                    logger.warning(f"Error processing line {i+1}: {e}")
+                # Skip comments and empty lines
+                if not line or line.startswith(';'):
+                    self.progress.emit(i, total_lines)
                     continue
+                
+                # Process the line
+                success, errors, warnings = self.simulator.simulate(line)
+                
+                # Handle errors and warnings
+                for err in errors:
+                    self.error.emit(f"Line {i}: {err.message}")
+                
+                for warn in warnings:
+                    self.error.emit(f"Line {i} [WARNING]: {warn.message}")
+                
+                # Update progress
+                self.progress.emit(i, total_lines)
+                
+                # Emit state update
+                self.state_updated.emit(self.simulator.state)
+                
+                # Handle pausing
+                if self._should_pause and not self._step:
+                    while self._should_pause and self._is_running:
+                        QThread.msleep(100)
+                
+                # Reset step flag if it was set
+                if self._step:
+                    self._step = False
+                    self._should_pause = True
+                
+                # Add delay based on speed
+                if self._speed > 0:
+                    delay = int(self._delay_ms / self._speed)
+                    QThread.msleep(max(1, delay))
             
-            # Emit finished signal
-            self.finished.emit()
-            
+            if self._is_running:
+                self.finished.emit()
+                
         except Exception as e:
-            logger.error(f"Simulation error: {e}", exc_info=True)
-            self.error.emit(f"Simulation error: {str(e)}")
+            import traceback
+            error_msg = f"Simulation error: {str(e)}\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
         finally:
-            self.finished.emit()
+            self._is_running = False
     
     def stop(self):
         """Stop the simulation."""
         self._is_running = False
+        self._should_pause = False
+    
+    def pause(self):
+        """Pause the simulation."""
+        self._should_pause = True
+    
+    def resume(self):
+        """Resume the simulation."""
+        self._should_pause = False
+    
+    def step(self):
+        """Step through the simulation one command at a time."""
+        self._step = True
+        self._should_pause = False
+    
+    def set_speed(self, speed: float):
+        """Set the simulation speed multiplier.
+        
+        Args:
+            speed: Speed multiplier (e.g., 0.5 for half speed, 2.0 for double speed)
+        """
+        self._speed = max(0.1, min(10.0, speed))  # Clamp between 0.1x and 10x

@@ -26,6 +26,29 @@ All notable changes to this project will be documented in this file. This projec
   - In-app documentation browser
   - Support for multiple documentation files
 
+- **G-code Validation & Simulation**
+  - Real-time G-code validation with visual feedback
+  - Syntax highlighting for G-code editor
+  - Printer compatibility checks
+  - Safety validation (temperature, feedrate, etc.)
+  - Interactive 3D simulation of G-code
+  - Layer-by-layer simulation controls
+  - Simulation speed adjustment
+
+- **Performance Improvements**
+  - Background processing for large files
+  - Incremental loading of STL and G-code files
+  - Memory-efficient processing
+  - GPU-accelerated rendering with OpenGL
+  - Progressive loading for better responsiveness
+
+- **Advanced Features**
+  - Custom start/end G-code support
+  - G-code optimization algorithms
+  - Toolpath visualization
+  - Multiple view modes for G-code simulation
+  - Export simulation results
+
 - **Log Viewer**
   - Real-time log monitoring
   - Filter logs by level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -47,7 +70,11 @@ All notable changes to this project will be documented in this file. This projec
   - Added G-code validation
 
 ### Changed
-
+- Complete backend rewrite for better performance and maintainability
+- Improved error handling and user feedback
+- Updated all dependencies to latest stable versions
+- Enhanced 3D visualization with better performance
+- More accurate G-code generation
 - **UI/UX Improvements**
   - Redesigned main window layout
   - Modern icons and styling
@@ -64,12 +91,37 @@ All notable changes to this project will be documented in this file. This projec
   - Modular architecture with scripts directory
 
 ### Fixed
+- Memory leaks in file handling
+- Issues with high DPI displays
+- Problems with non-ASCII characters in file paths
+- Various UI glitches and visual artifacts
+- G-code parsing and generation bugs
 - Fixed log viewer file path issues
 - Resolved update checker time import error
 - Fixed menu bar visibility issues
 - Addressed various UI layout problems
 - Fixed G-code viewer line number rendering
 - Resolved OpenGL context issues with WebEngine
+
+### Removed
+- Tkinter-based UI components
+- Outdated dependencies
+- Legacy code no longer in use
+- Customtkinter dependency for better compatibility
+
+### Known Issues
+- Some advanced G-code commands may not be fully supported in simulation
+- Performance may degrade with extremely large models on lower-end systems
+- Some UI elements may need adjustment for non-standard display scaling
+
+### Migration Guide
+- Users should uninstall previous versions before installing v2.0.0
+- Configuration files from previous versions are not compatible
+- Custom scripts may need updates to work with the new API
+
+### Contributors
+- [Your Name] - Main developer
+- [Other Contributors] - For their valuable contributions
 
 ### Dependencies
 
@@ -203,3 +255,6 @@ All notable changes to this project will be documented in this file. This projec
 [1.1.0-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.1.0-beta
 [1.0.1-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.0.1-beta
 [1.0.0-beta]: https://github.com/Nsfr750/STL_to_G-Code/releases/tag/v1.0.0-beta
+
+[Unreleased]: https://github.com/yourusername/STL_to_G-Code/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/yourusername/STL_to_G-Code/releases/tag/v2.0.0
