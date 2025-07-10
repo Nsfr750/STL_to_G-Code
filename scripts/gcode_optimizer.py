@@ -796,3 +796,121 @@ class GCodeOptimizer:
         ny2 = y1 + u2 * dy
         
         return (nx1, ny1, nx2, ny2)
+
+    def __init__(self, 
+                 layer_height: float,
+                 nozzle_diameter: float,
+                 filament_diameter: float,
+                 print_speed: float,
+                 travel_speed: float,
+                 infill_speed: float,
+                 first_layer_speed: float,
+                 retraction_length: float,
+                 retraction_speed: float,
+                 z_hop: float,
+                 infill_density: float,
+                 infill_pattern: str,
+                 infill_angle: float,
+                 enable_arc_detection: bool = False,
+                 arc_tolerance: float = 0.05,
+                 min_arc_segments: int = 5,
+                 enable_optimized_infill: bool = False,
+                 infill_resolution: float = 1.0):
+        """Initialize the GCodeOptimizer with print settings.
+        
+        Args:
+            layer_height: Height of each layer in mm
+            nozzle_diameter: Diameter of the nozzle in mm
+            filament_diameter: Diameter of the filament in mm
+            print_speed: Printing speed in mm/s
+            travel_speed: Travel speed in mm/s
+            infill_speed: Infill printing speed in mm/s
+            first_layer_speed: First layer printing speed in mm/s
+            retraction_length: Retraction length in mm
+            retraction_speed: Retraction speed in mm/s
+            z_hop: Z-hop height in mm
+            infill_density: Infill density percentage (0-100)
+            infill_pattern: Type of infill pattern
+            infill_angle: Angle for infill lines in degrees
+            enable_arc_detection: Whether to detect and use G2/G3 arcs
+            arc_tolerance: Maximum deviation for arc detection
+            min_arc_segments: Minimum segments per full circle
+            enable_optimized_infill: Whether to use optimized infill
+            infill_resolution: Resolution for optimized infill in mm
+        """
+        self.layer_height = layer_height
+        self.nozzle_diameter = nozzle_diameter
+        self.filament_diameter = filament_diameter
+        self.print_speed = print_speed
+        self.travel_speed = travel_speed
+        self.infill_speed = infill_speed
+        self.first_layer_speed = first_layer_speed
+        self.retraction_length = retraction_length
+        self.retraction_speed = retraction_speed
+        self.z_hop = z_hop
+        self.infill_density = infill_density
+        self.infill_pattern = infill_pattern
+        self.infill_angle = infill_angle
+        self.enable_arc_detection = enable_arc_detection
+        self.arc_tolerance = arc_tolerance
+        self.min_arc_segments = min_arc_segments
+        self.enable_optimized_infill = enable_optimized_infill
+        self.infill_resolution = infill_resolution
+        self.last_preview_data = None
+        
+    def generate_gcode(self, stl_mesh, start_gcode: str = "", end_gcode: str = ""):
+        """Generate G-code from an STL mesh with custom start/end G-code.
+        
+        Args:
+            stl_mesh: The STL mesh to generate G-code for
+            start_gcode: Custom G-code to insert at the start
+            end_gcode: Custom G-code to insert at the end
+            
+        Yields:
+            Chunks of G-code as strings
+        """
+        # Process start G-code
+        if start_gcode:
+            yield "\n".join([
+                "; --- Custom Start G-code ---",
+                start_gcode,
+                "\n; --- End of Custom Start G-code ---\n"
+            ])
+        
+        # Generate main G-code (to be implemented)
+        # This is a placeholder - actual implementation will generate G-code in chunks
+        z_min = stl_mesh.z.min()
+        z_max = stl_mesh.z.max()
+        layer_height = self.layer_height
+        
+        for z in np.arange(z_min, z_max, layer_height):
+            # Skip if cancelled
+            if hasattr(self, '_is_cancelled') and self._is_cancelled:
+                return
+                
+            # Generate G-code for this layer
+            layer_gcode = self._generate_layer_gcode(stl_mesh, z)
+            if layer_gcode:
+                yield layer_gcode
+        
+        # Process end G-code
+        if end_gcode:
+            yield "\n".join([
+                "\n; --- Custom End G-code ---",
+                end_gcode,
+                "; --- End of Custom End G-code ---\n"
+            ])
+    
+    def _generate_layer_gcode(self, stl_mesh, z: float) -> str:
+        """Generate G-code for a single layer.
+        
+        Args:
+            stl_mesh: The STL mesh
+            z: Z-coordinate of the layer
+            
+        Returns:
+            G-code for the layer as a string
+        """
+        # This is a placeholder - implement actual layer generation
+        # This should be implemented to generate the actual G-code for each layer
+        return f"; Layer at Z={z:.3f}\n"

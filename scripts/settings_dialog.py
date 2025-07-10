@@ -6,7 +6,7 @@ This module provides a settings dialog for configuring optimization parameters.
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
-                            QTabWidget, QGroupBox, QFormLayout)
+                            QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class SettingsDialog(QDialog):
@@ -289,6 +289,55 @@ class SettingsDialog(QDialog):
         temp_group.setLayout(temp_layout)
         layout.addWidget(temp_group)
         
+        # Custom G-code group
+        gcode_group = QGroupBox("Custom G-code")
+        gcode_layout = QVBoxLayout()
+        
+        # Start G-code tab widget
+        gcode_tabs = QTabWidget()
+        
+        # Start G-code tab
+        start_tab = QWidget()
+        start_layout = QVBoxLayout()
+        
+        self.start_gcode = QPlainTextEdit()
+        self.start_gcode.setPlaceholderText(
+            "; Add custom start G-code here\n"
+            "; Available placeholders:\n"
+            "; {bed_temp} - Bed temperature\n"
+            "; {extruder_temp} - Extruder temperature\n"
+            "; {fan_speed} - Fan speed (0-255)\n"
+            "; {material} - Filament material"
+        )
+        self.start_gcode.setMinimumHeight(200)
+        start_layout.addWidget(QLabel("Start G-code:"))
+        start_layout.addWidget(self.start_gcode)
+        
+        start_tab.setLayout(start_layout)
+        
+        # End G-code tab
+        end_tab = QWidget()
+        end_layout = QVBoxLayout()
+        
+        self.end_gcode = QPlainTextEdit()
+        self.end_gcode.setPlaceholderText(
+            "; Add custom end G-code here\n"
+            "; Available placeholders same as start G-code"
+        )
+        self.end_gcode.setMinimumHeight(200)
+        end_layout.addWidget(QLabel("End G-code:"))
+        end_layout.addWidget(self.end_gcode)
+        
+        end_tab.setLayout(end_layout)
+        
+        # Add tabs
+        gcode_tabs.addTab(start_tab, "Start G-code")
+        gcode_tabs.addTab(end_tab, "End G-code")
+        
+        gcode_layout.addWidget(gcode_tabs)
+        gcode_group.setLayout(gcode_layout)
+        layout.addWidget(gcode_group)
+        
         layout.addStretch()
     
     def _setup_layout(self):
@@ -335,6 +384,10 @@ class SettingsDialog(QDialog):
         self.bed_temperature.setValue(self.settings.get('bed_temperature', 60))
         self.fan_speed.setValue(self.settings.get('fan_speed', 100))
         self.fan_layer.setValue(self.settings.get('fan_layer', 2))
+        
+        # Custom G-code
+        self.start_gcode.setPlainText(self.settings.get('start_gcode', ''))
+        self.end_gcode.setPlainText(self.settings.get('end_gcode', ''))
     
     def get_settings(self):
         """Get the current settings from the UI."""
@@ -376,6 +429,10 @@ class SettingsDialog(QDialog):
         settings['bed_temperature'] = self.bed_temperature.value()
         settings['fan_speed'] = self.fan_speed.value()
         settings['fan_layer'] = self.fan_layer.value()
+        
+        # Custom G-code
+        settings['start_gcode'] = self.start_gcode.toPlainText()
+        settings['end_gcode'] = self.end_gcode.toPlainText()
         
         return settings
     
@@ -419,7 +476,9 @@ class SettingsDialog(QDialog):
             'temperature': 200,
             'bed_temperature': 60,
             'fan_speed': 100,
-            'fan_layer': 2
+            'fan_layer': 2,
+            'start_gcode': '',
+            'end_gcode': ''
         }
         
         # Update UI with default values
