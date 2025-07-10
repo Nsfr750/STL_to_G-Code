@@ -1,11 +1,27 @@
-numpy>=1.24.0  # Numerical computations
-numpy-stl>=3.0.0  # STL file processing
-trimesh>=3.22.0 # 3D mesh manipulation
-matplotlib>=3.7.0  # 3D visualization
+# Core Dependencies
+PyQt6>=6.4.0
+PyQt6-WebEngine>=6.4.0  # For markdown viewer
+markdown>=3.4.3  # For rendering markdown
+pygments>=2.14.0  # For syntax highlighting in markdown
+numpy>=1.21.0
+numpy-stl>=2.17.1
+matplotlib>=3.5.0
+requests>=2.28.0
+packaging>=21.0
 pillow>=10.0.0   # Image processing
 setuptools>=65.5.1  # Package management
 wheel>=0.38.4    # Package building
 python-dateutil>=2.8.2  # Date handling
 six>=1.16.0      # Python 2 and 3 compatibility
 scipy>=1.10.0    # Scientific computing
-requests>=2.31.0 # HTTP requests for update checking and sponsor links
+scikit-image>=0.19.0  # For optimized infill generation
+
+# Development Dependencies
+black>=22.3.0
+flake8>=4.0.0
+pytest>=7.0.0
+pytest-qt>=4.0.0
+
+# Documentation
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.0.0

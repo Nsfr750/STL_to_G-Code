@@ -14,8 +14,8 @@ Semantic Versioning 2.0.0 (https://semver.org/). It provides:
 # MAJOR version when you make incompatible API changes
 # MINOR version when you add functionality in a backwards compatible manner
 # PATCH version when you make backwards compatible bug fixes
-VERSION_MAJOR = 1
-VERSION_MINOR = 2
+VERSION_MAJOR = 2
+VERSION_MINOR = 0
 VERSION_PATCH = 0
 
 # Version qualifier (pre-release identifier)
@@ -29,13 +29,10 @@ def get_version():
     Returns:
         str: Formatted version string (e.g., "1.1.0-beta")
     """
-    version_parts = [str(VERSION_MAJOR), str(VERSION_MINOR), str(VERSION_PATCH)]
-    version_str = '.'.join(version_parts)
-    
+    version = f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"
     if VERSION_QUALIFIER:
-        version_str += f'-{VERSION_QUALIFIER}'
-    
-    return version_str
+        version += f"-{VERSION_QUALIFIER}"
+    return version
 
 def get_version_info():
     """
@@ -68,18 +65,25 @@ def check_version_compatibility(min_version):
         bool: True if the current version meets or exceeds the minimum version,
               False if it's lower than the minimum version
     """
-    current_parts = [VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH]
-    min_parts = [int(part) for part in min_version.split('.')]
+    def parse_version(version_str):
+        # Remove any pre-release identifiers for comparison
+        base_version = version_str.split('-')[0]
+        return tuple(map(int, base_version.split('.')))
     
-    # Compare each version component
-    for current, minimum in zip(current_parts, min_parts):
-        if current > minimum:
-            return True
-        elif current < minimum:
-            return False
-    
-    return True
+    try:
+        current = (VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
+        required = parse_version(min_version)
+        return current >= required
+    except (ValueError, IndexError, AttributeError):
+        return False
 
 # Expose version as a module-level attribute for easy access
-# This allows other modules to import version directly: from version import __version__
+# This allows other modules to import version directly: from scripts.version import __version__
 __version__ = get_version()
+
+# For testing
+if __name__ == "__main__":
+    print(f"Version: {get_version()}")
+    print(f"Version info: {get_version_info()}")
+    print(f"Compatible with 1.0.0: {check_version_compatibility('1.0.0')}")
+    print(f"Compatible with 2.0.0: {check_version_compatibility('2.0.0')}")

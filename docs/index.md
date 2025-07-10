@@ -1,14 +1,14 @@
 # STL to GCode Converter Documentation
 
-Welcome to the documentation for the STL to GCode Converter application.
+Welcome to the documentation for the STL to GCode Converter application, now powered by PyQt6!
 
 ## Table of Contents
 
 - [Introduction](#introduction)
 - [Getting Started](#getting-started)
 - [Features](#features)
+- [User Interface](#user-interface)
 - [Usage](#usage)
-- [Configuration](#configuration)
 - [Development](#development)
 - [API Reference](#api-reference)
 - [Contributing](#contributing)
@@ -16,14 +16,23 @@ Welcome to the documentation for the STL to GCode Converter application.
 
 ## Introduction
 
-The STL to GCode Converter is a Python application that converts STL (STereoLithography) files into G-code for 3D printing and CNC machining. It provides a graphical user interface (GUI) for easy file manipulation and conversion.
+The STL to GCode Converter is a modern Python application that converts STL (STereoLithography) files into G-code for 3D printing and CNC machining. The application features a responsive PyQt6-based graphical user interface with advanced visualization and debugging tools.
+
+### What's New in PyQt6 Version
+
+- **Modern UI**: Completely redesigned interface with PyQt6
+- **Dark Theme**: Built-in dark theme with customizable styles
+- **Dockable Panels**: Flexible workspace with resizable panels
+- **Enhanced Logging**: Built-in log viewer with filtering
+- **Improved Performance**: Faster rendering and processing
+- **High DPI Support**: Better display on high-resolution screens
 
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- Required dependencies (see [requirements.txt](../../requirements.txt))
+- PyQt6 and other dependencies (see [PREREQUISITES.md](../PREREQUISITES.md))
 
 ### Installation
 
@@ -33,105 +42,81 @@ The STL to GCode Converter is a Python application that converts STL (STereoLith
    cd STL_to_G-Code
    ```
 
-2. Install dependencies:
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   # Windows
+   .\venv\Scripts\activate
+   # macOS/Linux
+   # source venv/bin/activate
+   ```
+
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the application:
+4. Run the application:
    ```bash
-   python main.py
+   python main_qt.py
    ```
 
 ## Features
 
-- Open and visualize STL files
-- Convert STL files to G-code
-- Recent files menu
-- File history tracking
-- Progress tracking during conversions
-- Modern UI with ttk widgets
-- Error handling and logging
-- Sponsorship options
+### Core Features
+- Open and visualize STL files in 3D
+- Convert STL models to G-code
+- Interactive 3D preview with rotation and zoom
+- Recent files history
+- Automatic update checking
+
+### Advanced Features
+- Built-in G-code viewer with syntax highlighting
+- Log viewer with filtering by log level
+- Support for multiple 3D file formats
+- Customizable interface with dockable panels
+- High DPI display support
+
+## User Interface
+
+The application features a modern, tabbed interface with the following main components:
+
+1. **Menu Bar**: Access to all application functions
+2. **Toolbar**: Quick access to common actions
+3. **File Browser**: Navigate and select STL files
+4. **3D Preview**: Interactive 3D model visualization
+5. **Log Viewer**: View and filter application logs
+6. **Status Bar**: Displays current status and progress
 
 ## Usage
 
-### Opening Files
-
-1. Click "Open STL File" or use the File menu
-2. Select your STL file from the file dialog
-3. The model will appear in the 3D preview area
-
-### Converting to G-code
-
-1. Open an STL file
-2. Click "Convert to GCode"
-3. Monitor progress in the status bar
-4. Save the generated G-code file
-
-## Configuration
-
-The application maintains configuration settings in `~/.stl_to_gcode/config.json`:
-
-- Last opened directory
-- Recent files list
-- G-code conversion settings
-- Window size and position
+For detailed usage instructions, see the [Usage Guide](usage.md).
 
 ## Development
 
-### Project Structure
-
-```
-STL_to_G-Code/
-├── main.py              # Main application
-├── config.py           # Configuration management
-├── help.py             # Help documentation
-├── about.py            # About dialog
-├── sponsor.py          # Sponsor dialog
-├── version.py          # Version management
-├── requirements.txt    # Dependencies
-├── setup.py           # Package setup
-└── docs/              # Documentation
-```
-
-### Running Tests
-
-To run tests:
-```bash
-python -m pytest tests/
-```
+For information on setting up a development environment, running tests, and contributing to the project, see the [Development Guide](development.md).
 
 ## API Reference
 
-### Main Application
-
-```python
-from main import STLToGCodeApp
-
-app = STLToGCodeApp(root)
-```
-
-### Configuration
-
-```python
-from config import config
-
-# Get configuration value
-value = config.get('key')
-
-# Set configuration value
-config.set('key', value)
-```
+For detailed API documentation, see the [API Reference](api.md).
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+Contributions are welcome! Please read our [Contributing Guidelines](../CONTRIBUTING.md) for details on how to contribute to this project.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+For the full license text, see the [LICENSE](../LICENSE) file.

@@ -1,42 +1,84 @@
-# TO-DO List
+# STL to GCode Converter - Development Roadmap
 
 ## High Priority
 
-- [ ] Add unit tests for the update checking functionality
-- [ ] Implement proper error handling for network issues during update checks
-- [ ] Add logging for update checks and results
-- [ ] Create a proper installation package (Windows installer, macOS .app, Linux package)
-- [ ] Add CI/CD pipeline for automated testing and releases
+### Core Functionality
+- [ ] Implement advanced G-code optimization algorithms
+- [ ] Add support for multi-material 3D printing
+- [ ] Implement support for more 3D file formats (OBJ, 3MF, AMF)
+- [ ] Add G-code simulation and visualization
+- [ ] Implement automatic bed leveling support
+
+### UI/UX Improvements
+- [ ] Add customizable keyboard shortcuts
+- [ ] Implement a proper settings/preferences dialog
+- [ ] Add support for multiple color schemes
+- [ ] Implement a proper plugin system for UI extensions
+- [ ] Add tooltips and in-app tutorials
 
 ## Medium Priority
 
-- [ ] Add support for more 3D file formats (OBJ, 3MF, etc.)
-- [ ] Implement a proper plugin system for converters
-- [ ] Add more G-code optimization options
-- [ ] Implement a proper configuration system with user preferences
-- [ ] Add support for custom themes
-- [ ] Implement a proper plugin system for visualization backends
+### Performance
+- [ ] Optimize 3D rendering performance
+- [ ] Implement background processing for large files
+- [ ] Add support for GPU acceleration
+- [ ] Optimize memory usage for large STL files
+- [ ] Implement incremental loading for large G-code files
 
-## Low Priority
+### Features
+- [ ] Add support for custom printer profiles
+- [ ] Implement support for different nozzle sizes
+- [ ] Add support for different filament types
+- [ ] Implement support for dual extrusion
+- [ ] Add support for custom start/end G-code
 
-- [ ] Add more documentation (API docs, user guide)
-- [ ] Implement a proper plugin system for file format support
-- [ ] Add more visualization options
-- [ ] Implement a proper plugin system for G-code generators
-- [ ] Add support for more advanced G-code features
+## Code Quality & Maintenance
 
-## Future Ideas
+### Testing
+- [ ] Add comprehensive unit tests
+- [ ] Implement integration tests
+- [ ] Add UI automation tests
+- [ ] Set up code coverage reporting
+- [ ] Add performance benchmarks
 
-- [ ] Add a built-in G-code editor
-- [ ] Implement a proper simulation mode
-- [ ] Add support for cloud storage integration
-- [ ] Implement a proper project management system
-- [ ] Add support for collaborative editing
+### Documentation
+- [ ] Write API documentation
+- [ ] Create user guide
+- [ ] Add developer documentation
+- [ ] Create video tutorials
+- [ ] Add example projects
 
-## Completed
+## Completed (v2.0.0)
 
-- [x] Implement automatic update checking
-- [x] Fix STL import issues by switching to numpy-stl
-- [x] Improve error handling for update checks
-- [x] Add manual update check option to the Help menu
-- [x] Update documentation for new features
+### PyQt6 Migration
+- [x] Migrated from Tkinter to PyQt6
+- [x] Implemented modern UI with dark theme
+- [x] Added dockable panels and tool windows
+- [x] Improved high DPI display support
+- [x] Added comprehensive logging system
+
+### New Features
+- [x] Integrated log viewer with filtering
+- [x] Enhanced G-code generation
+- [x] Improved file dialogs
+- [x] Better error handling and user feedback
+- [x] Automatic update checking
+
+### Code Quality
+- [x] Added type hints
+- [x] Improved code organization
+- [x] Better separation of concerns
+- [x] Updated dependencies
+- [x] Modernized build system
+
+## How to Contribute
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
