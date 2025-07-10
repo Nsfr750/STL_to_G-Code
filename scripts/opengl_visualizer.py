@@ -1,7 +1,12 @@
 import numpy as np
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-from PyQt6.QtGui import QSurfaceFormat, QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, QOpenGLVertexArrayObject, QVector3D, QMatrix4x4, QVector4D, QOpenGLVersionProfile, QOpenGLContext
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtOpenGL import (
+    QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, 
+    QOpenGLVertexArrayObject, QOpenGLVersionProfile, QOpenGLContext,
+    QOpenGLFunctions_3_3_Core
+)
+from PyQt6.QtGui import QSurfaceFormat, QVector3D, QMatrix4x4, QVector4D
+from PyQt6.QtCore import Qt, QSize, QTimer, QObject, pyqtSignal
 from OpenGL import GL as gl
 import ctypes
 import logging
@@ -11,7 +16,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-class OpenGLGCodeVisualizer(QOpenGLWidget):
+class OpenGLGCodeVisualizer(QOpenGLWidget, QOpenGLFunctions_3_3_Core):
     """OpenGL-based G-code visualizer with GPU acceleration and incremental loading support."""
     
     def __init__(self, parent=None):
@@ -26,6 +31,9 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         super().__init__(parent)
         self.setFormat(fmt)
         
+        # Initialize OpenGL functions
+        self.gl = None
+        
         # Visualization settings
         self.decimation_factor = 1
         self.show_travel_moves = True
@@ -34,32 +42,16 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         self.background_color = (0.1, 0.1, 0.1, 1.0)
         
         # Camera settings
-        self.camera_distance = 200.0
-        self.camera_pitch = 30.0
+        self.camera_distance = 100.0
         self.camera_yaw = 45.0
+        self.camera_pitch = 30.0
         self.camera_target = QVector3D(0, 0, 0)
         
-        # Interaction state
-        self.last_mouse_pos = None
-        self.is_panning = False
-        self.is_rotating = False
-        
-        # Data storage
-        self.print_points = []
-        self.travel_points = []
-        self._bounds = None  # (min_x, max_x, min_y, max_y, min_z, max_z)
-        
-        # OpenGL resources
-        self.print_vao = None
-        self.print_vbo = None
-        self.travel_vao = None
-        self.travel_vbo = None
-        self.num_print_points = 0
-        self.num_travel_points = 0
-        
-        # Shader programs
+        # Shader program and buffers
         self.shader_program = None
-        self.mvp_matrix_location = None
+        self.vao = None
+        self.vbo = None
+        self.ibo = None
         
         # View matrices
         self.model_matrix = QMatrix4x4()
@@ -67,19 +59,13 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         self.projection_matrix = QMatrix4x4()
         self.mvp_matrix = QMatrix4x4()
         
-        # Animation
+        # Animation timer
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self.update)
         self.animation_timer.start(16)  # ~60 FPS
-    
-    def minimumSizeHint(self):
-        return QSize(400, 300)
-    
-    def sizeHint(self):
-        return QSize(800, 600)
-    
+
     def initializeGL(self):
-        """Initialize OpenGL resources."""
+        """Initialize OpenGL context."""
         try:
             # Initialize OpenGL functions
             self.gl = self.context().versionFunctions()
@@ -89,23 +75,25 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
             self.gl.initializeOpenGLFunctions()
             
             # Set up OpenGL state
-            gl.glEnable(gl.GL_DEPTH_TEST)
-            gl.glEnable(gl.GL_MULTISAMPLE)
-            gl.glEnable(gl.GL_BLEND)
-            gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-            gl.glClearColor(*self.background_color)
+            self.gl.glEnable(gl.GL_DEPTH_TEST)
+            self.gl.glEnable(gl.GL_MULTISAMPLE)
+            self.gl.glEnable(gl.GL_BLEND)
+            self.gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+            self.gl.glClearColor(*self.background_color)
             
             # Initialize shaders
-            self.init_shaders()
+            self._init_shaders()
             
             # Set up initial view
+            self.resizeGL(self.width(), self.height())
             self.update_view()
             
         except Exception as e:
             logger.error(f"Error initializing OpenGL: {e}", exc_info=True)
-    
-    def init_shaders(self):
-        """Initialize the shader program."""
+            raise
+
+    def _init_shaders(self):
+        """Initialize shader programs."""
         try:
             # Create shader program
             self.shader_program = QOpenGLShaderProgram()
@@ -116,9 +104,12 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
                 """
                 #version 330 core
                 layout(location = 0) in vec3 position;
+                layout(location = 1) in vec3 color;
+                
                 uniform mat4 mvp_matrix;
-                uniform vec4 color;
-                out vec4 frag_color;
+                
+                out vec3 frag_color;
+                
                 void main() {
                     gl_Position = mvp_matrix * vec4(position, 1.0);
                     frag_color = color;
@@ -133,10 +124,11 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
                 QOpenGLShader.Fragment,
                 """
                 #version 330 core
-                in vec4 frag_color;
+                in vec3 frag_color;
                 out vec4 final_color;
+                
                 void main() {
-                    final_color = frag_color;
+                    final_color = vec4(frag_color, 1.0);
                 }
                 """
             ):
@@ -148,30 +140,123 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
                 raise RuntimeError("Shader program linking failed: " + 
                                 self.shader_program.log())
             
-            # Get uniform locations
-            self.mvp_matrix_location = self.shader_program.uniformLocation("mvp_matrix")
-            self.color_location = self.shader_program.uniformLocation("color")
-            
         except Exception as e:
             logger.error(f"Error initializing shaders: {e}", exc_info=True)
             raise
-    
+
     def resizeGL(self, w, h):
         """Handle window resize events."""
         try:
+            if h == 0:
+                h = 1
+                
             # Update viewport
-            gl.glViewport(0, 0, w, h)
+            self.gl.glViewport(0, 0, w, h)
             
             # Update projection matrix
             self.projection_matrix.setToIdentity()
-            aspect = w / h if h > 0 else 1.0
-            self.projection_matrix.perspective(45.0, aspect, 1.0, 10000.0)
-            
-            self.update_view()
+            aspect_ratio = w / h
+            self.projection_matrix.perspective(45.0, aspect_ratio, 0.1, 1000.0)
             
         except Exception as e:
             logger.error(f"Error in resizeGL: {e}", exc_info=True)
+
+    def paintGL(self):
+        """Render the scene."""
+        try:
+            # Clear the screen and depth buffer
+            self.gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            
+            # Bind shader program
+            if not self.shader_program or not self.shader_program.bind():
+                logger.warning("Failed to bind shader program")
+                return
+            
+            # Update MVP matrix
+            self.update_view()
+            self.shader_program.setUniformValue("mvp_matrix", self.mvp_matrix)
+            
+            # Draw your scene here
+            # Example: self._draw_axis()
+            
+            # Release shader program
+            self.shader_program.release()
+            
+        except Exception as e:
+            logger.error(f"Error in paintGL: {e}", exc_info=True)
+
+    def update_view(self):
+        """Update the view matrices."""
+        try:
+            # Reset view matrix
+            self.view_matrix.setToIdentity()
+            
+            # Calculate camera position
+            rad_yaw = np.radians(self.camera_yaw)
+            rad_pitch = np.radians(self.camera_pitch)
+            
+            # Calculate camera position in spherical coordinates
+            x = (self.camera_distance * np.cos(rad_pitch) * 
+                 np.cos(rad_yaw))
+            y = (self.camera_distance * np.cos(rad_pitch) * 
+                 np.sin(rad_yaw))
+            z = self.camera_distance * np.sin(rad_pitch)
+            
+            # Apply camera position and target
+            eye = QVector3D(x, y, z) + self.camera_target
+            up = QVector3D(0, 0, 1)  # Z is up in our coordinate system
+            
+            # Set up the view matrix
+            self.view_matrix.lookAt(eye, self.camera_target, up)
+            
+            # Update MVP matrix
+            self.mvp_matrix = self.projection_matrix * self.view_matrix * self.model_matrix
+            
+        except Exception as e:
+            logger.error(f"Error updating view: {e}", exc_info=True)
+
+    def clear_scene(self):
+        """Clear the current scene."""
+        try:
+            # Clear any existing geometry
+            self.makeCurrent()
+            
+            # Delete any existing buffers
+            if hasattr(self, 'vbo') and self.vbo:
+                self.vbo.destroy()
+                self.vbo = None
+                
+            if hasattr(self, 'ibo') and self.ibo:
+                self.ibo.destroy()
+                self.ibo = None
+                
+            if hasattr(self, 'vao') and self.vao:
+                self.vao.destroy()
+                self.vao = None
+                
+            self.update()
+            
+        except Exception as e:
+            logger.error(f"Error clearing scene: {e}", exc_info=True)
+
+    def fit_to_view(self):
+        """Fit the view to the current geometry."""
+        # Reset camera position and orientation
+        self.camera_distance = 100.0
+        self.camera_yaw = 45.0
+        self.camera_pitch = 30.0
+        self.camera_target = QVector3D(0, 0, 0)
+        
+        # Update the view
+        self.update_view()
+        self.update()
+
+    def minimumSizeHint(self):
+        return QSize(400, 300)
     
+    def sizeHint(self):
+        return QSize(800, 600)
+
     def clear(self):
         """Clear all loaded G-code data."""
         self.print_points = []
@@ -343,58 +428,6 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
         
         self.doneCurrent()
     
-    def paintGL(self):
-        """Render the G-code visualization."""
-        try:
-            # Clear the screen and depth buffer
-            gl.glClearColor(*self.background_color)
-            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-            
-            # Set up the viewport
-            gl.glViewport(0, 0, self.width(), self.height())
-            
-            # Enable depth testing
-            gl.glEnable(gl.GL_DEPTH_TEST)
-            gl.glDepthFunc(gl.GL_LEQUAL)
-            
-            # Enable line smoothing
-            gl.glEnable(gl.GL_LINE_SMOOTH)
-            gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
-            gl.glEnable(gl.GL_BLEND)
-            gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-            
-            # Set up the shader program
-            self.shader_program.bind()
-            
-            # Update the model-view-projection matrix
-            self.update_view()
-            self.shader_program.setUniformValue(self.mvp_matrix_location, self.mvp_matrix)
-            
-            # Draw print moves (blue)
-            if self.num_print_points > 0:
-                self.shader_program.setUniformValue("color", QVector4D(0.0, 0.5, 1.0, 0.8))  # Blue
-                gl.glLineWidth(self.line_width * 1.5)
-                self.print_vao.bind()
-                gl.glDrawArrays(gl.GL_LINES, 0, self.num_print_points)
-                self.print_vao.release()
-            
-            # Draw travel moves (red)
-            if self.show_travel_moves and self.num_travel_points > 0:
-                self.shader_program.setUniformValue("color", QVector4D(1.0, 0.2, 0.2, 0.5))  # Red
-                gl.glLineWidth(self.line_width)
-                gl.glEnable(gl.GL_LINE_STIPPLE)
-                gl.glLineStipple(2, 0xAAAA)
-                self.travel_vao.bind()
-                gl.glDrawArrays(gl.GL_LINES, 0, self.num_travel_points)
-                self.travel_vao.release()
-                gl.glDisable(gl.GL_LINE_STIPPLE)
-            
-            # Release the shader program
-            self.shader_program.release()
-            
-        except Exception as e:
-            logger.error(f"Error in paintGL: {e}", exc_info=True)
-    
     def _parse_gcode(self, gcode: str) -> List[Dict[str, Any]]:
         """Parse G-code into a list of commands with coordinates."""
         commands = []
@@ -441,36 +474,6 @@ class OpenGLGCodeVisualizer(QOpenGLWidget):
                 pass
         
         return commands
-    
-    def update_view(self):
-        """Update the view and projection matrices."""
-        try:
-            # Reset view matrix
-            self.view_matrix.setToIdentity()
-            
-            # Calculate camera position
-            rad_yaw = np.radians(self.camera_yaw)
-            rad_pitch = np.radians(self.camera_pitch)
-            
-            # Calculate camera position in spherical coordinates
-            x = (self.camera_distance * np.cos(rad_pitch) * 
-                 np.cos(rad_yaw))
-            y = (self.camera_distance * np.cos(rad_pitch) * 
-                 np.sin(rad_yaw))
-            z = self.camera_distance * np.sin(rad_pitch)
-            
-            # Apply camera position and target
-            eye = QVector3D(x, y, z) + self.camera_target
-            up = QVector3D(0, 0, 1)  # Z is up in our coordinate system
-            
-            # Set up the view matrix
-            self.view_matrix.lookAt(eye, self.camera_target, up)
-            
-            # Update MVP matrix
-            self.mvp_matrix = self.projection_matrix * self.view_matrix * self.model_matrix
-            
-        except Exception as e:
-            logger.error(f"Error updating view: {e}", exc_info=True)
     
     def wheelEvent(self, event):
         """Handle mouse wheel events for zooming."""

@@ -34,11 +34,20 @@ from scripts.gcode_editor import GCodeEditorWidget
 from scripts.gcode_validator import PrinterLimits
 
 try:
+    # Try importing from QtOpenGLWidgets first (PyQt6 >= 6.2.0)
+    from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+    from PyQt6.QtOpenGL import QOpenGLContext, QOpenGLVersionProfile
     from scripts.opengl_visualizer import OpenGLGCodeVisualizer
     OPENGL_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"OpenGL visualization not available: {e}")
-    OPENGL_AVAILABLE = False
+except (ImportError, AttributeError) as e:
+    try:
+        # Fall back to QtOpenGL for older versions
+        from PyQt6.QtOpenGL import QOpenGLWidget, QOpenGLContext, QOpenGLVersionProfile
+        from scripts.opengl_visualizer import OpenGLGCodeVisualizer
+        OPENGL_AVAILABLE = True
+    except (ImportError, AttributeError) as e:
+        logging.warning(f"OpenGL visualization not available: {e}")
+        OPENGL_AVAILABLE = False
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -530,8 +539,14 @@ class STLToGCodeApp(QMainWindow):
         self.loading_queue = []
         self.is_loading = False
         self.loading_timer.stop()
-        self.ax.clear()
-        self.canvas.draw()
+        
+        # Only clear the visualization if it's been initialized
+        if hasattr(self, 'ax') and hasattr(self, 'canvas'):
+            try:
+                self.ax.clear()
+                self.canvas.draw()
+            except Exception as e:
+                logging.warning(f"Error resetting visualization: {str(e)}")
     
     def _start_progressive_loading(self):
         """Start the progressive loading process in a background thread."""
@@ -721,9 +736,13 @@ class STLToGCodeApp(QMainWindow):
             # Import the settings dialog here to avoid circular imports
             from scripts.settings_dialog import SettingsDialog
             
-            # Create and show the settings dialog
-            dialog = SettingsDialog(self, self.settings)
-            if dialog.exec() == SettingsDialog.DialogCode.Accepted:
+            # Initialize settings if not already set
+            if not hasattr(self, 'settings') or not self.settings:
+                self.settings = {}
+            
+            # Create and show the settings dialog with settings as first argument
+            dialog = SettingsDialog(settings=self.settings, parent=self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
                 # Save the settings
                 self.settings = dialog.get_settings()
                 self.statusBar().showMessage("Settings saved", 3000)
@@ -1309,54 +1328,60 @@ class STLToGCodeApp(QMainWindow):
     def _update_visualization(self):
         """Update the 3D visualization based on current settings."""
         try:
-            if not hasattr(self, 'visualization_view') or not self.visualization_view:
-                logging.warning("Visualization view not initialized"
-                               " - skipping visualization update")
+            # Check if we have the required matplotlib components
+            if not hasattr(self, 'ax') or not hasattr(self, 'canvas') or not hasattr(self, 'figure'):
+                logging.warning("Matplotlib components not initialized - skipping visualization update")
                 return
             
             # Clear previous visualization
-            self.visualization_view.clear_scene()
+            self.ax.clear()
             
-            # Check if we have an STL mesh to visualize
-            if not hasattr(self, 'stl_mesh') or self.stl_mesh is None:
-                logging.debug("No STL mesh to visualize")
+            # Check if we have vertices and faces to visualize
+            if not hasattr(self, 'current_vertices') or len(self.current_vertices) == 0:
+                logging.debug("No vertices to visualize")
+                self.canvas.draw()
                 return
             
-            # Get visualization settings
-            show_wireframe = getattr(self, 'show_wireframe_checkbox', 
-                                  QCheckBox()).isChecked()
-            show_normals = getattr(self, 'show_normals_checkbox', 
-                                QCheckBox()).isChecked()
-            show_travel = getattr(self, 'show_travel_moves', 
-                               QCheckBox()).isChecked()
+            # Get vertices and faces
+            vertices = self.current_vertices
+            faces = self.current_faces if hasattr(self, 'current_faces') else []
             
-            # Update visualization based on settings
-            try:
-                # Add the STL mesh to the visualization
-                self.visualization_view.add_stl_mesh(
-                    self.stl_mesh,
-                    wireframe=show_wireframe,
-                    show_normals=show_normals
-                )
+            # Plot the mesh
+            if len(faces) > 0:
+                # Create a Poly3DCollection from the faces
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
                 
-                # Add G-code paths if available
-                if hasattr(self, 'gcode_paths') and self.gcode_paths:
-                    self.visualization_view.add_gcode_paths(
-                        self.gcode_paths,
-                        show_travel=show_travel
-                    )
+                # Convert vertices to the format expected by Poly3DCollection
+                verts = vertices[faces]
                 
-                # Update the camera to fit the scene
-                self.visualization_view.fit_to_view()
+                # Create the 3D polygon collection
+                mesh = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
+                mesh.set_facecolor([0.8, 0.8, 1.0])  # Light blue
+                self.ax.add_collection3d(mesh)
                 
-                logging.info("Visualization updated successfully")
+                # Auto-scale the axes
+                min_vals = vertices.min(axis=0)
+                max_vals = vertices.max(axis=0)
+                center = (min_vals + max_vals) / 2
+                max_range = (max_vals - min_vals).max() / 2
                 
-            except Exception as e:
-                error_msg = f"Error updating visualization: {str(e)}"
-                logging.error(error_msg, exc_info=True)
-                self.statusBar().showMessage(
-                    "Error updating visualization", 5000)
-        
+                self.ax.set_xlim(center[0] - max_range, center[0] + max_range)
+                self.ax.set_ylim(center[1] - max_range, center[1] + max_range)
+                self.ax.set_zlim(center[2] - max_range, center[2] + max_range)
+                
+                # Set labels
+                self.ax.set_xlabel('X')
+                self.ax.set_ylabel('Y')
+                self.ax.set_zlabel('Z')
+                
+                # Set title
+                if hasattr(self, 'current_file'):
+                    self.ax.set_title(f'STL: {self.current_file}')
+                
+                # Redraw the canvas
+                self.canvas.draw()
+                logging.info("STL visualization updated successfully")
+                
         except Exception as e:
             error_msg = f"Error in _update_visualization: {str(e)}"
             logging.error(error_msg, exc_info=True)
@@ -1366,15 +1391,17 @@ class STLToGCodeApp(QMainWindow):
     def _reset_visualization_view(self):
         """Reset the 3D visualization view to default settings."""
         try:
-            if not hasattr(self, 'visualization_view') or not self.visualization_view:
-                logging.warning("Visualization view not initialized - cannot reset")
+            if not hasattr(self, 'ax') or not hasattr(self, 'canvas') or not hasattr(self, 'figure'):
+                logging.warning("Matplotlib components not initialized - cannot reset")
                 return
             
             # Reset camera to default position and orientation
-            self.visualization_view.reset_camera()
+            self.ax.clear()
             
             # Reset zoom level to fit the model
-            self.visualization_view.fit_to_view()
+            self.ax.set_xlim(-100, 100)
+            self.ax.set_ylim(-100, 100)
+            self.ax.set_zlim(-100, 100)
             
             # Reset visualization settings to defaults
             if hasattr(self, 'show_wireframe_checkbox'):

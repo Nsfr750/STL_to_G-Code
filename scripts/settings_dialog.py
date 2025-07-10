@@ -6,7 +6,7 @@ This module provides a settings dialog for configuring optimization parameters.
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
-                            QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit)
+                            QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit, QWidget, QComboBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class SettingsDialog(QDialog):
