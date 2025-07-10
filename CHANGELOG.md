@@ -120,7 +120,7 @@ All notable changes to this project will be documented in this file. This projec
 - Custom scripts may need updates to work with the new API
 
 ### Contributors
-- [Your Name] - Main developer
+- Nsfr750 - Main developer
 - [Other Contributors] - For their valuable contributions
 
 ### Dependencies

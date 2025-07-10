@@ -2,173 +2,169 @@
 
 Before running the STL to GCode Converter, ensure that you have the following installed:
 
+
 ## System Requirements
+
 
 ### 🖥️ Hardware Requirements
 
+
 #### Minimum
+
 - **CPU**: Dual-core processor (2.0 GHz or faster)
 - **RAM**: 4 GB
-- **GPU**: Integrated graphics with OpenGL 2.0 support
-- **Storage**: 500 MB free space
+- **GPU**: Integrated graphics with OpenGL 3.3+ support
+- **Storage**: 1 GB free space
 - **Display**: 1280x720 resolution
 
+
 #### Recommended
+
 - **CPU**: Quad-core processor (3.0 GHz or faster)
 - **RAM**: 8 GB or more
-- **GPU**: Dedicated graphics card with OpenGL 3.3+ support
-- **Storage**: 1 GB free space (SSD recommended)
-- **Display**: 1920x1080 resolution or higher
+- **GPU**: Dedicated graphics card with OpenGL 4.5+ support (NVIDIA/AMD)
+- **Storage**: 2 GB free space (SSD recommended)
+- **Display**: 1920x1080 resolution or higher with 100% scaling
+
 
 ### 💻 Software Requirements
 
+
 #### Operating Systems
+
 - **Windows**: 10 or later (64-bit)
-- **macOS**: 10.15 (Catalina) or later
-- **Linux**: Ubuntu 20.04 LTS or later, Fedora 32+, or other modern distributions
-  - Requires X11 or Wayland with OpenGL support
+- **macOS**: 11.0 (Big Sur) or later (Apple Silicon or Intel)
+- **Linux**: Ubuntu 22.04 LTS or later, Fedora 36+, or other modern distributions
+  - Requires X11 or Wayland with OpenGL 3.3+ support
   - May require additional system packages (see below)
 
+
 #### Python Requirements
+
 - **Python**: 3.8 or later (3.10+ recommended)
-- **pip**: Latest version
+- **pip**: 22.0 or later
+- **Git**: For development and version control
+
 
 ## Required Python Libraries
 
-Install the required libraries using pip:
+
+### Core Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Or install the core dependencies manually:
+
+### Main Dependencies
+
+- **PyQt6**: Modern GUI framework
+- **numpy**: Numerical computing
+- **numpy-stl**: STL file processing
+- **matplotlib**: 3D visualization
+- **trimesh**: Advanced 3D mesh processing
+- **Pillow**: Image processing
+- **requests**: HTTP requests
+- **QScintilla**: Advanced text editor component
+- **PyOpenGL**: 3D rendering acceleration
+- **pyqt6-tools**: Additional Qt tools (development only)
+
+
+### Optional Dependencies
+
+- **PyQt6-Qt6**: Qt6 runtime (for standalone packaging)
+- **PyQt6-sip**: Required for some PyQt6 functionality
+- **pyinstaller**: For creating standalone executables
+
+
+## Linux-Specific Requirements
+
+
+### Ubuntu/Debian
 
 ```bash
-pip install numpy-stl matplotlib numpy-stl trimesh pillow requests PyQt6
+sudo apt-get update
+sudo apt-get install -y \
+    python3-dev \
+    python3-pip \
+    build-essential \
+    libgl1-mesa-glx \
+    libxcb-xinerama0 \
+    libxkbcommon-x11-0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-xinerama0 \
+    libxcb-xinput0 \
+    libxcb-xkb1 \
+    libxkbcommon-x11-0 \
+    libxkbcommon-x11-dev
 ```
 
-## Installation Instructions
 
-### 1. Install System Dependencies
+### Fedora
 
-#### Windows
-- Install the latest Windows updates
-- Install [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-
-#### macOS
-- Install Xcode Command Line Tools:
-  ```bash
-  xcode-select --install
-  ```
-- Install Homebrew (if not already installed):
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-
-#### Linux (Ubuntu/Debian)
 ```bash
-sudo apt update
-sudo apt install -y python3-pip python3-venv libgl1-mesa-glx
+sudo dnf install -y \
+    python3-devel \
+    python3-pip \
+    @development-tools \
+    mesa-libGL \
+    libxcb \
+    libxkbcommon-x11 \
+    libxkbcommon-x11-devel
 ```
 
-### 2. Set Up Python Environment
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Nsfr750/stl_to_gcode.git
-   cd stl_to_gcode
-   ```
+## Windows Specific Notes
 
-2. Create and activate a virtual environment:
-   ```bash
-   # Windows
-   python -m venv venv
-   .\venv\Scripts\activate
-   
-   # macOS/Linux
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+- Ensure you have the latest graphics drivers installed
+- On systems with both integrated and dedicated GPUs, ensure the application uses the dedicated GPU
+- For best performance, add the application to your GPU's high-performance applications list
 
-3. Upgrade pip and setuptools:
-   ```bash
-   pip install --upgrade pip setuptools wheel
-   ```
 
-4. Install the required Python packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## macOS Specific Notes
 
-## Running the Application
+- Requires Xcode Command Line Tools
+- May require additional permissions for camera/microphone access
+- For M1/M2 Macs, use native ARM64 Python for best performance
 
-1. Activate the virtual environment (if not already activated):
-   ```bash
-   # Windows
-   .\venv\Scripts\activate
-   
-   # macOS/Linux
-   source venv/bin/activate
-   ```
 
-2. Run the application:
-   ```bash
-   python main_qt.py
-   ```
+## Development Dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+
+## Verifying Installation
+
+After installation, verify all dependencies are correctly installed by running:
+
+```bash
+python -c "from PyQt6.QtCore import QT_VERSION_STR; print(f'Qt version: {QT_VERSION_STR}')"
+python -c "import numpy as np; print(f'numpy version: {np.__version__}')"
+python -c "import matplotlib; print(f'matplotlib version: {matplotlib.__version__}')"
+```
+
 
 ## Troubleshooting
 
+
 ### Common Issues
 
-#### PyQt6 Installation Issues
-```bash
-# If you encounter PyQt6 installation issues, try:
-pip install --upgrade pip
-pip install PyQt6 --no-cache-dir
-```
+1. **OpenGL Errors**: Ensure your GPU drivers are up to date
+2. **Missing Dependencies**: Check error messages and install any missing system packages
+3. **Performance Issues**: Try disabling GPU acceleration in settings if experiencing performance problems
+4. **Display Issues**: If UI elements appear incorrectly, try running with the `-style=Fusion` flag
 
-#### Missing OpenGL Support
-- On Linux, install the appropriate OpenGL libraries:
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install -y libgl1-mesa-glx libxcb-xinerama0
-  
-  # Fedora
-  sudo dnf install -y mesa-libGL libxcb xcb-util
-  ```
 
-#### High DPI Display Issues
-If the UI appears too small on high DPI displays, set the following environment variable before launching:
-```bash
-# Windows
-set QT_SCALE_FACTOR=1.5
+### Getting Help
 
-# macOS/Linux
-export QT_SCALE_FACTOR=1.5
+If you encounter any issues, please:
 
-# Then run the application
-python main_qt.py
-```
-
-## Additional Notes
-
-- For development, install the development dependencies:
-  ```bash
-  pip install -r requirements-dev.txt
-  ```
-
-- To build a standalone executable, install PyInstaller:
-  ```bash
-  pip install pyinstaller
-  pyinstaller --onefile --windowed --icon=assets/icon.ico main_qt.py
-  ```
-
-- For optimal performance with large STL files, ensure you have sufficient RAM and consider using an SSD.
-
-- For issues with STL visualization, ensure that your `matplotlib` version is up to date (`>=3.7.0`).
-- If you encounter any issues with the STL library, ensure you have the correct package installed:
-  ```bash
-  pip uninstall stl  # If installed
-  pip install numpy-stl  # Install the correct package
-  ```
-- If the application fails to open, verify that you have installed all the required libraries.
+1. Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+2. Search the [GitHub Issues](https://github.com/yourusername/STL_to_G-Code/issues)
+3. Open a new issue if your problem hasn't been reported

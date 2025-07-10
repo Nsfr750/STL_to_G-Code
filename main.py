@@ -8,7 +8,7 @@ from pathlib import Path
 import datetime
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -74,12 +74,6 @@ class STLToGCodeApp(QMainWindow):
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
-        # Set up the UI
-        self._setup_ui()
-        
-        # Set up logging
-        self._setup_logging()
-        
         # Set window properties
         self.setWindowTitle(f"STL to GCode Converter v{__version__}")
         self.setGeometry(100, 100, 1200, 800)
@@ -111,19 +105,23 @@ class STLToGCodeApp(QMainWindow):
         self.gcode_update_timer = QTimer()
         self.gcode_update_timer.timeout.connect(self._process_gcode_buffer)
         
-        # Initialize the UI
-        self._init_ui()
+        # Set default printer limits (in mm) - must be before _setup_ui()
+        self.printer_limits = {
+            'x_min': 0,
+            'x_max': 400,  # 400mm X-axis
+            'y_min': 0,
+            'y_max': 400,  # 400mm Y-axis
+            'z_min': 0,
+            'z_max': 400,  # 400mm Z-axis
+            'feedrate': 3000,  # mm/min
+            'travel_feedrate': 4800  # mm/min
+        }
+        
+        # Initialize UI components
+        self._setup_ui()
         
         # Show the window
         self.show()
-        
-        # Add default printer limits
-        self.printer_limits = PrinterLimits(
-            max_x=200, max_y=200, max_z=200,
-            max_feedrate=300, max_acceleration=3000,
-            max_temperature=300, min_extrusion_temp=170,
-            max_fan_speed=255
-        )
         
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
@@ -151,12 +149,12 @@ class STLToGCodeApp(QMainWindow):
         left_layout.addWidget(self.open_button)
         
         # Add infill optimization controls
-        infill_group, infill_layout = self.ui.create_frame(left_panel, "vertical")
+        infill_group, inffill_layout = self.ui.create_frame(left_panel, "vertical")
         
         # Add a title label for the infill settings group
         infill_title = QLabel("<b>Infill Settings</b>")
         infill_title.setStyleSheet("color: #64B5F6; margin-bottom: 5px;")
-        infill_layout.addWidget(infill_title)
+        inffill_layout.addWidget(infill_title)
         
         # Enable optimized infill checkbox
         self.optimize_infill_checkbox = self.ui.create_checkbox(
@@ -165,7 +163,7 @@ class STLToGCodeApp(QMainWindow):
             tooltip="Enable A* path planning for optimized infill patterns"
         )
         self.optimize_infill_checkbox.setChecked(True)
-        infill_layout.addWidget(self.optimize_infill_checkbox)
+        inffill_layout.addWidget(self.optimize_infill_checkbox)
         
         # Infill resolution spinbox
         res_layout = QHBoxLayout()
@@ -180,7 +178,7 @@ class STLToGCodeApp(QMainWindow):
             tooltip="Grid resolution for infill path optimization (smaller = more precise but slower)"
         )
         res_layout.addWidget(self.infill_resolution_spin)
-        infill_layout.addLayout(res_layout)
+        inffill_layout.addLayout(res_layout)
         
         left_layout.addWidget(infill_group)
         
@@ -481,24 +479,21 @@ class STLToGCodeApp(QMainWindow):
         """Open an STL file and load it into the viewer with progressive loading."""
         if file_path is None:
             file_path, _ = QFileDialog.getOpenFileName(
-                self, "Open STL File", "", "STL Files (*.stl);;All Files (*)"
-            )
+                self, "Open STL File", "", "STL Files (*.stl);;All Files (*)")
             
         if not file_path:
+            logging.debug("No file selected")
             return
             
         try:
-            # Reset loading state
+            logging.info(f"Opening file: {file_path}")
             self._reset_loading_state()
             self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
             QApplication.processEvents()
             
             # Initialize the STL processor
-            self.current_stl_processor = load_stl(file_path)
-            mesh_info = self.current_stl_processor.get_mesh_info()
-            
-            # Update UI with mesh info
-            self.update_mesh_info(mesh_info)
+            logging.debug("Initializing STL processor")
+            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path)
             
             # Enable UI elements
             self.ui.convert_button.setEnabled(True)
@@ -513,9 +508,11 @@ class STLToGCodeApp(QMainWindow):
             self.add_to_recent_files(file_path)
             
             # Start progressive loading
+            logging.debug("Starting progressive loading")
             self._start_progressive_loading()
             
         except Exception as e:
+            logging.error(f"Error opening file: {str(e)}", exc_info=True)
             self._handle_loading_error(e, file_path)
     
     def _reset_loading_state(self):
@@ -545,7 +542,6 @@ class STLToGCodeApp(QMainWindow):
         self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.progress_dialog.setMinimumDuration(0)
-        self.progress_dialog.canceled.connect(self._cancel_loading)
         
         # Start loading in a separate thread
         self.loading_thread = QThread()
@@ -568,1151 +564,844 @@ class STLToGCodeApp(QMainWindow):
     def _process_loading_queue(self):
         """Process the loading queue to update the 3D view."""
         if not self.loading_queue:
+            logging.debug("No chunks in queue to process")
             return
             
-        # Process chunks in the queue
-        while self.loading_queue:
-            chunk = self.loading_queue.pop(0)
-            self._process_chunk(chunk)
+        logging.debug(f"Processing {len(self.loading_queue)} chunks from queue")
+        try:
+            # Process chunks in the queue
+            while self.loading_queue:
+                chunk = self.loading_queue.pop(0)
+                self._process_chunk(chunk)
+                
+            # Update the 3D view
+            logging.debug("Updating 3D view")
+            self._update_visualization()
             
-        # Update the 3D view
-        self._update_3d_view()
-    
+        except Exception as e:
+            logging.error(f"Error processing loading queue: {str(e)}", exc_info=True)
+
+    def _on_chunk_loaded(self, chunk_data):
+        """Handle a new chunk of STL data."""
+        try:
+            logging.debug(f"Chunk received: {len(chunk_data.get('vertices', []))} vertices, "
+                       f"{len(chunk_data.get('faces', []))} faces")
+            self.loading_queue.append(chunk_data)
+            logging.debug(f"Queue size: {len(self.loading_queue)}")
+        except Exception as e:
+            logging.error(f"Error handling chunk: {str(e)}", exc_info=True)
+
     def _process_chunk(self, chunk_data):
         """Process a single chunk of STL data."""
         if not chunk_data or 'vertices' not in chunk_data:
-            return
-            
-        # Update progress
-        if 'progress' in chunk_data:
-            self.loading_progress = chunk_data['progress']
-            if hasattr(self, 'progress_dialog'):
-                self.progress_dialog.setValue(self.loading_progress)
-        
-        # Update mesh data
-        if len(chunk_data['vertices']) > 0:
-            if len(self.current_vertices) == 0:
-                self.current_vertices = chunk_data['vertices']
-                self.current_faces = chunk_data['faces']
-            else:
-                vertex_offset = len(self.current_vertices)
-                self.current_vertices = np.vstack((self.current_vertices, chunk_data['vertices']))
-                
-                # Update face indices with the correct offset
-                new_faces = chunk_data['faces'] + vertex_offset
-                self.current_faces = np.vstack((self.current_faces, new_faces))
-    
-    def _update_3d_view(self):
-        """Update the 3D view with the current mesh data."""
-        if len(self.current_vertices) == 0:
+            logging.warning("Received empty or invalid chunk data")
             return
             
         try:
-            self.ax.clear()
+            # Update progress
+            if 'progress' in chunk_data:
+                self.loading_progress = chunk_data['progress']
+                if hasattr(self, 'progress_dialog'):
+                    self.progress_dialog.setValue(self.loading_progress)
             
-            # Only show a subset of triangles for better performance
-            if len(self.current_faces) > 50000:
-                # For large meshes, show a simplified version
-                step = max(1, len(self.current_faces) // 10000)
-                faces = self.current_faces[::step]
-                self.ax.add_collection3d(art3d.Poly3DCollection(
-                    self.current_vertices[faces],
-                    alpha=0.5,
-                    linewidths=0.1,
-                    edgecolor='#666666'
-                ))
-            else:
-                # For smaller meshes, show all triangles
-                self.ax.add_collection3d(art3d.Poly3DCollection(
-                    self.current_vertices[self.current_faces],
-                    alpha=0.5,
-                    linewidths=0.5,
-                    edgecolor='#666666'
-                ))
-            
-            # Auto-scale the plot
-            scale = self.current_vertices.flatten()
-            self.ax.auto_scale_xyz(scale, scale, scale)
-            
-            # Set labels and title
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
-            self.ax.set_zlabel('Z')
-            self.ax.set_title('3D View - ' + self.current_file)
-            
-            # Redraw the canvas
-            self.canvas.draw()
-            
+            # Update mesh data
+            if len(chunk_data['vertices']) > 0:
+                logging.debug(f"Processing chunk with {len(chunk_data['vertices'])} vertices, "
+                           f"{len(chunk_data['faces'])} faces")
+                if len(self.current_vertices) == 0:
+                    self.current_vertices = chunk_data['vertices']
+                    self.current_faces = chunk_data['faces']
+                    logging.debug("Initialized vertex and face arrays")
+                else:
+                    vertex_offset = len(self.current_vertices)
+                    logging.debug(f"Appending to existing arrays. Current vertices: {vertex_offset}")
+                    self.current_vertices = np.vstack((self.current_vertices, chunk_data['vertices']))
+                    
+                    # Update face indices with the correct offset
+                    new_faces = chunk_data['faces'] + vertex_offset
+                    self.current_faces = np.vstack((self.current_faces, new_faces))
+                    logging.debug(f"Updated arrays. Total vertices: {len(self.current_vertices)}, "
+                               f"Total faces: {len(self.current_faces)}")
         except Exception as e:
-            logger.error(f"Error updating 3D view: {e}")
-    
-    def _on_chunk_loaded(self, chunk_data):
-        """Handle a new chunk of STL data."""
-        self.loading_queue.append(chunk_data)
-    
+            logging.error(f"Error processing chunk: {str(e)}", exc_info=True)
+            raise
+
     def _on_loading_finished(self):
         """Handle completion of the loading process."""
+        logging.info("Loading finished")
         self.loading_timer.stop()
         self.is_loading = False
-        
-        # Process any remaining chunks
-        while self.loading_queue:
-            chunk = self.loading_queue.pop(0)
-            self._process_chunk(chunk)
-        
-        # Final update
-        self._update_3d_view()
-        
-        # Close progress dialog
-        if hasattr(self, 'progress_dialog'):
-            self.progress_dialog.close()
-            
-        self.statusBar().showMessage(f"Loaded {self.current_file}", 5000)
-    
-    def _on_loading_error(self, error_message):
-        """Handle errors during loading."""
-        self.loading_timer.stop()
-        self.is_loading = False
-        
-        if hasattr(self, 'progress_dialog'):
-            self.progress_dialog.close()
-            
-        QMessageBox.critical(self, "Loading Error", error_message)
-        self.statusBar().showMessage("Error loading file", 5000)
-    
-    def _cancel_loading(self):
-        """Cancel the current loading operation."""
-        self.loading_timer.stop()
-        self.is_loading = False
-        
-        if hasattr(self, 'loading_worker'):
-            self.loading_worker.stop_loading()
-            
-        if hasattr(self, 'loading_thread'):
-            self.loading_thread.quit()
-            self.loading_thread.wait()
-            
-        self._reset_loading_state()
-        self.statusBar().showMessage("Loading cancelled", 3000)
-    
-    def update_mesh_info(self, mesh_info):
-        """Update the UI with mesh information."""
-        # Update mesh info in the UI
-        self.ui.mesh_info_widget.clear()
-        self.ui.mesh_info_widget.addItem(f"Triangles: {mesh_info['num_triangles']:,}")
-        
-        bounds = mesh_info['bounds']
-        self.ui.mesh_info_widget.addItem(f"Size: {bounds['size'][0]:.2f} x {bounds['size'][1]:.2f} x {bounds['size'][2]:.2f} mm")
-        self.ui.mesh_info_widget.addItem(f"Bounding Box:")
-        self.ui.mesh_info_widget.addItem(f"  Min: {bounds['min'][0]:.2f}, {bounds['min'][1]:.2f}, {bounds['min'][2]:.2f}")
-        self.ui.mesh_info_widget.addItem(f"  Max: {bounds['max'][0]:.2f}, {bounds['max'][1]:.2f}, {bounds['max'][2]:.2f}")
-        self.ui.mesh_info_widget.addItem(f"  Center: {bounds['center'][0]:.2f}, {bounds['center'][1]:.2f}, {bounds['center'][2]:.2f}")
-    
-    def update_3d_view(self, vertices, faces):
-        """Update the 3D view with the given vertices and faces."""
-        # Clear previous plot
-        self.ax.clear()
-        
-        # Create a 3D plot of the mesh
-        self.ax.add_collection3d(art3d.Poly3DCollection(vertices[faces], alpha=0.5, linewidths=0.5, edgecolor='#666666'))
-        
-        # Auto-scale the plot
-        scale = vertices.flatten()
-        self.ax.auto_scale_xyz(scale, scale, scale)
-        
-        # Set labels and title
-        self.ax.set_xlabel('X')
-        self.ax.set_ylabel('Y')
-        self.ax.set_zlabel('Z')
-        self.ax.set_title('3D View - ' + os.path.basename(self.file_path))
-        
-        # Redraw the canvas
-        self.canvas.draw()
-    
-    def convert_to_gcode(self):
-        """Convert the loaded STL to GCode with proper slicing and path planning."""
-        if not self.file_path:
-            QMessageBox.warning(self, "No File", "Please open an STL file first.")
-            return
-        
-        # Show progress
-        self.statusBar().showMessage("Converting to GCode...")
-        QApplication.processEvents()  # Update the UI
         
         try:
-            # Load the STL file
-            stl_mesh = mesh.Mesh.from_file(self.file_path)
+            # Process any remaining chunks
+            logging.debug(f"Processing remaining {len(self.loading_queue)} chunks")
+            while self.loading_queue:
+                chunk = self.loading_queue.pop(0)
+                self._process_chunk(chunk)
             
-            # Get the STL bounds for slicing
-            min_z = stl_mesh.vectors[:,:,2].min()
-            max_z = stl_mesh.vectors[:,:,2].max()
+            # Final update
+            logging.debug("Performing final 3D view update")
+            self._update_visualization()
             
-            # Get current settings
-            settings = self.get_current_settings()
-            
-            # Calculate number of layers
-            num_layers = int((max_z - min_z) / settings['layer_height']) + 1
-            
-            # Initialize G-code content
-            self.gcode_content = f"; GCode generated by STL to GCode Converter v{__version__}\n"
-            self.gcode_content += f"; Source: {os.path.basename(self.file_path)}\n"
-            self.gcode_content += f"; Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            self.gcode_content += f"; Optimizations: Arc Detection, Redundant Move Removal, Extrusion Smoothing\n\n"
-            
-            # Initial setup
-            self.gcode_content += "G21 ; Set units to millimeters\n"
-            self.gcode_content += "G90 ; Use absolute positioning\n"
-            self.gcode_content += "M82 ; Set extruder to absolute mode\n"
-            self.gcode_content += "M107 ; Start with the fan off\n"
-            
-            # Home all axes
-            self.gcode_content += "G28 ; Home all axes\n"
-            
-            # Wait for temperatures
-            self.gcode_content += f"M140 S{settings['bed_temperature']} ; Set bed temperature\n"
-            self.gcode_content += f"M190 S{settings['bed_temperature']} ; Wait for bed temperature\n"
-            self.gcode_content += f"M104 S{settings['temperature']} ; Set extruder temperature\n"
-            self.gcode_content += f"M109 S{settings['temperature']} ; Wait for extruder temperature\n\n"
-            
-            # Start printing
-            self.gcode_content += "; Start printing\n"
-            self.gcode_content += "G92 E0 ; Reset extruder position\n"
-            self.gcode_content += "G1 F1500 E-6 ; Retract filament slightly\n"
-            
-            # Initialize variables for optimization
-            last_pos = {'X': 0, 'Y': 0, 'Z': 0, 'E': 0, 'F': 0}
-            gcode_commands = []
-            
-            # Generate G-code for each layer
-            for layer_num in range(num_layers):
-                current_z = min_z + (layer_num * settings['layer_height'])
-                is_first_layer = (layer_num == 0)
+            # Close progress dialog
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.close()
                 
-                # Layer header
-                layer_comment = f"\n; Layer {layer_num} (Z={current_z:.3f}mm)"
-                if is_first_layer:
-                    layer_comment += " (first layer)"
-                gcode_commands.append(layer_comment)
-                
-                # Move to layer height
-                move_cmd = {
-                    'Z': current_z,
-                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
-                }
-                gcode_commands.append(self._format_g1_command(move_cmd, last_pos))
-                last_pos.update(move_cmd)
-                
-                # Get contours for this layer
-                contours = self._get_layer_contours(stl_mesh, current_z)
-                
-                if contours:
-                    # Optimize contour order
-                    optimized_contours = GCodeOptimizer.optimize_contour_order(contours, (last_pos['X'], last_pos['Y']))
-                    
-                    # Generate G-code for contours
-                    for contour in optimized_contours:
-                        # Add travel move to start of contour
-                        if len(contour) > 0:
-                            first_point = contour[0]
-                            move_cmd = {
-                                'X': first_point[0],
-                                'Y': first_point[1],
-                                'F': settings['travel_speed'] * 60
-                            }
-                            gcode_commands.append(self._format_g1_command(move_cmd, last_pos, is_travel=True))
-                            last_pos.update(move_cmd)
-                        
-                        # Add contour with arc detection
-                        gcode_commands.extend(
-                            self._generate_contour_gcode(
-                                contour, 
-                                settings,
-                                last_pos,
-                                is_outer=contour == optimized_contours[0],  # First contour is outer wall
-                                is_first_layer=is_first_layer
-                            )
-                        )
-                
-                # Add infill if needed
-                if settings['infill_density'] > 0 and not is_first_layer:
-                    infill_lines = self._generate_infill(stl_mesh, current_z, settings)
-                    if infill_lines:
-                        gcode_commands.append("\n; Infill")
-                        gcode_commands.extend(
-                            self._generate_infill_gcode(infill_lines, settings, last_pos)
-                        )
-            
-            # Apply post-processing optimizations
-            gcode_commands = GCodeOptimizer.optimize_gcode(gcode_commands)
-            
-            # Add footer
-            gcode_commands.extend([
-                "\n; End of G-code",
-                "M104 S0 ; Turn off extruder",
-                "M140 S0 ; Turn off bed",
-                "M107 ; Turn off fan",
-                "G1 X0 Y0 F5000 ; Move to origin",
-                "M84 ; Disable steppers"
-            ])
-            
-            # Combine all commands
-            self.gcode_content = '\n'.join(gcode_commands)
-            
-            # Enable save button
-            self.save_action.setEnabled(True)
-            self.statusBar().showMessage("G-code generation complete")
+            self.statusBar().showMessage(f"Loaded {self.current_file}", 5000)
+            logging.info(f"Successfully loaded {self.current_file}")
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate G-code: {str(e)}")
-            self.statusBar().showMessage("Error generating G-code")
-            logging.error(f"Error in convert_to_gcode: {str(e)}", exc_info=True)
-
-    # Helper methods for G-code generation
-    def _format_g1_command(self, params, last_pos, is_travel=False):
-        """Format a G1 command with only changed parameters."""
-        cmd = ["G1"]
-        for axis in ['X', 'Y', 'Z', 'E', 'F']:
-            if axis in params and (axis not in last_pos or abs(params[axis] - last_pos[axis]) > 0.0001):
-                cmd.append(f"{axis}{params[axis]:.3f}")
-        
-        # Add comment for travel moves
-        comment = "; Travel" if is_travel else ""
-        return ' '.join(cmd) + comment
-
-    def _generate_contour_gcode(self, contour, settings, last_pos, is_outer=True, is_first_layer=False):
-        """Generate G-code for a contour with arc detection."""
-        commands = []
-        current_pos = dict(last_pos)
-        
-        # Add contour start comment
-        contour_type = "Outer wall" if is_outer else "Inner wall"
-        commands.append(f"; {contour_type} - {len(contour)} points")
-        
-        # Detect arcs and generate G2/G3 commands
-        points = contour + [contour[0]]  # Close the loop
-        i = 0
-        
-        while i < len(points) - 1:
-            # Try to detect an arc starting at this point
-            arc = GCodeOptimizer.detect_arc(points[i:i+5])
-            
-            if arc and len(arc['points']) > 2:
-                # Generate arc command
-                cmd = {
-                    'X': points[i + len(arc['points']) - 1][0],
-                    'Y': points[i + len(arc['points']) - 1][1],
-                    'I': arc['center'][0] - current_pos['X'],
-                    'J': arc['center'][1] - current_pos['Y'],
-                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
-                }
-                
-                # Add extrusion
-                if not is_travel:
-                    distance = math.sqrt(
-                        (cmd['X'] - current_pos['X'])**2 + 
-                        (cmd['Y'] - current_pos['Y'])**2
-                    )
-                    extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
-                    cmd['E'] = current_pos['E'] + extrusion
-                
-                # Add arc command (G2 for CW, G3 for CCW)
-                arc_cmd = "G3" if arc['direction'] == 'ccw' else "G2"
-                cmd_str = [arc_cmd]
-                for axis in ['X', 'Y', 'I', 'J', 'E', 'F']:
-                    if axis in cmd:
-                        cmd_str.append(f"{axis}{cmd[axis]:.3f}")
-                
-                commands.append(' '.join(cmd_str))
-                current_pos.update(cmd)
-                i += len(arc['points']) - 1
-            else:
-                # No arc detected, use linear move
-                cmd = {
-                    'X': points[i+1][0],
-                    'Y': points[i+1][1],
-                    'F': settings['first_layer_speed'] * 60 if is_first_layer else settings['print_speed'] * 60
-                }
-                
-                # Add extrusion for non-travel moves
-                if not is_travel:
-                    distance = math.sqrt(
-                        (cmd['X'] - current_pos['X'])**2 + 
-                        (cmd['Y'] - current_pos['Y'])**2
-                    )
-                    extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
-                    cmd['E'] = current_pos['E'] + extrusion
-                
-                commands.append(self._format_g1_command(cmd, current_pos, is_travel=is_travel))
-                current_pos.update(cmd)
-                i += 1
-        
-        return commands
-
-    def _generate_infill(self, stl_mesh, z, settings):
-        """Generate infill lines for the current layer."""
-        # Get bounds of the model
-        min_x, min_y = stl_mesh.vectors[:,:,0].min(), stl_mesh.vectors[:,:,1].min()
-        max_x, max_y = stl_mesh.vectors[:,:,0].max(), stl_mesh.vectors[:,:,1].max()
-        bounds = (min_x, min_y, max_x, max_y)
-        
-        # Generate infill pattern
-        if settings.get('infill_optimization', True):
-            try:
-                return GCodeOptimizer.generate_optimized_infill(
-                    bounds=bounds,
-                    angle=settings['infill_angle'],
-                    spacing=settings['extrusion_width'] / settings['infill_density'],
-                    resolution=settings.get('infill_resolution', 1.0)
-                )
-            except Exception as e:
-                logging.warning(f"Optimized infill failed, falling back to basic infill: {e}")
-        
-        # Fall back to basic infill
-        return GCodeOptimizer.generate_infill_pattern(
-            bounds=bounds,
-            angle=settings['infill_angle'],
-            spacing=settings['extrusion_width'] / settings['infill_density']
-        )
-
-    def _generate_infill_gcode(self, infill_lines, settings, last_pos):
-        """Generate G-code for infill lines."""
-        commands = []
-        current_pos = dict(last_pos)
-        
-        for i, line in enumerate(infill_lines):
-            if len(line) == 4:  # Should be (x1, y1, x2, y2)
-                x1, y1, x2, y2 = line
-                
-                # Travel to start of line
-                move_cmd = {
-                    'X': x1,
-                    'Y': y1,
-                    'F': settings['travel_speed'] * 60
-                }
-                commands.append(self._format_g1_command(move_cmd, current_pos, is_travel=True))
-                current_pos.update(move_cmd)
-                
-                # Extrude to end of line
-                move_cmd = {
-                    'X': x2,
-                    'Y': y2,
-                    'F': settings['infill_speed'] * 60
-                }
-                
-                # Calculate extrusion
-                distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                extrusion = distance * settings['extrusion_width'] * settings['layer_height'] / (math.pi * (settings['filament_diameter']/2)**2)
-                move_cmd['E'] = current_pos['E'] + extrusion
-                
-                commands.append(self._format_g1_command(move_cmd, current_pos))
-                current_pos.update(move_cmd)
-        
-        return commands
+            logging.error(f"Error finalizing loading: {str(e)}", exc_info=True)
     
-    def view_gcode(self):
-        """Open the G-code viewer with the current G-code."""
-        if hasattr(self, 'gcode_content') and self.gcode_content:
-            # Create a temporary file to store the G-code
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.gcode', delete=False, mode='w') as f:
-                f.write(self.gcode_content)
-                temp_path = f.name
-            
-            # Open the G-code viewer
-            from scripts.gcode_viewer_qt import GCodeViewer
-            viewer = GCodeViewer(self)
-            viewer.display_gcode(temp_path)
-            viewer.exec()
-            
-            # Clean up the temporary file
-            try:
-                os.unlink(temp_path)
-            except Exception as e:
-                logging.warning(f"Failed to delete temporary G-code file: {e}")
-        else:
-            QMessageBox.information(self, "No G-code", "No G-code has been generated yet.")
-    
-    def save_gcode(self):
-        """Save the generated GCode to a file."""
-        if not self.file_path:
-            QMessageBox.warning(self, "No File", "No file to save.")
-            return
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save GCode",
-            f"{os.path.splitext(self.file_path)[0]}.gcode",
-            "GCode Files (*.gcode);;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                # In a real application, this would save the actual GCode
-                with open(file_path, 'w') as f:
-                    f.write("; GCode generated by STL to GCode Converter\n")
-                    f.write(f"; Source: {os.path.basename(self.file_path)}\n\n")
-                    # Add sample GCode commands
-                    f.write("G28 ; Home all axes\n")
-                    f.write("G1 Z10 F5000 ; Move up\n")
-                    # ... more GCode commands would go here
-                
-                self.statusBar().showMessage(f"Saved GCode to {os.path.basename(file_path)}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save GCode: {str(e)}")
-                self.statusBar().showMessage("Error saving file")
-    
-    def show_about(self):
-        """Show the About dialog."""
-        About.show_about(self)  # Call the static method with self as parent
-    
-    def show_sponsor(self):
-        """Show the Sponsor dialog."""
-        sponsor = Sponsor(self)
-        sponsor.show_sponsor()  # Call the show_sponsor method instead of exec()
-    
-    def check_updates(self):
-        """Check for application updates."""
-        check_for_updates(self, __version__)
-
-    def toggle_log_viewer(self, checked):
-        """Toggle the visibility of the log viewer."""
-        if checked:
-            if not self.log_viewer:
-                self.log_viewer = LogViewer(self)
-                self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_viewer)
-            self.log_viewer.show()
-        else:
-            if self.log_viewer:
-                self.log_viewer.hide()
-        
-        # Update the menu action text
-        self.toggle_log_viewer_action.setText(
-            "Hide &Log Viewer" if checked else "Show &Log Viewer"
-        )
-
-    def show_documentation(self):
-        """Show the documentation viewer."""
-        from scripts.markdown_viewer import show_documentation
-        show_documentation(self)
-
-    def show_settings(self):
-        """Show the settings dialog."""
-        from scripts.settings_dialog import SettingsDialog
-        
-        # Get current settings
-        current_settings = self.get_current_settings()
-        
-        # Create and show the settings dialog
-        dialog = SettingsDialog(current_settings, self)
-        
-        # Connect the settings_changed signal
-        dialog.settings_changed.connect(self._on_settings_changed)
-        
-        # Show the dialog
-        dialog.exec()
-    
-    def _on_settings_changed(self, settings):
-        """Handle settings changes."""
-        # Update the settings in the application
-        self.settings = settings
-        
-        # Update the UI to reflect the new settings
-        self._update_ui_from_settings()
-        
-        # Save settings to disk if needed
-        self._save_settings()
-    
-    def _update_ui_from_settings(self):
-        """Update the UI to reflect the current settings."""
-        # Update any UI elements that depend on settings
-        if hasattr(self, 'infill_density_slider'):
-            self.infill_density_slider.setValue(int(self.settings.get('infill_density', 0.2) * 100))
-        
-        if hasattr(self, 'layer_height_spin'):
-            self.layer_height_spin.setValue(self.settings.get('layer_height', 0.2))
-        
-        # Update other UI elements as needed...
-    
-    def _save_settings(self):
-        """Save settings to disk."""
-        # In a real application, you would save these to a config file
-        # For now, we'll just store them in memory
-        pass
-
-    def _start_gcode_generation(self):
-        """Start G-code generation in a background thread."""
-        if self.stl_mesh is None:
-            return
-        
-        # Clear previous G-code
-        self.gcode = ""
-        
-        # Create worker and thread
-        self.worker = GCodeGenerationWorker(self.stl_mesh, self.get_current_settings())
-        self.worker_thread = QThread()
-        
-        # Move worker to thread
-        self.worker.moveToThread(self.worker_thread)
-        
-        # Connect signals
-        self.worker.finished.connect(self._on_generation_finished)
-        self.worker.error.connect(self._on_generation_error)
-        self.worker.progress.connect(self._on_generation_progress)
-        self.worker.gcode_chunk.connect(self._on_gcode_chunk)
-        self.worker.preview_ready.connect(self._on_preview_ready)
-        
-        # Start the thread
-        self.worker_thread.started.connect(self.worker.generate)
-        self.worker_thread.finished.connect(self.worker_thread.deleteLater)
-        
-        # Update UI
-        self._update_ui_state()
-        self.ui.statusBar().showMessage("Generating G-code...")
-        
-        # Start the thread
-        self.worker_thread.start()
-    
-    def _on_generation_finished(self):
-        """Handle successful completion of G-code generation."""
-        self.worker_thread.quit()
-        self.worker_thread.wait()
-        self.worker = None
-        self.worker_thread = None
-        
-        # Update UI
-        self._update_ui_state()
-        self.ui.statusBar().showMessage("G-code generation completed", 5000)
-        
-        # Enable save and view buttons
-        self.ui.save_button.setEnabled(True)
-        self.ui.view_button.setEnabled(True)
-    
-    def _on_generation_error(self, error_msg):
-        """Handle errors during G-code generation."""
-        if self.worker_thread is not None:
-            self.worker_thread.quit()
-            self.worker_thread.wait()
-            self.worker = None
-            self.worker_thread = None
-        
-        # Show error message
-        QMessageBox.critical(self, "G-code Generation Error", 
-                            f"An error occurred during G-code generation:\n\n{error_msg}")
-        
-        # Update UI
-        self._update_ui_state()
-        self.ui.statusBar().showMessage("G-code generation failed", 5000)
-    
-    def _on_generation_progress(self, current, total):
-        """Update progress during G-code generation."""
-        self.ui.progress_bar.setMaximum(total)
-        self.ui.progress_bar.setValue(current)
-        self.ui.statusBar().showMessage(
-            f"Generating G-code... Layer {current} of {total}")
-    
-    def _on_gcode_chunk(self, chunk):
-        """Append a chunk of generated G-code to the output."""
-        self.gcode += chunk
-    
-    def _on_preview_ready(self, preview_data):
-        """Update the 3D preview with the generated paths."""
-        # This would be implemented to update the 3D view with the preview data
-        pass
-    
-    def _update_ui_state(self):
-        """Update the UI state based on current application state."""
-        # Enable/disable buttons based on state
-        has_stl = self.stl_mesh is not None
-        has_gcode = bool(self.gcode)
-        is_processing = self.worker_thread is not None
-        
-        self.ui.action_convert.setEnabled(has_stl and not is_processing)
-        self.ui.convert_button.setEnabled(has_stl and not is_processing)
-        self.ui.action_save.setEnabled(has_gcode and not is_processing)
-        self.ui.save_button.setEnabled(has_gcode and not is_processing)
-        self.ui.action_view_gcode.setEnabled(has_gcode)
-        self.ui.view_button.setEnabled(has_gcode)
-        self.ui.cancel_button.setEnabled(is_processing)
-        
-        # Update progress bar visibility
-        self.ui.progress_bar.setVisible(is_processing)
-        
-        # Disable settings during processing
-        self.ui.settings_group.setEnabled(not is_processing)
-
-    def parse_gcode_for_visualization(self, gcode_text):
-        """Parse G-code text into print and travel moves for OpenGL visualization."""
-        print_moves = []
-        travel_moves = []
-        
-        # Current position
-        current_pos = [0.0, 0.0, 0.0]
-        
-        for line in gcode_text.split('\n'):
-            line = line.split(';', 1)[0].strip()  # Remove comments
-            if not line:
-                continue
-                
-            # Handle G0/G1 commands (movement)
-            if line.startswith('G0') or line.startswith('G1'):
-                # Extract coordinates
-                x = None
-                y = None
-                z = None
-                e = None
-                
-                # Parse parameters
-                for part in line.split():
-                    if part.startswith('X'):
-                        x = float(part[1:])
-                    elif part.startswith('Y'):
-                        y = float(part[1:])
-                    elif part.startswith('Z'):
-                        z = float(part[1:])
-                    elif part.startswith('E'):
-                        e = float(part[1:])
-                
-                # Update current position
-                if x is not None:
-                    current_pos[0] = x
-                if y is not None:
-                    current_pos[1] = y
-                if z is not None:
-                    current_pos[2] = z
-                
-                # Add to appropriate list
-                if e is not None and e > 0:  # Print move (extrusion)
-                    print_moves.append((current_pos[0], current_pos[1], current_pos[2]))
-                else:  # Travel move (no extrusion)
-                    travel_moves.append((current_pos[0], current_pos[1], current_pos[2]))
-        
-        return np.array(print_moves), np.array(travel_moves)
-
-    def toggle_visualization_mode(self, use_opengl):
-        """Toggle between OpenGL and Matplotlib visualization."""
-        if not OPENGL_AVAILABLE and use_opengl:
-            QMessageBox.warning(self, "OpenGL Not Available",
-                              "OpenGL visualization is not available on this system. "
-                              "Falling back to Matplotlib visualization.")
-            self.use_opengl = False
-            return
-            
-        self.use_opengl = use_opengl
-        
-        # Update the visualization if we have G-code loaded
-        if hasattr(self, 'current_gcode') and self.current_gcode:
-            self.update_visualization(self.current_gcode)
-
-    def closeEvent(self, event):
-        """Handle window close event."""
-        # Clean up OpenGL resources if they were used
-        if hasattr(self, 'opengl_visualizer') and self.opengl_visualizer:
-            self.opengl_visualizer.cleanup()
-        
-        # Call parent close event
-        super().closeEvent(event)
-
-    def generate_gcode(self):
-        """Generate G-code from the loaded STL file."""
-        if not hasattr(self, 'stl_vertices') or not hasattr(self, 'stl_faces'):
-            QMessageBox.warning(self, 'Error', 'No STL file loaded')
-            return
-        
-        # Get settings from UI
-        settings = {
-            'layer_height': float(self.layer_height_input.text()),
-            'extrusion_width': float(self.extrusion_width_input.text()),
-            'print_speed': float(self.print_speed_input.text()),
-            'travel_speed': float(self.travel_speed_input.text()),
-            'infill_density': float(self.infill_density_input.text()),
-            'infill_pattern': self.infill_pattern_combo.currentText(),
-            'enable_retraction': self.retraction_checkbox.isChecked(),
-            'retraction_distance': float(self.retraction_distance_input.text()),
-            'retraction_speed': float(self.retraction_speed_input.text()),
-            'enable_wipe': self.wipe_checkbox.isChecked(),
-            'wipe_distance': float(self.wipe_distance_input.text()),
-            'enable_optimized_infill': self.optimized_infill_checkbox.isChecked(),
-            'infill_resolution': float(self.infill_resolution_input.text())
-        }
-        
-        # Update status
-        self.statusBar().showMessage('Generating G-code...')
-        self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(True)
-        self.cancel_button.setVisible(True)
-        
-        # Clear previous G-code
-        self.gcode_chunks = []
-        self.gcode_buffer = ""
-        
-        # Create and start the worker thread
-        self.gcode_worker = GCodeGenerationWorker(
-            self.stl_vertices,
-            self.stl_faces,
-            settings
-        )
-        
-        self.gcode_thread = QThread()
-        self.gcode_worker.moveToThread(self.gcode_thread)
-        
-        # Connect signals
-        self.gcode_worker.progress_updated.connect(self._on_gcode_progress)
-        self.gcode_worker.gcode_chunk_ready.connect(self._on_gcode_chunk)
-        self.gcode_worker.finished.connect(self._on_gcode_finished)
-        self.gcode_worker.error_occurred.connect(self._on_gcode_error)
-        
-        # Start the thread
-        self.gcode_thread.started.connect(self.gcode_worker.run)
-        self.gcode_thread.start()
-        
-        # Start the G-code processing timer
-        self.gcode_update_timer.start(100)  # Process buffer every 100ms
-    
-    def _on_gcode_chunk(self, chunk: str):
-        """Handle a new chunk of G-code from the worker thread."""
-        # Add the chunk to our buffer
-        self.gcode_buffer += chunk
-        
-        # Process the chunk with the simulator if simulation is enabled
-        if hasattr(self, 'enable_simulation') and self.enable_simulation:
-            try:
-                # Process the chunk line by line
-                for line in chunk.split('\n'):
-                    line = line.strip()
-                    if line and not line.startswith(';'):  # Skip empty lines and comments
-                        self.gcode_simulator.process_line(line)
-                
-                # Update simulation UI if needed
-                self._update_simulation_ui()
-                
-            except Exception as e:
-                logger.error(f"Error in G-code simulation: {e}", exc_info=True)
-        
-        # If buffer is large enough, process it
-        if len(self.gcode_buffer) >= self.gcode_buffer_size:
-            self._process_gcode_buffer()
-
     def _process_gcode_buffer(self):
-        """Process the buffered G-code and update the visualization."""
+        """Process the G-code buffer and update the editor."""
+        if not self.gcode_buffer:
+            return
+            
         try:
-            if not self.gcode_buffer:
-                return
-                
-            # Process the buffer with the visualizer
-            if hasattr(self, 'gcode_visualizer'):
-                self.gcode_visualizer.append_gcode(self.gcode_buffer)
+            # Get the current cursor position
+            cursor = self.gcode_editor.textCursor()
+            position = cursor.position()
             
-            # Update the G-code editor
-            if hasattr(self, 'gcode_editor'):
-                self.gcode_editor.moveCursor(QtGui.QTextCursor.End)
-                self.gcode_editor.insertPlainText(self.gcode_buffer)
-                
-                # Auto-scroll to show the latest content
-                scrollbar = self.gcode_editor.verticalScrollBar()
-                scrollbar.setValue(scrollbar.maximum())
-            
-            # Clear the buffer
+            # Append the buffered G-code to the editor
+            self.gcode_editor.moveCursor(cursor.End)
+            self.gcode_editor.insertPlainText(self.gcode_buffer)
             self.gcode_buffer = ""
             
+            # Restore the cursor position
+            cursor.setPosition(position)
+            self.gcode_editor.setTextCursor(cursor)
+            
         except Exception as e:
-            logger.error(f"Error processing G-code buffer: {e}", exc_info=True)
+            logging.error(f"Error processing G-code buffer: {str(e)}", exc_info=True)
+    
+    def save_gcode(self):
+        """Save the current G-code to a file."""
+        try:
+            if not hasattr(self, 'gcode_editor') or not self.gcode_editor.toPlainText():
+                QMessageBox.warning(self, "No G-code", "No G-code to save.")
+                return
+                
+            # Get the G-code from the editor
+            gcode = self.gcode_editor.toPlainText()
+            
+            # Get the default filename based on the STL filename if available
+            default_filename = ""
+            if hasattr(self, 'current_file') and self.current_file:
+                default_filename = os.path.splitext(self.current_file)[0] + ".gcode"
+            
+            # Open file dialog to select save location
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, 
+                "Save G-code", 
+                default_filename,
+                "G-code Files (*.gcode *.nc);;All Files (*)"
+            )
+            
+            if file_path:
+                # Ensure the file has the correct extension
+                if not file_path.lower().endswith(('.gcode', '.nc')):
+                    file_path += ".gcode"
+                
+                # Write the G-code to the file
+                with open(file_path, 'w') as f:
+                    f.write(gcode)
+                
+                self.statusBar().showMessage(f"G-code saved to {os.path.basename(file_path)}", 5000)
+                logging.info(f"G-code saved to {file_path}")
+                
+        except Exception as e:
+            error_msg = f"Error saving G-code: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+    
+    def show_settings(self):
+        """Show the application settings dialog."""
+        try:
+            # Import the settings dialog here to avoid circular imports
+            from scripts.settings_dialog import SettingsDialog
+            
+            # Create and show the settings dialog
+            dialog = SettingsDialog(self, self.settings)
+            if dialog.exec() == SettingsDialog.DialogCode.Accepted:
+                # Save the settings
+                self.settings = dialog.get_settings()
+                self.statusBar().showMessage("Settings saved", 3000)
+                logging.info("Application settings updated")
+                
+                # Apply any settings that need immediate effect
+                self._apply_settings()
+                
+        except ImportError as e:
+            error_msg = "Settings dialog not available"
+            logging.error(f"{error_msg}: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"{error_msg}. Please check the installation.")
+        except Exception as e:
+            error_msg = f"Error showing settings: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+    
+    def _apply_settings(self):
+        """Apply the current settings to the application."""
+        try:
+            # Apply theme if specified in settings
+            if 'theme' in self.settings:
+                self._apply_theme(self.settings['theme'])
+                
+            # Apply editor settings if available
+            if hasattr(self, 'gcode_editor') and 'editor' in self.settings:
+                editor_settings = self.settings['editor']
+                if 'font_size' in editor_settings:
+                    font = self.gcode_editor.font()
+                    font.setPointSize(editor_settings['font_size'])
+                    self.gcode_editor.setFont(font)
+                
+            logging.debug("Applied application settings")
+            
+        except Exception as e:
+            logging.error(f"Error applying settings: {str(e)}", exc_info=True)
+    
+    def _apply_theme(self, theme_name):
+        """Apply the specified theme to the application.
+        
+        Args:
+            theme_name: Name of the theme to apply (e.g., 'dark', 'light')
+        """
+        try:
+            # This is a basic implementation - customize as needed
+            if theme_name.lower() == 'dark':
+                self.setStyleSheet("""
+                    QMainWindow, QDialog {
+                        background-color: #2b2b2b;
+                        color: #e0e0e0;
+                    }
+                    QPushButton {
+                        background-color: #3c3f41;
+                        border: 1px solid #555555;
+                        padding: 5px;
+                        border-radius: 3px;
+                    }
+                    QPushButton:hover {
+                        background-color: #4e5254;
+                    }
+                    QPushButton:pressed {
+                        background-color: #2c2f30;
+                    }
+                """)
+            else:  # Default light theme
+                self.setStyleSheet("")
+                
+            logging.info(f"Applied theme: {theme_name}")
+            
+        except Exception as e:
+            logging.error(f"Error applying theme '{theme_name}': {str(e)}", exc_info=True)
+    
+    def toggle_log_viewer(self):
+        """Toggle the visibility of the log viewer."""
+        try:
+            if not hasattr(self, 'log_viewer') or not self.log_viewer:
+                # Create and show the log viewer if it doesn't exist
+                from scripts.log_viewer import LogViewer
+                self.log_viewer = LogViewer()
+                self.log_viewer.show()
+                self.toggle_log_viewer_action.setText("Hide Log Viewer")
+                logging.info("Log viewer opened")
+            else:
+                # Toggle visibility if it exists
+                if self.log_viewer.isVisible():
+                    self.log_viewer.hide()
+                    self.toggle_log_viewer_action.setText("Show Log Viewer")
+                    logging.debug("Log viewer hidden")
+                else:
+                    self.log_viewer.show()
+                    self.toggle_log_viewer_action.setText("Hide Log Viewer")
+                    logging.debug("Log viewer shown")
+                    
+        except ImportError as e:
+            error_msg = "Log viewer module not available"
+            logging.error(f"{error_msg}: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"{error_msg}. Please check the installation.")
+        except Exception as e:
+            error_msg = f"Error toggling log viewer: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
 
-    def _update_simulation_ui(self):
-        """Update the UI with current simulation state."""
-        if not hasattr(self, 'simulation_panel'):
-            return
+    def generate_gcode(self):
+        """Generate G-code from the current STL model."""
+        try:
+            if not hasattr(self, 'stl_mesh') or self.stl_mesh is None:
+                QMessageBox.warning(self, "No Model", "Please load an STL file first.")
+                return
+                
+            # Show progress dialog
+            self.progress_dialog = QProgressDialog("Generating G-code...", "Cancel", 0, 100, self)
+            self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.progress_dialog.setMinimumDuration(0)
             
-        # Update simulation status
-        state = self.gcode_simulator.state
-        stats = {
-            'layer': self.gcode_simulator.current_layer,
-            'total_layers': self.gcode_simulator.total_layers,
-            'print_time': self.gcode_simulator.print_time,
-            'filament_used': self.gcode_simulator.filament_used,
-            'travel_distance': self.gcode_simulator.travel_distance,
-            'extrusion_distance': self.gcode_simulator.extrusion_distance,
-            'feedrate': state.feedrate if state else 0,
-            'temperature': state.temperature if state else 0,
-            'bed_temperature': state.bed_temperature if state else 0,
-            'fan_speed': state.fan_speed if state else 0
-        }
-        
-        # Update UI elements with simulation stats
-        if hasattr(self, 'simulation_stats_label'):
-            stats_text = (
-                f"Layer: {stats['layer']}/{stats['total_layers']} | "
-                f"Time: {stats['print_time']:.1f}s | "
-                f"Filament: {stats['filament_used']:.1f}m | "
-                f"Nozzle: {stats['temperature']}°C | "
-                f"Bed: {stats['bed_temperature']}°C | "
-                f"Fan: {stats['fan_speed']}%"
-            )
-            self.simulation_stats_label.setText(stats_text)
-        
-        # Update error/warning display
-        if hasattr(self, 'simulation_errors_text'):
-            errors = '\n'.join([f"Line {e.line}: {e.message}" for e in self.gcode_simulator.errors])
-            warnings = '\n'.join([f"Line {w.line}: {w.message}" for w in self.gcode_simulator.warnings])
+            # Get current settings (you may want to get these from a settings dialog)
+            settings = {
+                'layer_height': 0.2,
+                'extrusion_width': 0.4,
+                'filament_diameter': 1.75,
+                'print_speed': 60,
+                'travel_speed': 120,
+                'infill_speed': 60,
+                'first_layer_speed': 30,
+                'retraction_length': 5,
+                'retraction_speed': 40,
+                'z_hop': 0.2,
+                'infill_density': 20,
+                'infill_pattern': 'grid',
+                'infill_angle': 45,
+                'enable_arc_detection': True,
+                'arc_tolerance': 0.05,
+                'min_arc_segments': 5,
+                'enable_optimized_infill': True,
+                'infill_resolution': 1.0,
+                'start_gcode': "; Custom start G-code\nG28 ; Home all axes\nG1 Z5 F5000 ; Lift nozzle\n",
+                'end_gcode': "; Custom end G-code\nM104 S0 ; Turn off extruder\nM140 S0 ; Turn off bed\nG28 X0 Y0 ; Home X and Y axes\nM84 ; Disable motors\n",
+                'bed_temp': 60,
+                'extruder_temp': 200,
+                'fan_speed': 100,
+                'material': 'PLA'
+            }
             
-            self.simulation_errors_text.setPlainText(
-                f"=== Errors ===\n{errors}\n\n"
-                f"=== Warnings ===\n{warnings}"
-            )
+            # Create worker and thread for G-code generation
+            self.gcode_thread = QThread()
+            self.gcode_worker = GCodeGenerationWorker(self.stl_mesh, settings)
+            self.gcode_worker.moveToThread(self.gcode_thread)
+            
+            # Connect signals
+            self.gcode_worker.progress.connect(self._update_generation_progress)
+            self.gcode_worker.gcode_chunk.connect(self._process_gcode_chunk)
+            self.gcode_worker.preview_ready.connect(self._update_preview)
+            self.gcode_worker.finished.connect(self._on_gcode_generation_finished)
+            self.gcode_worker.error.connect(self._on_gcode_generation_error)
+            
+            # Start the thread and worker
+            self.gcode_thread.started.connect(self.gcode_worker.generate)
+            self.gcode_thread.start()
+            
+            # Enable cancel button
+            self.progress_dialog.canceled.connect(self._cancel_gcode_generation)
+            
+            logging.info("Started G-code generation")
+            
+        except Exception as e:
+            error_msg = f"Error starting G-code generation: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
     
-    def _on_gcode_progress(self, progress: int):
-        """Update the progress bar."""
-        self.progress_bar.setValue(progress)
+    def _update_generation_progress(self, current, total):
+        """Update the progress dialog with the current generation progress."""
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            self.progress_dialog.setMaximum(total)
+            self.progress_dialog.setValue(current)
+            
+            # Update status bar
+            self.statusBar().showMessage(f"Generating G-code: {current}/{total} layers")
     
-    def _on_gcode_finished(self, gcode: str):
+    def _process_gcode_chunk(self, chunk):
+        """Process a chunk of generated G-code."""
+        try:
+            if not hasattr(self, 'gcode_buffer'):
+                self.gcode_buffer = ""
+                
+            self.gcode_buffer += chunk
+            
+            # If buffer is large enough, update the editor
+            if len(self.gcode_buffer) > self.gcode_buffer_size:
+                self._process_gcode_buffer()
+                
+        except Exception as e:
+            logging.error(f"Error processing G-code chunk: {str(e)}", exc_info=True)
+    
+    def _update_preview(self, preview_data):
+        """Update the 3D preview with the generated G-code."""
+        try:
+            # This would be implemented to update the 3D preview
+            # with the generated G-code paths
+            logging.debug(f"Received preview data with {len(preview_data.get('paths', []))} paths")
+            
+        except Exception as e:
+            logging.error(f"Error updating preview: {str(e)}", exc_info=True)
+    
+    def _on_gcode_generation_finished(self):
         """Handle completion of G-code generation."""
         try:
             # Process any remaining G-code in the buffer
-            if self.gcode_buffer:
+            if hasattr(self, 'gcode_buffer') and self.gcode_buffer:
                 self._process_gcode_buffer()
-            
-            # Stop the update timer
-            self.gcode_update_timer.stop()
-            
-            # Clean up the worker and thread
-            self.gcode_worker.deleteLater()
-            self.gcode_thread.quit()
-            self.gcode_thread.wait()
-            self.gcode_thread.deleteLater()
-            
-            # Update UI
-            self.progress_bar.setVisible(False)
-            self.cancel_button.setVisible(False)
-            self.statusBar().showMessage('G-code generation completed')
-            
-            # Enable the save button
-            self.save_gcode_button.setEnabled(True)
-            
-        except Exception as e:
-            logger.error(f"Error in G-code generation completion: {e}", exc_info=True)
-            self.statusBar().showMessage(f'Error: {str(e)}')
-    
-    def _on_gcode_error(self, error_msg: str):
-        """Handle errors during G-code generation."""
-        try:
-            # Stop the update timer
-            self.gcode_update_timer.stop()
-            
-            # Clean up the worker and thread
-            if self.gcode_worker:
-                self.gcode_worker.deleteLater()
-            
-            if self.gcode_thread:
+                
+            # Clean up
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                self.progress_dialog.close()
+                
+            if hasattr(self, 'gcode_thread') and self.gcode_thread.isRunning():
                 self.gcode_thread.quit()
                 self.gcode_thread.wait()
-                self.gcode_thread.deleteLater()
-            
-            # Update UI
-            self.progress_bar.setVisible(False)
-            self.cancel_button.setVisible(False)
-            
-            # Show error message
-            QMessageBox.critical(self, 'G-code Generation Error', error_msg)
-            self.statusBar().showMessage('G-code generation failed')
+                
+            self.statusBar().showMessage("G-code generation completed", 5000)
+            logging.info("G-code generation completed successfully")
             
         except Exception as e:
-            logger.error(f"Error handling G-code generation error: {e}", exc_info=True)
-            self.statusBar().showMessage(f'Error: {str(e)}')
+            logging.error(f"Error finalizing G-code generation: {str(e)}", exc_info=True)
     
-    def cancel_operation(self):
-        """Cancel the current operation (STL loading or G-code generation)."""
+    def _on_gcode_generation_error(self, error_msg):
+        """Handle errors during G-code generation."""
         try:
-            # Stop any ongoing G-code generation
-            if self.gcode_worker:
-                self.gcode_worker.stop()
-                self.gcode_worker = None
-            
-            # Stop any ongoing STL loading
-            if hasattr(self, 'stl_worker') and self.stl_worker:
-                self.stl_worker.stop()
-                self.stl_worker = None
-            
-            # Stop the update timer
-            if hasattr(self, 'gcode_update_timer') and self.gcode_update_timer.isActive():
-                self.gcode_update_timer.stop()
-            
-            # Update UI
-            self.progress_bar.setVisible(False)
-            self.cancel_button.setVisible(False)
-            self.statusBar().showMessage('Operation cancelled')
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                self.progress_dialog.close()
+                
+            QMessageBox.critical(self, "G-code Generation Error", error_msg)
+            self.statusBar().showMessage("G-code generation failed", 5000)
+            logging.error(f"G-code generation error: {error_msg}")
             
         except Exception as e:
-            logger.error(f"Error cancelling operation: {e}", exc_info=True)
-            self.statusBar().showMessage(f'Error cancelling operation: {str(e)}')
+            logging.error(f"Error handling G-code generation error: {str(e)}", exc_info=True)
     
-    def toggle_visualization_mode(self):
-        """Toggle between Matplotlib and OpenGL visualization."""
+    def _cancel_gcode_generation(self):
+        """Cancel the ongoing G-code generation."""
         try:
-            # Toggle the flag
-            self.use_opengl_visualizer = not getattr(self, 'use_opengl_visualizer', False)
+            if hasattr(self, 'gcode_worker') and self.gcode_worker:
+                self.gcode_worker.cancel()
+                
+            if hasattr(self, 'gcode_thread') and self.gcode_thread.isRunning():
+                self.gcode_thread.quit()
+                self.gcode_thread.wait()
+                
+            self.statusBar().showMessage("G-code generation cancelled", 5000)
+            logging.info("G-code generation cancelled by user")
             
-            # Clear the current visualization
-            if hasattr(self, 'visualization_layout') and self.visualization_layout.count() > 0:
-                # Remove the current visualizer
-                while self.visualization_layout.count() > 0:
-                    item = self.visualization_layout.takeAt(0)
-                    widget = item.widget()
-                    if widget:
-                        widget.setParent(None)
-                        widget.deleteLater()
+        except Exception as e:
+            logging.error(f"Error cancelling G-code generation: {str(e)}", exc_info=True)
+
+    def show_documentation(self):
+        """Open the application's documentation in the default web browser."""
+        try:
+            # Try to use the documentation URL from settings if available
+            doc_url = getattr(self, 'documentation_url', 
+                            "https://github.com/yourusername/STL_to_G-Code/wiki")
             
-            # Create the appropriate visualizer
-            if self.use_opengl_visualizer:
-                try:
-                    from scripts.opengl_visualizer import OpenGLGCodeVisualizer
-                    self.opengl_visualizer = OpenGLGCodeVisualizer()
-                    self.visualization_layout.addWidget(self.opengl_visualizer)
-                    
-                    # If we have G-code chunks, add them to the new visualizer
-                    if hasattr(self, 'gcode_chunks') and self.gcode_chunks:
-                        self.opengl_visualizer.append_gcode('\n'.join(self.gcode_chunks))
-                    
-                    self.statusBar().showMessage('Using OpenGL visualization')
-                except ImportError as e:
-                    logger.warning(f"OpenGL visualization not available: {e}")
-                    QMessageBox.warning(
+            # Open the URL in the default web browser
+            import webbrowser
+            webbrowser.open(doc_url)
+            logging.info(f"Opened documentation: {doc_url}")
+            
+        except Exception as e:
+            error_msg = f"Failed to open documentation: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(
+                self, 
+                "Documentation Error",
+                f"Could not open documentation. Please visit the project's GitHub page for documentation.\n\nError: {str(e)}"
+            )
+
+    def show_about(self):
+        """Show the About dialog with application information."""
+        try:
+            # Get application information
+            app_name = "STL to G-Code Converter"
+            version = "1.0.0"
+            year = "2025"
+            author = "Your Name"
+            email = "your.email@example.com"
+            github = "https://github.com/yourusername/STL_to_G-Code"
+            
+            # Create the about text with HTML formatting
+            about_text = f"""
+            <h3>{app_name} v{version}</h3>
+            <p>Convert 3D STL models to G-code for 3D printing.</p>
+            <p>Copyright {year} {author}<br>
+            <a href="mailto:{email}">{email}</a><br>
+            <a href="{github}">{github}</a></p>
+            <p>This application is open source and released under the MIT License.</p>
+            <p>Built with Python, PyQt6, and numpy-stl.</p>
+            """
+            
+            # Create and show the about dialog
+            about_dialog = QMessageBox(self)
+            about_dialog.setWindowTitle(f"About {app_name}")
+            about_dialog.setTextFormat(Qt.TextFormat.RichText)
+            about_dialog.setText(about_text)
+            
+            # Set application icon if available
+            if hasattr(self, 'windowIcon') and not self.windowIcon().isNull():
+                about_dialog.setWindowIcon(self.windowIcon())
+            
+            # Add a button to close the dialog
+            about_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+            
+            # Show the dialog
+            about_dialog.exec()
+            
+            logging.info("About dialog shown")
+            
+        except Exception as e:
+            error_msg = f"Error showing about dialog: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+
+
+    def show_sponsor(self):
+        """Show sponsor information and ways to support the project."""
+        try:
+            # Create sponsor dialog
+            sponsor_dialog = QDialog(self)
+            sponsor_dialog.setWindowTitle("Support the Project")
+            sponsor_dialog.setMinimumSize(400, 300)
+            
+            # Create layout
+            layout = QVBoxLayout()
+            
+            # Add title
+            title = QLabel("<h2>Support Our Work</h2>")
+            title.setTextFormat(Qt.TextFormat.RichText)
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(title)
+            
+            # Add message
+            message = QLabel(
+                "<p>If you find this application useful, please consider supporting its development.</p>"
+                "<p>Your support helps cover development costs and encourages further improvements.</p>"
+            )
+            message.setWordWrap(True)
+            message.setTextFormat(Qt.TextFormat.RichText)
+            layout.addWidget(message)
+            
+            # Add ways to support
+            support_methods = QGroupBox("Ways to Support")
+            methods_layout = QVBoxLayout()
+            
+            # GitHub Sponsors
+            github_btn = QPushButton("Sponsor on GitHub")
+            github_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
+            github_btn.clicked.connect(lambda: self._open_url("https://github.com/sponsors/yourusername"))
+            methods_layout.addWidget(github_btn)
+            
+            # PayPal
+            paypal_btn = QPushButton("Donate via PayPal")
+            paypal_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+            paypal_btn.clicked.connect(lambda: self._open_url("https://paypal.me/yourusername"))
+            methods_layout.addWidget(paypal_btn)
+            
+            # Patreon
+            patreon_btn = QPushButton("Become a Patron")
+            patreon_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+            patreon_btn.clicked.connect(lambda: self._open_url("https://patreon.com/yourusername"))
+            methods_layout.addWidget(patreon_btn)
+            
+            # Add stretch to push buttons to the top
+            methods_layout.addStretch()
+            support_methods.setLayout(methods_layout)
+            layout.addWidget(support_methods)
+            
+            # Add close button
+            button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            button_box.rejected.connect(sponsor_dialog.reject)
+            layout.addWidget(button_box)
+            
+            # Set dialog layout
+            sponsor_dialog.setLayout(layout)
+            
+            # Show dialog
+            sponsor_dialog.exec()
+            
+            logging.info("Sponsor dialog shown")
+            
+        except Exception as e:
+            error_msg = f"Error showing sponsor dialog: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+    
+    def _open_url(self, url):
+        """Open a URL in the default web browser."""
+        try:
+            import webbrowser
+            webbrowser.open(url)
+            logging.info(f"Opened URL: {url}")
+        except Exception as e:
+            error_msg = f"Failed to open URL: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+
+
+    def check_updates(self):
+        """Check for application updates."""
+        try:
+            # Get current version
+            current_version = "1.0.0"  # This should match your version
+            
+            # Show checking message
+            self.statusBar().showMessage("Checking for updates...")
+            QApplication.processEvents()
+            
+            try:
+                # In a real application, you would fetch this from your update server or GitHub releases
+                # This is a placeholder implementation
+                import requests
+                import json
+                
+                # Simulate network request with timeout
+                # In a real app, replace this with your actual update check URL
+                response = requests.get(
+                    "https://api.github.com/repos/yourusername/STL_to_G-Code/releases/latest",
+                    timeout=5
+                )
+                response.raise_for_status()
+                
+                # Parse the response
+                release_info = response.json()
+                latest_version = release_info.get('tag_name', '').lstrip('v')
+                
+                if not latest_version:
+                    raise ValueError("Invalid version format in response")
+                
+                # Compare versions (simple string comparison, might need more sophisticated logic)
+                if latest_version > current_version:
+                    # New version available
+                    reply = QMessageBox.information(
                         self,
-                        'OpenGL Not Available',
-                        'OpenGL visualization is not available on this system. Falling back to Matplotlib.'
+                        "Update Available",
+                        f"Version {latest_version} is available!\n\n"
+                        f"Current version: {current_version}\n\n"
+                        f"Would you like to download the update?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
-                    self.use_opengl_visualizer = False
-                    self._create_matplotlib_visualizer()
-            else:
-                self._create_matplotlib_visualizer()
+                    
+                    if reply == QMessageBox.StandardButton.Yes:
+                        # Open the release page
+                        self._open_url(release_info.get('html_url', 
+                            "https://github.com/yourusername/STL_to_G-Code/releases/latest"))
+                else:
+                    QMessageBox.information(
+                        self,
+                        "No Updates",
+                        f"You are using the latest version ({current_version}).",
+                        QMessageBox.StandardButton.Ok
+                    )
+                
+            except requests.RequestException as e:
+                QMessageBox.warning(
+                    self,
+                    "Update Check Failed",
+                    f"Could not check for updates: {str(e)}\n\n"
+                    "Please check your internet connection and try again.",
+                    QMessageBox.StandardButton.Ok
+                )
+                logging.error(f"Update check failed: {str(e)}", exc_info=True)
             
-            # Update the toggle button text
-            self.toggle_visualization_button.setText(
-                'Use OpenGL Visualization' if not self.use_opengl_visualizer 
-                else 'Use Matplotlib Visualization'
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    "Update Error",
+                    f"An error occurred while checking for updates: {str(e)}",
+                    QMessageBox.StandardButton.Ok
+                )
+                logging.error(f"Error in update check: {str(e)}", exc_info=True)
+            
+            finally:
+                self.statusBar().showMessage("Ready", 3000)
+                
+        except Exception as e:
+            error_msg = f"Error during update check: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+
+
+    def view_gcode(self):
+        """Display the generated G-code in a dedicated viewer."""
+        try:
+            # Check if there's any G-code to view
+            if not hasattr(self, 'gcode_editor') or not self.gcode_editor.toPlainText().strip():
+                QMessageBox.information(
+                    self,
+                    "No G-code Available",
+                    "No G-code has been generated yet. Please generate G-code first.",
+                    QMessageBox.StandardButton.Ok
+                )
+                return
+            
+            # Create a new dialog to view the G-code
+            dialog = QDialog(self)
+            dialog.setWindowTitle("G-code Viewer")
+            dialog.setMinimumSize(800, 600)
+            
+            # Create layout
+            layout = QVBoxLayout()
+            
+            # Create text editor for G-code
+            gcode_viewer = QsciScintilla()
+            gcode_viewer.setReadOnly(True)
+            
+            # Set up lexer for syntax highlighting
+            lexer = QsciLexerPython()
+            lexer.setDefaultFont(QFont("Consolas", 10))
+            gcode_viewer.setLexer(lexer)
+            
+            # Set up line numbers
+            gcode_viewer.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
+            gcode_viewer.setMarginWidth(0, "00000")
+            gcode_viewer.setMarginsForegroundColor(QColor("#999999"))
+            
+            # Set the G-code content
+            gcode_viewer.setText(self.gcode_editor.toPlainText())
+            
+            # Add search box
+            search_box = QLineEdit()
+            search_box.setPlaceholderText("Search in G-code...")
+            search_box.textChanged.connect(
+                lambda text: self._search_in_gcode(gcode_viewer, text)
             )
             
+            # Add widgets to layout
+            layout.addWidget(QLabel("Search:"))
+            layout.addWidget(search_box)
+            layout.addWidget(QLabel("G-code:"))
+            layout.addWidget(gcode_viewer)
+            
+            # Add close button
+            button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            button_box.rejected.connect(dialog.reject)
+            
+            # Add copy button
+            copy_button = QPushButton("Copy to Clipboard")
+            copy_button.clicked.connect(
+                lambda: self._copy_gcode_to_clipboard(gcode_viewer.text())
+            )
+            button_box.addButton(copy_button, QDialogButtonBox.ButtonRole.ActionRole)
+            
+            layout.addWidget(button_box)
+            dialog.setLayout(layout)
+            
+            # Show the dialog
+            dialog.exec()
+            
+            logging.info("G-code viewer opened")
+            
         except Exception as e:
-            logger.error(f"Error toggling visualization mode: {e}", exc_info=True)
-            self.statusBar().showMessage(f'Error: {str(e)}')
+            error_msg = f"Error opening G-code viewer: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
     
-    def _create_matplotlib_visualizer(self):
-        """Create and set up the Matplotlib visualizer."""
-        try:
-            from scripts.gcode_visualizer import GCodeVisualizer
-            self.gcode_visualizer = GCodeVisualizer()
-            self.visualization_layout.addWidget(self.gcode_visualizer)
-            
-            # If we have G-code chunks, add them to the new visualizer
-            if hasattr(self, 'gcode_chunks') and self.gcode_chunks:
-                self.gcode_visualizer.append_gcode('\n'.join(self.gcode_chunks))
-            
-            self.statusBar().showMessage('Using Matplotlib visualization')
-            
-        except ImportError as e:
-            logger.error(f"Error creating Matplotlib visualizer: {e}", exc_info=True)
-            self.statusBar().showMessage('Error: Could not create visualizer')
-
-class STLLoadingWorker(QObject):
-    """Worker class for loading STL files in the background."""
-    chunk_loaded = pyqtSignal(dict)
-    loading_finished = pyqtSignal()
-    error_occurred = pyqtSignal(str)
-    
-    def __init__(self, stl_processor):
-        super().__init__()
-        self.stl_processor = stl_processor
-        self._is_running = False
-    
-    def start_loading(self):
-        """Start the loading process."""
-        self._is_running = True
-        
-        try:
-            # Process the STL file in chunks
-            for chunk in self.stl_processor.iter_progressive_chunks(
-                progress_callback=self._on_progress
-            ):
-                if not self._is_running:
-                    break
-                    
-                # Emit the chunk for processing
-                self.chunk_loaded.emit(chunk)
-                
-                # Allow the main thread to process events
-                QThread.msleep(10)
-                
-            if self._is_running:
-                self.loading_finished.emit()
-                
-        except Exception as e:
-            if self._is_running:
-                self.error_occurred.emit(str(e))
-        finally:
-            self._cleanup()
-    
-    def stop_loading(self):
-        """Stop the loading process."""
-        self._is_running = False
-    
-    def _on_progress(self, progress, total):
-        """Handle progress updates."""
-        if not self._is_running:
+    def _search_in_gcode(self, editor, text):
+        """Search for text in the G-code editor."""
+        if not text:
+            # Reset search if text is empty
+            editor.setCursorPosition(0, 0)
             return
             
-        self.chunk_loaded.emit({
-            'progress': progress,
-            'total_triangles': total
-        })
+        # Search forward from current position
+        editor.findFirst(text, False, False, False, True, True)
     
-    def _cleanup(self):
-        """Clean up resources."""
-        if self.stl_processor:
+    def _copy_gcode_to_clipboard(self, text):
+        """Copy G-code to the clipboard."""
+        try:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            self.statusBar().showMessage("G-code copied to clipboard", 3000)
+            logging.info("G-code copied to clipboard")
+        except Exception as e:
+            error_msg = f"Failed to copy G-code to clipboard: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+    
+    def _update_visualization(self):
+        """Update the 3D visualization based on current settings."""
+        try:
+            if not hasattr(self, 'visualization_view') or not self.visualization_view:
+                logging.warning("Visualization view not initialized"
+                               " - skipping visualization update")
+                return
+            
+            # Clear previous visualization
+            self.visualization_view.clear_scene()
+            
+            # Check if we have an STL mesh to visualize
+            if not hasattr(self, 'stl_mesh') or self.stl_mesh is None:
+                logging.debug("No STL mesh to visualize")
+                return
+            
+            # Get visualization settings
+            show_wireframe = getattr(self, 'show_wireframe_checkbox', 
+                                  QCheckBox()).isChecked()
+            show_normals = getattr(self, 'show_normals_checkbox', 
+                                QCheckBox()).isChecked()
+            show_travel = getattr(self, 'show_travel_moves', 
+                               QCheckBox()).isChecked()
+            
+            # Update visualization based on settings
             try:
-                self.stl_processor.close()
-            except:
-                pass
-            self.stl_processor = None
+                # Add the STL mesh to the visualization
+                self.visualization_view.add_stl_mesh(
+                    self.stl_mesh,
+                    wireframe=show_wireframe,
+                    show_normals=show_normals
+                )
+                
+                # Add G-code paths if available
+                if hasattr(self, 'gcode_paths') and self.gcode_paths:
+                    self.visualization_view.add_gcode_paths(
+                        self.gcode_paths,
+                        show_travel=show_travel
+                    )
+                
+                # Update the camera to fit the scene
+                self.visualization_view.fit_to_view()
+                
+                logging.info("Visualization updated successfully")
+                
+            except Exception as e:
+                error_msg = f"Error updating visualization: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.statusBar().showMessage(
+                    "Error updating visualization", 5000)
+        
+        except Exception as e:
+            error_msg = f"Error in _update_visualization: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Visualization Error", error_msg)
+
+
+    def _reset_visualization_view(self):
+        """Reset the 3D visualization view to default settings."""
+        try:
+            if not hasattr(self, 'visualization_view') or not self.visualization_view:
+                logging.warning("Visualization view not initialized - cannot reset")
+                return
+            
+            # Reset camera to default position and orientation
+            self.visualization_view.reset_camera()
+            
+            # Reset zoom level to fit the model
+            self.visualization_view.fit_to_view()
+            
+            # Reset visualization settings to defaults
+            if hasattr(self, 'show_wireframe_checkbox'):
+                self.show_wireframe_checkbox.setChecked(False)
+            if hasattr(self, 'show_normals_checkbox'):
+                self.show_normals_checkbox.setChecked(False)
+            if hasattr(self, 'show_travel_moves'):
+                self.show_travel_moves.setChecked(True)
+            
+            # Update the visualization with new settings
+            self._update_visualization()
+            
+            self.statusBar().showMessage("View reset to default", 3000)
+            logging.info("Visualization view reset to default")
+            
+        except Exception as e:
+            error_msg = f"Error resetting visualization view: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+
 
 def main():
-    """Application entry point."""
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('stl_to_gcode.log'),
-            logging.StreamHandler()
-        ]
-    )
-    
-    # Create and run the application
+    """Main function to start the application."""
     app = QApplication(sys.argv)
-    
-    # Set application style and palette
-    app.setStyle('Fusion')
-    
-    # Set application metadata
-    app.setApplicationName("STL to GCode Converter")
-    app.setApplicationVersion("2.0.0")
-    app.setOrganizationName("STLtoGCode")
-    
-    # Set application icon for taskbar/dock
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
-    
-    # Create and show main window
     window = STLToGCodeApp()
-    window.show()
-    
-    # Handle command line arguments
-    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-        window.open_file(sys.argv[1])
-    
     sys.exit(app.exec())
 
+
 if __name__ == "__main__":
-    # Enable sharing of OpenGL contexts for WebEngine
-    from PyQt6.QtCore import Qt, QCoreApplication
-    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-    
     main()

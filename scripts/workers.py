@@ -230,3 +230,93 @@ class SimulationWorker(QObject):
             speed: Speed multiplier (e.g., 0.5 for half speed, 2.0 for double speed)
         """
         self._speed = max(0.1, min(10.0, speed))  # Clamp between 0.1x and 10x
+
+
+class STLLoadingWorker(QObject):
+    """Worker class for loading STL files in chunks in a background thread."""
+    
+    # Signals
+    chunk_loaded = pyqtSignal(dict)  # Emitted when a chunk of STL data is loaded
+    loading_finished = pyqtSignal()  # Emitted when loading is complete
+    error_occurred = pyqtSignal(str)  # Emitted when an error occurs
+    progress_updated = pyqtSignal(int, int)  # current, total
+    
+    def __init__(self, stl_processor, chunk_size=1000):
+        """Initialize the STL loading worker.
+        
+        Args:
+            stl_processor: Instance of MemoryEfficientSTLProcessor
+            chunk_size: Number of triangles to process in each chunk
+        """
+        super().__init__()
+        self.stl_processor = stl_processor
+        self.chunk_size = chunk_size
+        self._is_cancelled = False
+    
+    @pyqtSlot()
+    def cancel(self):
+        """Request cancellation of the loading process."""
+        self._is_cancelled = True
+    
+    @pyqtSlot()
+    def start_loading(self):
+        """Start the loading process in the background thread."""
+        try:
+            logging.info("Starting STL loading worker")
+            
+            # Get total number of triangles for progress reporting
+            total_triangles = self.stl_processor._header.num_triangles
+            processed_triangles = 0
+            
+            # Process STL in chunks
+            chunk_vertices = []
+            chunk_faces = []
+            face_offset = 0
+            
+            for i, triangle in enumerate(self.stl_processor.iter_triangles()):
+                if self._is_cancelled:
+                    logging.info("STL loading cancelled by user")
+                    break
+                
+                # Add triangle vertices to current chunk
+                chunk_vertices.extend(triangle.vertices)
+                
+                # Add triangle faces with offset
+                chunk_faces.append([
+                    face_offset,
+                    face_offset + 1,
+                    face_offset + 2
+                ])
+                face_offset += 3
+                
+                # Emit chunk if we've reached chunk size or end of file
+                if (i + 1) % self.chunk_size == 0 or (i + 1) == total_triangles:
+                    if chunk_vertices and chunk_faces:
+                        # Convert to numpy arrays
+                        vertices = np.array(chunk_vertices, dtype=np.float32)
+                        faces = np.array(chunk_faces, dtype=np.uint32)
+                        
+                        # Emit chunk
+                        chunk_data = {
+                            'vertices': vertices,
+                            'faces': faces,
+                            'progress': (i + 1) / total_triangles * 100
+                        }
+                        self.chunk_loaded.emit(chunk_data)
+                        self.progress_updated.emit(i + 1, total_triangles)
+                        
+                        # Reset chunk buffers
+                        chunk_vertices = []
+                        chunk_faces = []
+            
+            if not self._is_cancelled:
+                logging.info("STL loading completed successfully")
+                self.loading_finished.emit()
+                
+        except Exception as e:
+            error_msg = f"Error loading STL: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self.error_occurred.emit(error_msg)
+        finally:
+            # Clean up
+            self.stl_processor.close()

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPalette, QColor, QFont
+from PyQt6.Qsci import QsciScintilla, QsciLexerCustom, QsciLexerPython
 
 class UI:
     """UI styling and widget management class for PyQt6."""
@@ -391,3 +392,38 @@ class UI:
             }
         """)
         return spinbox
+
+    def create_text_editor(self, parent=None):
+        """Create and configure a QsciScintilla text editor for G-code."""
+        from PyQt6.QtGui import QColor, QFont, QFontMetrics
+        
+        # Create the editor
+        editor = QsciScintilla(parent)
+        
+        # Use Python lexer as a base (better than nothing)
+        lexer = QsciLexerPython()
+        lexer.setDefaultFont(QFont("Consolas", 10))
+        
+        # Set editor properties
+        editor.setLexer(lexer)
+        editor.setUtf8(True)
+        editor.setAutoIndent(True)
+        editor.setIndentationGuides(True)
+        editor.setIndentationsUseTabs(False)
+        editor.setIndentationWidth(4)
+        editor.setTabWidth(4)
+        editor.setBraceMatching(QsciScintilla.BraceMatch.SloppyBraceMatch)
+        editor.setCaretLineVisible(True)
+        editor.setCaretLineBackgroundColor(QColor("#e8e8e8"))
+        
+        # Set margins
+        font_metrics = QFontMetrics(QFont("Consolas", 9))
+        editor.setMarginsFont(QFont("Consolas", 9))
+        editor.setMarginWidth(0, font_metrics.horizontalAdvance("00000") + 6)
+        editor.setMarginLineNumbers(0, True)
+        editor.setMarginsBackgroundColor(QColor("#f0f0f0"))
+        
+        # Enable code folding
+        editor.setFolding(QsciScintilla.FoldStyle.BoxedTreeFoldStyle, 2)
+        
+        return editor
