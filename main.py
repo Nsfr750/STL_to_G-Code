@@ -63,6 +63,17 @@ class STLToGCodeApp(QMainWindow):
         self.worker_thread = None
         self.worker = None
         
+        # Set application icon
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'icon.png')
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                logging.info(f"Application icon set from: {icon_path}")
+            else:
+                logging.warning(f"Icon file not found at: {icon_path}")
+        except Exception as e:
+            logging.error(f"Error setting application icon: {str(e)}")
+        
         # Initialize the UI manager
         self.ui = UI()
         
@@ -77,11 +88,6 @@ class STLToGCodeApp(QMainWindow):
         self.simulation_paused = False
         self.current_sim_line = 0
         self.total_sim_lines = 0
-        
-        # Set application icon
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
         
         # Set window properties
         self.setWindowTitle(f"STL to GCode Converter v{__version__}")
@@ -864,6 +870,21 @@ class STLToGCodeApp(QMainWindow):
             logging.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
 
+    def show_documentation(self):
+        """Open the application's documentation in the markdown viewer."""
+        try:
+            from scripts.markdown_viewer import show_documentation as show_markdown_docs
+            show_markdown_docs(self)  # Pass self as parent
+            logging.info("Opened documentation in markdown viewer")
+        except Exception as e:
+            error_msg = f"Failed to open documentation: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(
+                self, 
+                "Documentation Error",
+                f"Could not open documentation. Please check the 'docs' directory.\n\nError: {str(e)}"
+            )
+
     def generate_gcode(self):
         """Generate G-code from the current STL model."""
         try:
@@ -1013,27 +1034,6 @@ class STLToGCodeApp(QMainWindow):
             
         except Exception as e:
             logging.error(f"Error cancelling G-code generation: {str(e)}", exc_info=True)
-
-    def show_documentation(self):
-        """Open the application's documentation in the default web browser."""
-        try:
-            # Try to use the documentation URL from settings if available
-            doc_url = getattr(self, 'documentation_url', 
-                            "https://github.com/yourusername/STL_to_G-Code/wiki")
-            
-            # Open the URL in the default web browser
-            import webbrowser
-            webbrowser.open(doc_url)
-            logging.info(f"Opened documentation: {doc_url}")
-            
-        except Exception as e:
-            error_msg = f"Failed to open documentation: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(
-                self, 
-                "Documentation Error",
-                f"Could not open documentation. Please visit the project's GitHub page for documentation.\n\nError: {str(e)}"
-            )
 
     def show_about(self):
         """Show the About dialog with application information."""
