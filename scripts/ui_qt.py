@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QListWidget, QFrame, QSizePolicy, QApplication, QCheckBox, QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QPalette, QColor, QFont
+from PyQt6.QtGui import QPalette, QColor, QFont, QIcon
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom, QsciLexerPython
 
 class UI:
@@ -33,27 +33,74 @@ class UI:
                 color: white;
                 border: 1px solid #555;
                 border-radius: 4px;
-                padding: 5px 10px;
-                min-width: 80px;
+                padding: 8px 12px;
+                min-width: 100px;
+                min-height: 32px;
+                margin: 2px;
+                font-size: 12px;
+                font-weight: 500;
+                text-align: center;
             }
             
             QPushButton:hover {
                 background-color: #555;
+                border-color: #777;
+            }
+            
+            QPushButton:pressed {
+                background-color: #666;
+                border-color: #888;
             }
             
             QPushButton:disabled {
                 background-color: #333;
-                color: #777;
+                color: #666;
                 border-color: #444;
             }
             
             QPushButton#primaryButton {
                 background-color: #1976D2;
                 font-weight: bold;
+                min-width: 120px;
             }
             
             QPushButton#primaryButton:hover {
                 background-color: #1E88E5;
+                border-color: #42A5F5;
+            }
+            
+            QPushButton#primaryButton:pressed {
+                background-color: #1565C0;
+            }
+            
+            QPushButton#dangerButton {
+                background-color: #C62828;
+                color: white;
+                font-weight: bold;
+            }
+            
+            QPushButton#dangerButton:hover {
+                background-color: #D32F2F;
+                border-color: #EF5350;
+            }
+            
+            QPushButton#dangerButton:pressed {
+                background-color: #B71C1C;
+            }
+            
+            QPushButton#successButton {
+                background-color: #2E7D32;
+                color: white;
+                font-weight: bold;
+            }
+            
+            QPushButton#successButton:hover {
+                background-color: #388E3C;
+                border-color: #66BB6A;
+            }
+            
+            QPushButton#successButton:pressed {
+                background-color: #1B5E20;
             }
             
             QLabel {
@@ -188,30 +235,79 @@ class UI:
             if app is not None:
                 app.setStyleSheet(stylesheet)
     
-    def create_button(self, parent, text, slot=None, tooltip=None, primary=False, enabled=True):
+    def create_button(self, parent, text, slot=None, tooltip=None, style='default', icon=None):
         """
-        Create a styled QPushButton.
+        Create a styled QPushButton with enhanced visual feedback.
         
         Args:
             parent: Parent widget
             text (str): Button text
             slot (callable, optional): Slot to connect to the clicked signal
             tooltip (str, optional): Tooltip text
-            primary (bool): Whether to use primary button style
-            enabled (bool): Whether the button is enabled
+            style (str): Button style ('default', 'primary', 'success', 'danger')
+            icon (QIcon, optional): Optional icon for the button
             
         Returns:
             QPushButton: The created button
         """
         button = QPushButton(text, parent)
-        if primary:
-            button.setObjectName("primaryButton")
-        if slot:
-            button.clicked.connect(slot)
+        
+        # Set button style
+        if style == 'primary':
+            button.setObjectName('primaryButton')
+        elif style == 'success':
+            button.setObjectName('successButton')
+        elif style == 'danger':
+            button.setObjectName('dangerButton')
+            
+        # Set icon if provided
+        if icon is not None:
+            button.setIcon(icon)
+            button.setIconSize(QSize(16, 16))
+            
+        # Set tooltip if provided
         if tooltip:
             button.setToolTip(tooltip)
-        button.setEnabled(enabled)
+            button.setStatusTip(tooltip)
+            
+        # Connect slot if provided
+        if slot is not None:
+            button.clicked.connect(slot)
+            
         return button
+        
+    def create_toolbar(self, parent, orientation=Qt.Orientation.Horizontal):
+        """
+        Create a styled toolbar with consistent spacing.
+        
+        Args:
+            parent: Parent widget
+            orientation: Qt.Orientation.Horizontal or Qt.Orientation.Vertical
+            
+        Returns:
+            QWidget: A widget containing the toolbar with proper layout
+        """
+        container = QWidget(parent)
+        if orientation == Qt.Orientation.Horizontal:
+            layout = QHBoxLayout(container)
+        else:
+            layout = QVBoxLayout(container)
+            
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(4)
+        container.setLayout(layout)
+        
+        # Add a subtle background to the toolbar
+        container.setStyleSheet("""
+            QWidget#toolbar {
+                background-color: #333;
+                border-radius: 4px;
+                padding: 2px;
+            }
+        """)
+        container.setObjectName("toolbar")
+        
+        return container, layout
     
     def create_label(self, text, title=False, align=Qt.AlignmentFlag.AlignLeft):
         """

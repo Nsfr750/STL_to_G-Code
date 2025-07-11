@@ -164,45 +164,115 @@ class STLToGCodeApp(QMainWindow):
         # Central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(5)
+        
+        # Create main toolbar
+        toolbar, toolbar_layout = self.ui.create_toolbar(central_widget)
+        
+        # Add file operations to toolbar
+        self.open_button = self.ui.create_button(
+            toolbar, 
+            "Open STL",
+            self.open_file,
+            "Open an STL file (Ctrl+O)",
+            'primary',
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogOpenButton'))
+        )
+        toolbar_layout.addWidget(self.open_button)
+        
+        # Add convert button
+        self.convert_button = self.ui.create_button(
+            toolbar,
+            "Convert to G-code",
+            self.generate_gcode,
+            "Convert the loaded STL to G-code",
+            'success',
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay'))
+        )
+        self.convert_button.setEnabled(False)
+        toolbar_layout.addWidget(self.convert_button)
+        
+        # Add view buttons
+        self.view_gcode_button = self.ui.create_button(
+            toolbar,
+            "View G-code",
+            self.view_gcode,
+            "View and edit the generated G-code",
+            'default',
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_FileDialogDetailedView'))
+        )
+        self.view_gcode_button.setEnabled(False)
+        toolbar_layout.addWidget(self.view_gcode_button)
+        
+        # Add separator
+        toolbar_layout.addWidget(self._create_separator())
+        
+        # Add simulation controls
+        self.simulate_button = self.ui.create_button(
+            toolbar,
+            "Simulate",
+            self.simulate_from_editor,
+            "Simulate the G-code (Ctrl+R)",
+            'default',
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay'))
+        )
+        self.simulate_button.setEnabled(False)
+        toolbar_layout.addWidget(self.simulate_button)
+        
+        # Add stretch to push help button to the right
+        toolbar_layout.addStretch()
+        
+        # Add help button
+        help_button = self.ui.create_button(
+            toolbar,
+            "Help",
+            self.show_documentation,
+            "Show help documentation",
+            'default',
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogHelpButton'))
+        )
+        toolbar_layout.addWidget(help_button)
+        
+        main_layout.addWidget(toolbar)
+        
+        # Main content area
+        content_widget = QWidget()
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(5)
         
         # Left panel for controls
-        left_panel, left_layout = self.ui.create_frame(central_widget, "vertical")
+        left_panel, left_layout = self.ui.create_frame(content_widget, "vertical")
+        left_layout.setContentsMargins(5, 5, 5, 5)
         
         # File list with label
-        left_layout.addWidget(QLabel("Loaded Files:"))
+        left_layout.addWidget(QLabel("<b>Loaded Files</b>"))
         self.file_list = self.ui.create_file_list(left_panel)
         left_layout.addWidget(self.file_list)
         
-        # Buttons with consistent styling
-        self.open_button = self.ui.create_button(left_panel, "Open STL File")
-        self.open_button.clicked.connect(self.open_file)
-        left_layout.addWidget(self.open_button)
+        # Settings group
+        settings_group = QGroupBox("Settings")
+        settings_layout = QVBoxLayout(settings_group)
         
-        # Add infill optimization controls
-        infill_group, inffill_layout = self.ui.create_frame(left_panel, "vertical")
+        # Infill optimization
+        infill_layout = QVBoxLayout()
+        infill_layout.addWidget(QLabel("<b>Infill Settings</b>"))
         
-        # Add a title label for the infill settings group
-        infill_title = QLabel("<b>Infill Settings</b>")
-        infill_title.setStyleSheet("color: #64B5F6; margin-bottom: 5px;")
-        inffill_layout.addWidget(infill_title)
-        
-        # Enable optimized infill checkbox
         self.optimize_infill_checkbox = self.ui.create_checkbox(
-            infill_group, 
+            settings_group,
             "Optimize Infill Paths",
             tooltip="Enable A* path planning for optimized infill patterns"
         )
         self.optimize_infill_checkbox.setChecked(True)
-        inffill_layout.addWidget(self.optimize_infill_checkbox)
+        infill_layout.addWidget(self.optimize_infill_checkbox)
         
-        # Infill resolution spinbox
+        # Infill resolution
         res_layout = QHBoxLayout()
         res_layout.addWidget(QLabel("Resolution (mm):"))
         self.infill_resolution_spin = self.ui.create_double_spinbox(
-            infill_group,
+            settings_group,
             minimum=0.1,
             maximum=5.0,
             value=1.0,
@@ -211,139 +281,63 @@ class STLToGCodeApp(QMainWindow):
             tooltip="Grid resolution for infill path optimization (smaller = more precise but slower)"
         )
         res_layout.addWidget(self.infill_resolution_spin)
-        inffill_layout.addLayout(res_layout)
+        infill_layout.addLayout(res_layout)
         
-        left_layout.addWidget(infill_group)
+        settings_layout.addLayout(infill_layout)
+        left_layout.addWidget(settings_group)
         
-        self.convert_button = self.ui.create_button(left_panel, "Convert to GCode")
-        self.convert_button.clicked.connect(self.generate_gcode)
-        self.convert_button.setEnabled(False)
-        left_layout.addWidget(self.convert_button)
-        
-        # Add G-code viewer button
-        self.view_gcode_button = self.ui.create_button(left_panel, "View G-code")
-        self.view_gcode_button.clicked.connect(self.view_gcode)
-        self.view_gcode_button.setEnabled(False)
-        left_layout.addWidget(self.view_gcode_button)
-        
-        # Add stretch to push buttons to top
+        # Add stretch to push content to top
         left_layout.addStretch()
         
-        # Right panel for 3D preview
-        right_panel, right_layout = self.ui.create_frame(central_widget, "vertical")
+        # Add left panel to content
+        content_layout.addWidget(left_panel, stretch=1)
         
-        # Tab widget
+        # Right panel for main content
+        right_panel, right_layout = self.ui.create_frame(content_widget, "vertical")
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Tab widget for different views
         self.tab_widget = QTabWidget()
         right_layout.addWidget(self.tab_widget)
         
-        # STL View Tab
+        # Add tabs
         self.stl_view_tab = QWidget()
-        self.tab_widget.addTab(self.stl_view_tab, "STL View")
+        self.tab_widget.addTab(self.stl_view_tab, "3D View")
         self._setup_stl_view()
         
-        # G-code View Tab
         self.gcode_view_tab = QWidget()
-        self.tab_widget.addTab(self.gcode_view_tab, "G-code View")
+        self.tab_widget.addTab(self.gcode_view_tab, "G-code Editor")
         self._setup_gcode_view()
         
-        # G-code Visualization Tab
         self.visualization_tab = QWidget()
-        self.tab_widget.addTab(self.visualization_tab, "3D Toolpath")
+        self.tab_widget.addTab(self.visualization_tab, "G-code Visualization")
         self._setup_visualization_view()
         
-        # G-code Editor Tab
-        self.editor_tab = QWidget()
-        self.tab_widget.addTab(self.editor_tab, "G-code Editor")
-        self._setup_editor_tab()
+        # Add right panel to content
+        content_layout.addWidget(right_panel, stretch=4)
         
-        # Add panels to main layout with stretch factors
-        main_layout.addWidget(left_panel, stretch=1)
-        main_layout.addWidget(right_panel, stretch=3)
+        # Add content to main layout
+        main_layout.addWidget(content_widget, stretch=1)
         
-        # Add this after creating the visualization tab
-        if self.use_opengl:
-            try:
-                self.opengl_visualizer = OpenGLGCodeVisualizer()
-                self.visualization_tab.layout().addWidget(self.opengl_visualizer)
-                logging.info("OpenGL visualization initialized")
-            except Exception as e:
-                logging.error(f"Failed to initialize OpenGL visualizer: {e}")
-                self.use_opengl = False
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        
+        # Progress bar for long operations
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
     
-    def _setup_editor_tab(self):
-        """Set up the G-code editor tab."""
-        if not hasattr(self, 'editor_widget'):
-            self.editor_widget = GCodeEditorWidget()
-            self.editor_widget.set_printer_limits(self.printer_limits)
-            
-            # Connect signals
-            self.editor_widget.editor.textChanged.connect(self._on_editor_text_changed)
-            
-            # Add to tab widget
-            self.tab_widget.addTab(self.editor_widget, "G-code Editor")
-    
-    def _on_editor_text_changed(self):
-        """Handle text changes in the editor."""
-        # Enable/disable save button based on modifications
-        self.save_gcode_action.setEnabled(True)
-    
-    def validate_gcode(self):
-        """Validate the G-code in the editor."""
-        if hasattr(self, 'editor_widget'):
-            # Validation happens automatically in the editor
-            # Just ensure the issues panel is visible
-            if self.editor_widget.issues_list.count() > 0:
-                self.editor_widget.issues_panel.show()
-    
-    def open_gcode_in_editor(self):
-        """Open a G-code file in the editor."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open G-code File", "", "G-code Files (*.gcode *.nc *.txt);;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r') as f:
-                    content = f.read()
-                
-                self.editor_widget.set_text(content)
-                self.current_file = file_path
-                self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(file_path)}")
-                self.statusBar().showMessage(f"Loaded {os.path.basename(file_path)}", 3000)
-                
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
-    
-    def save_gcode_from_editor(self):
-        """Save the current editor content to a file."""
-        if not hasattr(self, 'current_file') or not self.current_file:
-            self.save_gcode()
-            return
-        
-        try:
-            with open(self.current_file, 'w') as f:
-                f.write(self.editor_widget.get_text())
-            
-            self.statusBar().showMessage(f"Saved {os.path.basename(self.current_file)}", 3000)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
-    
-    def simulate_from_editor(self):
-        """Run a simulation from the editor content."""
-        if not hasattr(self, 'editor_widget'):
-            return
-        
-        gcode = self.editor_widget.get_text()
-        if not gcode.strip():
-            QMessageBox.warning(self, "Simulation", "No G-code to simulate")
-            return
-        
-        # Switch to simulation tab
-        self.tab_widget.setCurrentWidget(self.simulation_tab)
-        
-        # Run simulation
-        self._start_simulation(gcode)
+    def _create_separator(self):
+        """Create a vertical separator for toolbars."""
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("color: #555;")
+        line.setFixedWidth(1)
+        return line
     
     def _setup_stl_view(self):
         """Set up the STL view tab."""
@@ -447,6 +441,13 @@ class STLToGCodeApp(QMainWindow):
         open_action.setStatusTip("Open an STL file")
         open_action.triggered.connect(self.open_file)
         file_menu.addAction(open_action)
+        
+        # Add Open G-code action
+        open_gcode_action = QAction("Open &G-code File...", self)
+        open_gcode_action.setShortcut("Ctrl+G")
+        open_gcode_action.setStatusTip("Open a G-code file")
+        open_gcode_action.triggered.connect(self.open_gcode_in_editor)
+        file_menu.addAction(open_gcode_action)
         
         # Save GCode action
         self.save_gcode_action = QAction("&Save GCode As...", self)
@@ -633,8 +634,8 @@ class STLToGCodeApp(QMainWindow):
             self.loading_worker.progress_updated.connect(self._update_loading_progress)
             
             # Clean up thread when done
-            self.loading_worker.finished.connect(self.loading_thread.quit)
-            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
+            self.loading_worker.loading_finished.connect(self.loading_thread.quit)
+            self.loading_worker.loading_finished.connect(self.loading_worker.deleteLater)
             self.loading_thread.finished.connect(self.loading_thread.deleteLater)
             
             # Start the thread
@@ -669,81 +670,31 @@ class STLToGCodeApp(QMainWindow):
             
         try:
             # Process a limited number of chunks per frame to keep the UI responsive
-            chunks_processed = 0
-            max_chunks_per_frame = 5  # Adjust this based on performance
+            max_chunks_per_frame = 5
+            processed_chunks = 0
             
-            while self.loading_queue and chunks_processed < max_chunks_per_frame and self.is_loading:
-                chunk = self.loading_queue.pop(0)
-                chunks_processed += 1
+            while self.loading_queue and processed_chunks < max_chunks_per_frame and self.is_loading:
+                chunk_data = self.loading_queue.pop(0)
+                self._process_chunk(chunk_data)
+                processed_chunks += 1
                 
-                try:
-                    self._process_chunk(chunk)
-                    logging.debug(f"Processed chunk {chunks_processed}/{max_chunks_per_frame}")
-                except Exception as e:
-                    error_msg = f"Error processing chunk: {str(e)}"
-                    logging.error(error_msg, exc_info=True)
-                    continue  # Continue with next chunk even if one fails
-                
-                # Update progress if this was the last chunk
-                if not self.loading_queue and hasattr(self, 'progress_dialog') and self.progress_dialog:
-                    self.progress_dialog.setValue(100)
-            
-            # Update visualization if we processed any chunks
-            if chunks_processed > 0:
-                logging.debug(f"Updating visualization with {chunks_processed} chunks processed")
-                self._update_visualization()
+                # Update the visualization periodically
+                if processed_chunks % 2 == 0:  # Update every 2 chunks
+                    self._update_visualization()
                 
                 # Keep the UI responsive
                 QApplication.processEvents()
             
-            # If there are still chunks to process, schedule another update
+            # If there are more chunks to process, schedule the next batch
             if self.loading_queue and self.is_loading:
-                logging.debug(f"Scheduling next chunk processing. Remaining chunks: {len(self.loading_queue)}")
                 QTimer.singleShot(0, self._process_loading_queue)
+            else:
+                # If we're done processing all chunks, ensure final visualization update
+                if not self.loading_queue and hasattr(self, 'current_vertices') and len(self.current_vertices) > 0:
+                    self._update_visualization()
                 
         except Exception as e:
             error_msg = f"Error in _process_loading_queue: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            self._handle_loading_error(error_msg, "Error processing STL data")
-    
-    @pyqtSlot(dict)
-    def _on_chunk_loaded(self, chunk_data):
-        """Handle a chunk of STL data that has been loaded.
-        
-        Args:
-            chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
-        """
-        try:
-            if not self.is_loading:
-                logging.warning("Received chunk but loading is not in progress")
-                return
-                
-            logging.debug(f"Received chunk with {len(chunk_data.get('vertices', []))} vertices")
-            
-            # Validate chunk data
-            if 'vertices' not in chunk_data or 'faces' not in chunk_data:
-                error_msg = "Invalid chunk data: missing 'vertices' or 'faces' key"
-                logging.error(error_msg)
-                return
-                
-            # Add chunk to processing queue
-            self.loading_queue.append(chunk_data)
-            logging.debug(f"Added chunk to queue. Queue size: {len(self.loading_queue)}")
-            
-            # Update progress if available
-            if 'progress' in chunk_data:
-                progress = int(chunk_data['progress'])
-                if hasattr(self, 'progress_dialog') and self.progress_dialog:
-                    self.progress_dialog.setValue(progress)
-                    QApplication.processEvents()
-            
-            # Ensure the processing timer is running
-            if not self.loading_timer.isActive():
-                logging.debug("Starting loading timer")
-                self.loading_timer.start(100)
-                
-        except Exception as e:
-            error_msg = f"Error in _on_chunk_loaded: {str(e)}"
             logging.error(error_msg, exc_info=True)
             self._handle_loading_error(error_msg, "Error processing STL data")
     
@@ -757,65 +708,84 @@ class STLToGCodeApp(QMainWindow):
             # Update progress
             if 'progress' in chunk_data:
                 self.loading_progress = chunk_data['progress']
-                if hasattr(self, 'progress_dialog'):
+                if hasattr(self, 'progress_dialog') and self.progress_dialog:
                     self.progress_dialog.setValue(self.loading_progress)
             
-            # Update mesh data
-            if len(chunk_data['vertices']) > 0:
-                logging.debug(f"Processing chunk with {len(chunk_data['vertices'])} vertices, "
-                           f"{len(chunk_data['faces'])} faces")
-                
-                # Convert chunk data to numpy arrays if they aren't already
-                new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
-                new_faces = np.array(chunk_data['faces'], dtype=np.uint32)
-                
-                if len(self.current_vertices) == 0:
-                    # First chunk
-                    self.current_vertices = new_vertices
-                    self.current_faces = new_faces
-                    logging.debug("Initialized vertex and face arrays")
-                else:
-                    # Append new vertices
-                    vertex_offset = len(self.current_vertices)
-                    self.current_vertices = np.vstack((self.current_vertices, new_vertices))
-                    
-                    # Update face indices with the correct offset and append
-                    new_faces_offset = new_faces + vertex_offset
-                    self.current_faces = np.vstack((self.current_faces, new_faces_offset))
-                    
-                    logging.debug(f"Updated arrays. Total vertices: {len(self.current_vertices)}, "
-                               f"Total faces: {len(self.current_faces)}")
+            # Get vertices and faces from chunk
+            new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
+            new_faces = np.array(chunk_data.get('faces', []), dtype=np.uint32)
+            
+            if len(new_vertices) == 0:
+                logging.warning("Received chunk with no vertices")
+                return
+            
+            # Initialize arrays if they don't exist
+            if not hasattr(self, 'current_vertices') or self.current_vertices is None:
+                self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+            if not hasattr(self, 'current_faces') or self.current_faces is None:
+                self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+            
+            # Calculate the offset for face indices
+            vertex_offset = len(self.current_vertices)
+            
+            # Add the new vertices
+            self.current_vertices = np.vstack((self.current_vertices, new_vertices))
+            
+            # If we have faces, add them with the correct offset
+            if len(new_faces) > 0:
+                new_faces_offset = new_faces + vertex_offset
+                self.current_faces = np.vstack((self.current_faces, new_faces_offset))
+            
+            logging.debug(f"Processed chunk. Total vertices: {len(self.current_vertices)}, "
+                       f"Total faces: {len(self.current_faces)}")
+            
         except Exception as e:
-            logging.error(f"Error processing chunk: {str(e)}", exc_info=True)
+            logging.error(f"Error in _process_chunk: {str(e)}", exc_info=True)
             raise
-
-    def _on_loading_finished(self):
-        """Handle completion of the loading process."""
-        logging.info("Loading finished")
-        self.loading_timer.stop()
-        self.is_loading = False
+    
+    def _on_chunk_loaded(self, chunk_data):
+        """Handle a chunk of STL data that has been loaded.
         
+        Args:
+            chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
+        """
         try:
-            # Process any remaining chunks
-            logging.debug(f"Processing remaining {len(self.loading_queue)} chunks")
-            while self.loading_queue:
-                chunk = self.loading_queue.pop(0)
-                self._process_chunk(chunk)
-            
-            # Final update
-            logging.debug("Performing final 3D view update")
-            self._update_visualization()
-            
-            # Close progress dialog
-            if hasattr(self, 'progress_dialog'):
-                self.progress_dialog.close()
+            if not self.is_loading:
+                logging.warning("Received chunk but loading is not in progress")
+                return
                 
-            self.statusBar().showMessage(f"Loaded {self.current_file}", 5000)
-            logging.info(f"Successfully loaded {self.current_file}")
+            logging.debug(f"Received chunk with {len(chunk_data.get('vertices', []))} vertices")
+            
+            # Add the chunk to the processing queue
+            if not hasattr(self, 'loading_queue'):
+                self.loading_queue = []
+                
+            self.loading_queue.append(chunk_data)
+            
+            # If this is the first chunk, start the processing timer
+            if not hasattr(self, 'loading_timer') or not self.loading_timer.isActive():
+                logging.debug("Starting loading timer")
+                self.loading_timer = QTimer()
+                self.loading_timer.timeout.connect(self._process_loading_queue)
+                self.loading_timer.start(100)  # Process queue every 100ms
+            
+            # Update progress
+            if 'progress' in chunk_data:
+                progress = int(chunk_data['progress'])
+                if hasattr(self, 'progress_dialog'):
+                    self.progress_dialog.setValue(progress)
+                
+                # Update status bar
+                self.statusBar().showMessage(f"Loading STL: {progress}%")
+                
+                # Keep the UI responsive
+                QApplication.processEvents()
             
         except Exception as e:
-            logging.error(f"Error finalizing loading: {str(e)}", exc_info=True)
-
+            error_msg = f"Error in _on_chunk_loaded: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self._handle_loading_error(error_msg, "Error processing STL data")
+    
     def _process_gcode_buffer(self):
         """Process the G-code buffer and update the editor."""
         if not self.gcode_buffer:
@@ -945,9 +915,9 @@ class STLToGCodeApp(QMainWindow):
                     }
                     QPushButton {
                         background-color: #3c3f41;
-                        border: 1px solid #555555;
-                        padding: 5px;
+                        border: 1px solid #555;
                         border-radius: 3px;
+                        padding: 5px;
                     }
                     QPushButton:hover {
                         background-color: #4e5254;
@@ -1537,8 +1507,8 @@ class STLToGCodeApp(QMainWindow):
             self.loading_worker.progress_updated.connect(self._update_loading_progress)
             
             # Clean up thread when done
-            self.loading_worker.finished.connect(self.loading_thread.quit)
-            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
+            self.loading_worker.loading_finished.connect(self.loading_thread.quit)
+            self.loading_worker.loading_finished.connect(self.loading_worker.deleteLater)
             self.loading_thread.finished.connect(self.loading_thread.deleteLater)
             
             # Start the thread
@@ -1667,6 +1637,158 @@ class STLToGCodeApp(QMainWindow):
             logging.error(f"Error cancelling loading: {str(e)}", exc_info=True)
             self._handle_loading_error(e, "Error cancelling loading")
 
+    def add_to_recent_files(self, file_path):
+        """
+        Add a file to the list of recently opened files.
+        
+        Args:
+            file_path: Path to the file to add to recent files
+        """
+        try:
+            # Get current recent files list or create a new one
+            recent_files = self.settings.get('recent_files', [])
+            
+            # Convert to Path objects for consistent comparison
+            file_path = Path(file_path).resolve()
+            
+            # Remove the file if it already exists in the list
+            recent_files = [str(f) for f in recent_files]
+            if str(file_path) in recent_files:
+                recent_files.remove(str(file_path))
+                
+            # Add the file to the beginning of the list
+            recent_files.insert(0, str(file_path))
+            
+            # Limit the number of recent files (e.g., keep last 10)
+            max_recent = 10
+            recent_files = recent_files[:max_recent]
+            
+            # Save the updated list to settings
+            self.settings['recent_files'] = recent_files
+            
+            # Update the recent files menu if it exists
+            if hasattr(self, 'recent_files_menu'):
+                self._update_recent_files_menu()
+                
+            logging.debug(f"Added to recent files: {file_path}")
+            
+        except Exception as e:
+            logging.error(f"Error adding to recent files: {str(e)}", exc_info=True)
+    
+    def _update_recent_files_menu(self):
+        """Update the recent files menu with the current list of files."""
+        if not hasattr(self, 'recent_files_menu'):
+            return
+            
+        # Clear existing actions
+        self.recent_files_menu.clear()
+        
+        # Get recent files from settings
+        recent_files = self.settings.get('recent_files', [])
+        
+        if not recent_files:
+            action = self.recent_files_menu.addAction("No recent files")
+            action.setEnabled(False)
+            return
+            
+        # Add each recent file as a menu item
+        for i, file_path in enumerate(recent_files, 1):
+            # Show a shortened path if it's too long
+            display_path = str(file_path)
+            if len(display_path) > 50:
+                display_path = f"...{display_path[-47:]}"
+                
+            # Create the action with a keyboard shortcut (Ctrl+1, Ctrl+2, etc.)
+            shortcut = f"Ctrl+{i}" if i <= 9 else ""
+            action = self.recent_files_menu.addAction(
+                f"&{i} {display_path}",
+                lambda checked, path=file_path: self.open_file(path)
+            )
+            
+            if i <= 9:
+                action.setShortcut(f"Ctrl+{i}")
+                
+        # Add a separator and clear action
+        self.recent_files_menu.addSeparator()
+        self.recent_files_menu.addAction("Clear Recent Files", self._clear_recent_files)
+    
+    def _clear_recent_files(self):
+        """Clear the list of recently opened files."""
+        try:
+            self.settings['recent_files'] = []
+            if hasattr(self, 'recent_files_menu'):
+                self._update_recent_files_menu()
+            logging.debug("Cleared recent files list")
+        except Exception as e:
+            logging.error(f"Error clearing recent files: {str(e)}", exc_info=True)
+
+    def _setup_editor_tab(self):
+        """Set up the G-code editor tab."""
+        if not hasattr(self, 'editor_widget'):
+            self.editor_widget = GCodeEditorWidget()
+            self.editor_widget.set_printer_limits(self.printer_limits)
+            
+            # Connect signals
+            self.editor_widget.editor.textChanged.connect(self._on_editor_text_changed)
+            
+            # Add to tab widget
+            self.gcode_view_tab.layout().addWidget(self.editor_widget)
+    
+    def _on_editor_text_changed(self):
+        """Handle text changes in the editor."""
+        # Enable/disable save button based on modifications
+        if hasattr(self, 'save_gcode_action'):
+            self.save_gcode_action.setEnabled(True)
+    
+    def open_gcode_in_editor(self):
+        """Open a G-code file in the editor."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open G-code File", "", "G-code Files (*.gcode *.nc *.txt);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                self.editor_widget.set_text(content)
+                self.current_file = file_path
+                self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(file_path)}")
+                self.statusBar().showMessage(f"Loaded {os.path.basename(file_path)}", 3000)
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+    
+    def save_gcode_from_editor(self):
+        """Save the current editor content to a file."""
+        if not hasattr(self, 'current_file') or not self.current_file:
+            self.save_gcode()
+            return
+        
+        try:
+            with open(self.current_file, 'w') as f:
+                f.write(self.editor_widget.get_text())
+            
+            self.statusBar().showMessage(f"Saved {os.path.basename(self.current_file)}", 3000)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
+    
+    def simulate_from_editor(self):
+        """Run a simulation from the editor content."""
+        if not hasattr(self, 'editor_widget'):
+            return
+        
+        gcode = self.editor_widget.get_text()
+        if not gcode.strip():
+            QMessageBox.warning(self, "Simulation", "No G-code to simulate")
+            return
+        
+        # Switch to visualization tab
+        self.tab_widget.setCurrentWidget(self.visualization_tab)
+        
+        # Run simulation
+        self._start_simulation(gcode)
 
 def main():
     """Main function to start the application."""
