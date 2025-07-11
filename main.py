@@ -1810,70 +1810,80 @@ class STLToGCodeApp(QMainWindow):
             success (bool): Whether the loading was successful
             error_msg (str, optional): Error message if loading failed
         """
+        logger.debug(f"Loading finished. Success: {success}, Error: {error_msg}")
+        
+        # Stop any active timers first
+        if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
+            self.loading_timer.stop()
+        
         try:
-            # Close the progress dialog
+            # Close the progress dialog if it exists
             if hasattr(self, 'progress_dialog') and self.progress_dialog:
                 try:
                     self.progress_dialog.close()
                     self.progress_dialog.deleteLater()
-                    self.progress_dialog = None
                 except Exception as e:
                     logger.error(f"Error closing progress dialog: {str(e)}")
+                finally:
+                    self.progress_dialog = None
             
-            # Update UI elements
-            try:
-                self._update_ui_after_loading()
-            except Exception as e:
-                logger.error(f"Error updating UI after loading: {str(e)}")
+            # Handle error case
+            if not success or error_msg:
+                logger.error(f"STL loading failed: {error_msg}")
+                self._handle_loading_error(error_msg or "Unknown error occurred during STL loading")
+                return
+                
+            # Update UI state
+            logger.debug("Updating UI after successful load")
+            self._update_ui_after_loading()
             
-            # Update recent files if loading was successful
-            if success and hasattr(self, 'current_file') and self.current_file:
-                try:
-                    self.add_to_recent_files(self.current_file)
-                except Exception as e:
-                    logger.error(f"Error adding to recent files: {str(e)}")
+            # Update status bar
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage("STL file loaded successfully", 5000)
+                
+        except Exception as e:
+            logger.error(f"Error in _on_loading_finished: {str(e)}", exc_info=True)
+            self._handle_loading_error(f"Error finalizing load: {str(e)}")
+        finally:
+            # Clean up worker and thread
+            self._cleanup_loading_resources()
             
-            # Show error message if loading failed
-            if not success and error_msg:
-                QMessageBox.critical(self, "Loading Error", 
-                                  f"Failed to load STL file:\n{error_msg}")
+            # Reset loading state
+            self.is_loading = False
             
-            # Clean up worker if it exists
+            # Force UI update
+            QApplication.processEvents()
+
+    def _cleanup_loading_resources(self):
+        """Safely clean up loading resources."""
+        try:
+            # Disconnect all signals from worker
             if hasattr(self, 'loading_worker'):
                 try:
-                    # Disconnect all signals first
                     if self.loading_worker:
-                        try:
-                            self.loading_worker.loading_finished.disconnect()
-                            self.loading_worker.progress_updated.disconnect()
-                        except (TypeError, RuntimeError):
-                            pass  # Already disconnected or object deleted
-                        
-                        # Only delete if not already deleted
-                        if hasattr(sip, 'isdeleted') and not sip.isdeleted(self.loading_worker):
-                            self.loading_worker.deleteLater()
-                        elif not hasattr(sip, 'isdeleted'):
-                            # Fallback if sip.isdeleted is not available
-                            try:
-                                self.loading_worker.deleteLater()
-                            except RuntimeError:
-                                pass  # Object already deleted
+                        self.loading_worker.chunk_loaded.disconnect()
+                        self.loading_worker.loading_finished.disconnect()
+                        self.loading_worker.error_occurred.disconnect()
+                        self.loading_worker.progress_updated.disconnect()
                 except Exception as e:
-                    logger.error(f"Error cleaning up loading worker: {str(e)}")
-                finally:
-                    self.loading_worker = None
+                    logger.error(f"Error disconnecting worker signals: {str(e)}")
+                
+                # Delete worker
+                self.loading_worker.deleteLater()
+                self.loading_worker = None
             
+            # Clean up thread
+            if hasattr(self, 'loading_thread'):
+                if self.loading_thread.isRunning():
+                    self.loading_thread.quit()
+                    if not self.loading_thread.wait(2000):  # Wait up to 2 seconds
+                        logger.warning("Thread didn't stop gracefully, terminating")
+                        self.loading_thread.terminate()
+                self.loading_thread.deleteLater()
+                self.loading_thread = None
+                
         except Exception as e:
-            logger.error(f"Unexpected error in _on_loading_finished: {str(e)}")
-            # Try to show error to user
-            try:
-                QMessageBox.critical(
-                    self, 
-                    "Error", 
-                    f"An unexpected error occurred while finalizing the load: {str(e)}"
-                )
-            except:
-                pass  # If we can't show the message, at least we logged it
+            logger.error(f"Error cleaning up loading resources: {str(e)}", exc_info=True)
 
     def _update_loading_progress(self, progress_value, status_message):
         """Update the loading progress dialog with current progress.
@@ -1937,31 +1947,52 @@ class STLToGCodeApp(QMainWindow):
                 del progress_dialog
                 
     def _update_ui_after_loading(self):
-        """Update the UI after loading an STL file."""
+        """Update the UI after an STL file has been successfully loaded."""
         try:
+            logger.debug("Updating UI after STL loading")
+            
             # Enable relevant UI elements
             if hasattr(self, 'convert_button'):
                 self.convert_button.setEnabled(True)
+                logger.debug("Enabled convert button")
                 
             if hasattr(self, 'view_3d_button'):
                 self.view_3d_button.setEnabled(True)
+                logger.debug("Enabled 3D view button")
                 
             if hasattr(self, 'save_gcode_action'):
                 self.save_gcode_action.setEnabled(False)  # Disable until G-code is generated
-                
-            # Update status bar
-            if hasattr(self, 'statusBar') and self.statusBar():
-                self.statusBar().showMessage("STL file loaded successfully", 3000)
-                
+                logger.debug("Disabled save G-code action")
+            
             # Update window title with the current file
             if hasattr(self, 'current_file') and self.current_file:
                 file_name = os.path.basename(self.current_file)
                 self.setWindowTitle(f"STL to GCode Converter - {file_name}")
+                logger.debug(f"Updated window title with file: {file_name}")
+            
+            # Add to recent files if not already there
+            if hasattr(self, 'current_file') and self.current_file:
+                try:
+                    self.add_to_recent_files(self.current_file)
+                    logger.debug("Added file to recent files")
+                except Exception as e:
+                    logger.error(f"Error adding to recent files: {str(e)}", exc_info=True)
+            
+            # Update status bar
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage("STL file loaded successfully", 5000)
+                logger.debug("Updated status bar")
                 
+            logger.info("UI updated after STL loading")
+            
         except Exception as e:
-            logger.error(f"Error updating UI after loading: {str(e)}")
-            # Re-raise to be handled by the caller
-            raise
+            error_msg = f"Error updating UI after loading: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            # Try to show the error to the user
+            try:
+                QMessageBox.warning(self, "UI Update Error", error_msg)
+            except:
+                pass  # If we can't show the message, at least we logged it
 
 def main():
     """Main entry point for the application."""
