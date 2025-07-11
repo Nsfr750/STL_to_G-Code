@@ -14,10 +14,39 @@ logger = logging.getLogger(__name__)
 def is_opengl_available():
     """Check if OpenGL is available in the current environment."""
     try:
-        from PyQt6.QtOpenGL import QOpenGLContext
+        # First try importing PyQt6's OpenGL module
+        from PyQt6.QtOpenGL import QOpenGLWidget
         from PyQt6.QtGui import QSurfaceFormat
-        return True
-    except (ImportError, AttributeError):
+        
+        # Then try importing PyOpenGL
+        try:
+            from OpenGL import GL
+            import OpenGL.error
+            
+            # Test creating a simple OpenGL context
+            format = QSurfaceFormat()
+            format.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
+            format.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+            format.setVersion(3, 3)
+            
+            # Test creating a widget (but don't show it)
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance() or QApplication([])
+            widget = QOpenGLWidget()
+            widget.setFormat(format)
+            widget.makeCurrent()
+            
+            # Test a simple OpenGL call
+            GL.glClearColor(0, 0, 0, 1)
+            
+            return True
+            
+        except Exception as e:
+            logger.warning(f"OpenGL test failed: {str(e)}")
+            return False
+            
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"OpenGL not available: {str(e)}")
         return False
 
 class STLVisualizer:
@@ -35,14 +64,16 @@ class STLVisualizer:
         """
         self.ax = ax
         self.canvas = canvas
-        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
-        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        self.all_vertices = np.zeros((0, 3), dtype=np.float32)
+        self.all_faces = np.zeros((0, 3), dtype=np.uint32)
         self.file_path = None
         self.use_opengl = is_opengl_available()
         self.mesh_plot = None  # Store reference to the mesh plot
         
         if not self.use_opengl:
             logger.warning("OpenGL not available. Using software rendering.")
+        else:
+            logger.info("OpenGL acceleration is available")
     
     def _create_opengl_widget(self):
         """Create an OpenGL widget if available, return None otherwise."""
@@ -79,113 +110,121 @@ class STLVisualizer:
             bool: True if the mesh was updated successfully, False otherwise
         """
         try:
+            logger.info(f"Updating mesh with {len(vertices) if vertices is not None else 'None'} vertices and {len(faces) if faces is not None else 'None'} faces")
+            
             # Convert inputs to numpy arrays if they aren't already
             try:
                 vertices = np.asarray(vertices, dtype=np.float32)
-                faces = np.asarray(faces, dtype=np.int32)
+                faces = np.asarray(faces, dtype=np.uint32)
+                logger.debug(f"Converted vertices shape: {vertices.shape}, faces shape: {faces.shape}")
             except (ValueError, TypeError) as e:
                 logger.error(f"Error converting input data: {str(e)}")
                 self._show_error_message("Invalid mesh data format")
                 return False
             
-            # Validate input data types and shapes
-            if len(vertices) == 0 or len(faces) == 0:
-                error_msg = "No vertex or face data provided"
-                logger.error(error_msg)
-                self._show_error_message(error_msg)
-                return False
-                
-            if len(vertices.shape) != 2 or vertices.shape[1] != 3:
-                error_msg = f"Invalid vertices shape: expected (N,3), got {vertices.shape}"
-                logger.error(error_msg)
-                self._show_error_message(error_msg)
-                return False
-                
-            if len(faces.shape) != 2 or faces.shape[1] != 3:
-                error_msg = f"Invalid faces shape: expected (M,3), got {faces.shape}"
-                logger.error(error_msg)
-                self._show_error_message(error_msg)
-                return False
+            # For the first chunk, just store the vertices and faces directly
+            if len(self.all_vertices) == 0:
+                self.all_vertices = vertices
+                self.all_faces = faces
+            else:
+                # For subsequent chunks, append vertices and update face indices
+                vertex_offset = len(self.all_vertices)
+                self.all_vertices = np.vstack((self.all_vertices, vertices))
+                self.all_faces = np.vstack((self.all_faces, faces + vertex_offset))
             
-            # Create a copy of faces to avoid modifying the input
-            faces = faces.copy()
-            num_vertices = len(vertices)
+            # Update the file path if provided
+            if file_path:
+                self.file_path = str(file_path)
             
-            # Check for invalid face indices (negative or >= num_vertices)
-            # Convert to int64 to handle potential large indices
-            faces = faces.astype(np.int64)
-            valid_faces_mask = (faces >= 0) & (faces < num_vertices)
-            valid_faces = np.all(valid_faces_mask, axis=1)
+            # Update the visualization with the accumulated mesh
+            return self._update_visualization()
             
-            if not np.any(valid_faces):
-                error_msg = "No valid faces found in the mesh"
-                logger.error(error_msg)
-                self._show_error_message(error_msg)
-                return False
-                
-            if not np.all(valid_faces):
-                invalid_count = len(faces) - np.sum(valid_faces)
-                logger.warning(f"Found {invalid_count} faces with invalid vertex indices. Filtering out invalid faces...")
-                
-                # Keep only valid faces
-                faces = faces[valid_faces]
-                logger.info(f"Kept {len(faces)} valid faces out of {len(valid_faces) + invalid_count}")
-                
-                if len(faces) == 0:
-                    error_msg = "No valid faces remaining after filtering"
-                    logger.error(error_msg)
-                    self._show_error_message(error_msg)
-                    return False
-            
-            # Get all unique vertex indices used in faces
-            used_vertex_indices = np.unique(faces)
-            
-            # Create a mapping from old indices to new contiguous indices
-            max_vertex_idx = np.max(used_vertex_indices) + 1 if len(used_vertex_indices) > 0 else 0
-            index_map = np.full(max_vertex_idx, -1, dtype=np.int32)
-            index_map[used_vertex_indices] = np.arange(len(used_vertex_indices), dtype=np.int32)
-            
-            # Remap face indices
-            try:
-                remapped_faces = index_map[faces]
-                
-                # Verify the remapping was successful
-                if np.any(remapped_faces < 0):
-                    error_msg = "Error in face index remapping: invalid indices detected"
-                    logger.error(error_msg)
-                    self._show_error_message(error_msg)
-                    return False
-                
-                # Extract only the used vertices
-                used_vertices = vertices[used_vertex_indices]
-                
-                # Update the mesh data
-                self.current_vertices = used_vertices.astype(np.float32)
-                self.current_faces = remapped_faces.astype(np.uint32)
-                
-                if file_path:
-                    self.file_path = str(file_path)
-                    
-                logger.info(f"Updated mesh with {len(self.current_vertices)} vertices and {len(self.current_faces)} faces")
-                return True
-                
-            except IndexError as e:
-                error_msg = f"Error remapping face indices: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                self._show_error_message("Error processing mesh indices")
-                return False
-                
         except Exception as e:
             error_msg = f"Error updating mesh: {str(e)}"
             logger.error(error_msg, exc_info=True)
             self._show_error_message(f"Error processing mesh: {str(e)}")
             return False
-
+    
+    def _update_visualization(self):
+        """
+        Internal method to update the visualization with the current mesh data.
+        """
+        try:
+            # Clear the current plot and reset mesh_plot reference
+            self.ax.clear()
+            self.mesh_plot = None
+            
+            # Set up the 3D axes with default labels
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
+            
+            # Check if we have valid data to visualize
+            if len(self.all_vertices) == 0 or len(self.all_faces) == 0:
+                msg = "No valid mesh data to render"
+                logger.warning(msg)
+                self._show_error_message(msg)
+                return False
+            
+            # Verify all face indices are valid before rendering
+            max_vertex_idx = np.max(self.all_faces) if len(self.all_faces) > 0 else -1
+            if max_vertex_idx >= len(self.all_vertices):
+                msg = f"Invalid face indices: Max index {max_vertex_idx} exceeds vertex count {len(self.all_vertices)}"
+                logger.error(msg)
+                self._show_error_message("Invalid mesh data: face indices out of range")
+                return False
+            
+            try:
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+                
+                # Create triangles array with the correct vertex indices
+                triangles = self.all_vertices[self.all_faces]
+                
+                # Create the mesh plot and store the reference
+                self.mesh_plot = Poly3DCollection(triangles, alpha=0.5, linewidths=0.5, edgecolor='k')
+                self.mesh_plot.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
+                self.ax.add_collection3d(self.mesh_plot)
+                
+                # Auto-scale the plot to fit the mesh
+                min_vals = np.min(self.all_vertices, axis=0)
+                max_vals = np.max(self.all_vertices, axis=0)
+                
+                # Add a small margin
+                bounds = max_vals - min_vals
+                margin = np.max(bounds) * 0.1 if np.any(bounds > 0) else 1.0
+                
+                self.ax.set_xlim([min_vals[0] - margin, max_vals[0] + margin])
+                self.ax.set_ylim([min_vals[1] - margin, max_vals[1] + margin])
+                self.ax.set_zlim([min_vals[2] - margin, max_vals[2] + margin])
+                
+                # Set a title if we have a file path
+                if hasattr(self, 'file_path') and self.file_path:
+                    self.ax.set_title(f'STL: {os.path.basename(self.file_path)}')
+                
+                # Redraw the canvas
+                self.canvas.draw()
+                logger.info(f"Successfully rendered mesh with {len(self.all_vertices)} vertices and {len(self.all_faces)} faces")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error creating 3D visualization: {str(e)}", exc_info=True)
+                self._show_error_message("Error creating 3D visualization")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Unexpected error in visualization: {str(e)}", exc_info=True)
+            self._show_error_message(f"Visualization error: {str(e)}")
+            return False
+    
     def clear(self):
         """Clear the current visualization."""
-        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
-        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        if hasattr(self, 'all_vertices'):
+            del self.all_vertices
+        if hasattr(self, 'all_faces'):
+            del self.all_faces
         self.file_path = None
+        self.ax.clear()
+        self.canvas.draw()
     
     def render(self):
         """
@@ -205,16 +244,16 @@ class STLVisualizer:
             self.ax.set_zlabel('Z')
             
             # Check if we have valid data to visualize
-            if len(self.current_vertices) == 0 or len(self.current_faces) == 0:
+            if len(self.all_vertices) == 0 or len(self.all_faces) == 0:
                 msg = "No valid mesh data to render"
                 logger.warning(msg)
                 self._show_error_message(msg)
                 return False
             
             # Verify all face indices are valid before rendering
-            max_vertex_idx = np.max(self.current_faces) if len(self.current_faces) > 0 else -1
-            if max_vertex_idx >= len(self.current_vertices):
-                msg = f"Invalid face indices: Max index {max_vertex_idx} exceeds vertex count {len(self.current_vertices)}"
+            max_vertex_idx = np.max(self.all_faces) if len(self.all_faces) > 0 else -1
+            if max_vertex_idx >= len(self.all_vertices):
+                msg = f"Invalid face indices: Max index {max_vertex_idx} exceeds vertex count {len(self.all_vertices)}"
                 logger.error(msg)
                 self._show_error_message("Invalid mesh data: face indices out of range")
                 return False
@@ -222,44 +261,38 @@ class STLVisualizer:
             try:
                 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
                 
-                # Create a Poly3DCollection with the valid faces
-                try:
-                    verts = self.current_vertices[self.current_faces]
-                    
-                    # Create the mesh plot and store the reference
-                    self.mesh_plot = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
-                    self.mesh_plot.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
-                    self.ax.add_collection3d(self.mesh_plot)
-                    
-                    # Auto-scale the plot to fit the mesh
-                    min_vals = np.min(self.current_vertices, axis=0)
-                    max_vals = np.max(self.current_vertices, axis=0)
-                    
-                    # Add a small margin
-                    bounds = max_vals - min_vals
-                    margin = np.max(bounds) * 0.1 if np.any(bounds > 0) else 1.0
-                    
-                    self.ax.set_xlim([min_vals[0] - margin, max_vals[0] + margin])
-                    self.ax.set_ylim([min_vals[1] - margin, max_vals[1] + margin])
-                    self.ax.set_zlim([min_vals[2] - margin, max_vals[2] + margin])
-                    
-                    # Set a title if we have a file path
-                    if self.file_path:
-                        self.ax.set_title(f'STL: {os.path.basename(self.file_path)}')
-                    
-                    # Redraw the canvas
-                    self.canvas.draw()
-                    return True
-                    
-                except Exception as e:
-                    logger.error(f"Error creating 3D visualization: {str(e)}", exc_info=True)
-                    self._show_error_message("Error creating 3D visualization")
-                    return False
+                # Create triangles array with the correct vertex indices
+                triangles = self.all_vertices[self.all_faces]
                 
-            except ImportError:
-                error_msg = "Required 3D visualization libraries not available"
-                logger.error(error_msg, exc_info=True)
-                self._show_error_message(error_msg)
+                # Create the mesh plot and store the reference
+                self.mesh_plot = Poly3DCollection(triangles, alpha=0.5, linewidths=0.5, edgecolor='k')
+                self.mesh_plot.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
+                self.ax.add_collection3d(self.mesh_plot)
+                
+                # Auto-scale the plot to fit the mesh
+                min_vals = np.min(self.all_vertices, axis=0)
+                max_vals = np.max(self.all_vertices, axis=0)
+                
+                # Add a small margin
+                bounds = max_vals - min_vals
+                margin = np.max(bounds) * 0.1 if np.any(bounds > 0) else 1.0
+                
+                self.ax.set_xlim([min_vals[0] - margin, max_vals[0] + margin])
+                self.ax.set_ylim([min_vals[1] - margin, max_vals[1] + margin])
+                self.ax.set_zlim([min_vals[2] - margin, max_vals[2] + margin])
+                
+                # Set a title if we have a file path
+                if hasattr(self, 'file_path') and self.file_path:
+                    self.ax.set_title(f'STL: {os.path.basename(self.file_path)}')
+                
+                # Redraw the canvas
+                self.canvas.draw()
+                logger.info(f"Successfully rendered mesh with {len(self.all_vertices)} vertices and {len(self.all_faces)} faces")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error creating 3D visualization: {str(e)}", exc_info=True)
+                self._show_error_message("Error creating 3D visualization")
                 return False
                 
         except Exception as e:
