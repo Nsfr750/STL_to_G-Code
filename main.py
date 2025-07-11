@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, 
     QStyle, QFrame, QStatusBar, QToolBar, QPlainTextEdit
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QSettings, QSize, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -43,6 +43,23 @@ from scripts.gcode_validator import PrinterLimits
 from scripts.view_settings import view_settings  # Add this import
 from scripts.logger import setup_logging, get_logger
 from PyQt6.QtCore import QSettings
+try:
+    from PyQt6 import sip
+except ImportError:
+    # Fallback for older PyQt6 versions or PySide6
+    try:
+        import PySide6.sip as sip
+    except ImportError:
+        # Fallback to regular sip if available
+        try:
+            import sip
+        except ImportError:
+            # If sip is not available, use a dummy implementation
+            class SipWrapper:
+                @staticmethod
+                def isdeleted(obj):
+                    return False
+            sip = SipWrapper()
 
 # Get logger for this module
 logger = get_logger(__name__)
@@ -61,6 +78,46 @@ except ImportError as e:
 
 # Import view settings after OPENGL_AVAILABLE is set
 from scripts.view_settings import view_settings
+
+class SimulationWorker(QObject):
+    """Worker for running G-code simulation in a separate thread."""
+    
+    progress = pyqtSignal(int, str)  # progress percentage, status message
+    finished = pyqtSignal(bool, str)  # success, message
+    error = pyqtSignal(str)  # error message
+    
+    def __init__(self, gcode):
+        super().__init__()
+        self.gcode = gcode
+        self._is_running = True
+        
+    def run(self):
+        """Run the simulation."""
+        try:
+            # TODO: Implement actual simulation logic
+            # For now, just parse the G-code and emit progress
+            lines = [line.strip() for line in self.gcode.split('\n') if line.strip()]
+            total_lines = len(lines)
+            
+            for i, line in enumerate(lines, 1):
+                if not self._is_running:
+                    break
+                    
+                # Process line here
+                # ...
+                
+                # Update progress
+                progress = int((i / total_lines) * 100) if total_lines > 0 else 100
+                self.progress.emit(progress, f"Simulating line {i}/{total_lines}")
+                
+            self.finished.emit(True, "Simulation completed successfully")
+            
+        except Exception as e:
+            self.error.emit(f"Simulation error: {str(e)}")
+            
+    def stop(self):
+        """Stop the simulation."""
+        self._is_running = False
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -1508,10 +1565,11 @@ class STLToGCodeApp(QMainWindow):
             editor_toolbar.addSeparator()
             
             # Add action to simulate G-code
-            simulate_action = QAction(QIcon.fromTheme("media-playback-start"), "Simulate", self)
-            simulate_action.triggered.connect(self.simulate_from_editor)
-            simulate_action.setStatusTip("Simulate the current G-code")
-            editor_toolbar.addAction(simulate_action)
+            self.simulate_action = QAction(QIcon.fromTheme("media-playback-start"), "Simulate", self)
+            self.simulate_action.triggered.connect(self.simulate_from_editor)
+            self.simulate_action.setStatusTip("Simulate the current G-code")
+            self.simulate_action.setEnabled(False)  # Disable by default
+            editor_toolbar.addAction(self.simulate_action)
             
             # Add the toolbar to the layout
             layout.addWidget(editor_toolbar)
@@ -1542,6 +1600,9 @@ class STLToGCodeApp(QMainWindow):
                 }
             """)
             
+            # Connect textChanged signal to update button state
+            self.gcode_editor.textChanged.connect(self._update_simulate_button_state)
+            
             # Set up line numbers
             self.gcode_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
             
@@ -1562,6 +1623,11 @@ class STLToGCodeApp(QMainWindow):
             error_msg = f"Error setting up editor tab: {str(e)}"
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
+    
+    def _update_simulate_button_state(self):
+        """Update the simulate button state based on editor content."""
+        has_content = bool(self.gcode_editor.toPlainText().strip())
+        self.simulate_action.setEnabled(has_content)
     
     def _update_editor_status(self):
         """Update the editor status bar with cursor position and document info."""
@@ -1604,7 +1670,7 @@ class STLToGCodeApp(QMainWindow):
             self.recent_files = self.recent_files[:max_recent]
             
             # Update the recent files menu
-            self._update_recent_files_menu()
+            self._setup_recent_files_menu()
             
             # Save the recent files to settings
             self._save_recent_files()
@@ -1612,42 +1678,86 @@ class STLToGCodeApp(QMainWindow):
         except Exception as e:
             logger.error(f"Error adding to recent files: {str(e)}", exc_info=True)
     
-    def _update_recent_files_menu(self):
-        """Update the recent files menu with the current list of files."""
+    def _setup_recent_files_menu(self):
+        """Set up the recent files menu."""
         try:
+            # Create recent files menu if it doesn't exist
             if not hasattr(self, 'recent_files_menu'):
-                # Find the recent files menu in the file menu
-                for action in self.file_menu.actions():
-                    if action.text() == 'Recent Files' and hasattr(action, 'menu'):
-                        self.recent_files_menu = action.menu()
-                        self.recent_files_menu.aboutToShow.connect(self._update_recent_files_menu)
-                        break
-                else:
-                    logger.warning("Recent files menu not found")
+                if not hasattr(self, 'file_menu'):
+                    logger.warning("File menu not found, cannot create recent files menu")
                     return
+                self.recent_files_menu = self.file_menu.addMenu("Recent Files")
             
-            # Clear the current actions
+            # Clear existing items
             self.recent_files_menu.clear()
             
-            if not hasattr(self, 'recent_files') or not self.recent_files:
+            # Get recent files from settings
+            settings = QSettings("STLtoGCode", "RecentFiles")
+            recent_files = settings.value("recentFiles", [], type=list)
+            
+            if not recent_files:
                 no_files = self.recent_files_menu.addAction("No recent files")
                 no_files.setEnabled(False)
                 return
+                
+            # Add recent files to menu
+            for i, file_path in enumerate(recent_files[:10]):  # Show max 10 recent files
+                if os.path.exists(file_path):
+                    action = self.recent_files_menu.addAction(
+                        f"&{i+1} {os.path.basename(file_path)}",
+                        lambda checked, path=file_path: self._open_recent_file(path)
+                    )
+                    action.setToolTip(file_path)
             
-            # Add each recent file as an action
-            for i, file_path in enumerate(self.recent_files[:10]):  # Show max 10 recent files
-                display_text = f"&{i + 1} {os.path.basename(file_path)}"
-                action = self.recent_files_menu.addAction(display_text, 
-                                                         lambda checked, path=file_path: self.open_file(path))
-                action.setStatusTip(file_path)
-            
-            # Add a separator and clear action
+            # Add clear menu action if there are recent files
             self.recent_files_menu.addSeparator()
-            clear_action = self.recent_files_menu.addAction("Clear Recent Files", self._clear_recent_files)
-            clear_action.setStatusTip("Clear the list of recent files")
+            clear_action = self.recent_files_menu.addAction("Clear Recent Files")
+            clear_action.triggered.connect(self._clear_recent_files)
             
         except Exception as e:
-            logger.error(f"Error updating recent files menu: {str(e)}", exc_info=True)
+            logger.error(f"Error setting up recent files menu: {str(e)}")
+    
+    def _open_recent_file(self, file_path):
+        """Open a file from the recent files menu."""
+        try:
+            if os.path.exists(file_path):
+                self.open_file(file_path)
+            else:
+                # Remove non-existent file from recent files
+                self._remove_recent_file(file_path)
+                QMessageBox.warning(
+                    self,
+                    "File Not Found",
+                    f"The file was not found:\n{file_path}"
+                )
+        except Exception as e:
+            logger.error(f"Error opening recent file: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Could not open file:\n{file_path}\n\nError: {str(e)}"
+            )
+    
+    def _clear_recent_files(self):
+        """Clear the list of recent files."""
+        try:
+            settings = QSettings("STLtoGCode", "RecentFiles")
+            settings.setValue("recentFiles", [])
+            self._setup_recent_files_menu()
+        except Exception as e:
+            logger.error(f"Error clearing recent files: {str(e)}")
+    
+    def _remove_recent_file(self, file_path):
+        """Remove a file from the recent files list."""
+        try:
+            settings = QSettings("STLtoGCode", "RecentFiles")
+            recent_files = settings.value("recentFiles", [], type=list)
+            if file_path in recent_files:
+                recent_files.remove(file_path)
+                settings.setValue("recentFiles", recent_files)
+                self._setup_recent_files_menu()
+        except Exception as e:
+            logger.error(f"Error removing recent file: {str(e)}")
     
     def _save_recent_files(self):
         """Save the recent files list to application settings."""
@@ -1677,16 +1787,6 @@ class STLToGCodeApp(QMainWindow):
             logger.error(f"Error loading recent files: {str(e)}", exc_info=True)
             self.recent_files = []
     
-    def _clear_recent_files(self):
-        """Clear the list of recent files."""
-        try:
-            if hasattr(self, 'recent_files'):
-                self.recent_files = []
-                self._save_recent_files()
-                self._update_recent_files_menu()
-        except Exception as e:
-            logger.error(f"Error clearing recent files: {str(e)}", exc_info=True)
-    
     def _cancel_loading(self):
         """Cancel the current loading operation."""
         if hasattr(self, 'loading_worker') and self.loading_worker:
@@ -1703,14 +1803,175 @@ class STLToGCodeApp(QMainWindow):
         QMessageBox.critical(self, title, str(error_msg))
         self._cancel_loading()
 
+    def _on_loading_finished(self, success=True, error_msg=None):
+        """Handle completion of the STL file loading process.
+        
+        Args:
+            success (bool): Whether the loading was successful
+            error_msg (str, optional): Error message if loading failed
+        """
+        try:
+            # Close the progress dialog
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                try:
+                    self.progress_dialog.close()
+                    self.progress_dialog.deleteLater()
+                    self.progress_dialog = None
+                except Exception as e:
+                    logger.error(f"Error closing progress dialog: {str(e)}")
+            
+            # Update UI elements
+            try:
+                self._update_ui_after_loading()
+            except Exception as e:
+                logger.error(f"Error updating UI after loading: {str(e)}")
+            
+            # Update recent files if loading was successful
+            if success and hasattr(self, 'current_file') and self.current_file:
+                try:
+                    self.add_to_recent_files(self.current_file)
+                except Exception as e:
+                    logger.error(f"Error adding to recent files: {str(e)}")
+            
+            # Show error message if loading failed
+            if not success and error_msg:
+                QMessageBox.critical(self, "Loading Error", 
+                                  f"Failed to load STL file:\n{error_msg}")
+            
+            # Clean up worker if it exists
+            if hasattr(self, 'loading_worker'):
+                try:
+                    # Disconnect all signals first
+                    if self.loading_worker:
+                        try:
+                            self.loading_worker.loading_finished.disconnect()
+                            self.loading_worker.progress_updated.disconnect()
+                        except (TypeError, RuntimeError):
+                            pass  # Already disconnected or object deleted
+                        
+                        # Only delete if not already deleted
+                        if hasattr(sip, 'isdeleted') and not sip.isdeleted(self.loading_worker):
+                            self.loading_worker.deleteLater()
+                        elif not hasattr(sip, 'isdeleted'):
+                            # Fallback if sip.isdeleted is not available
+                            try:
+                                self.loading_worker.deleteLater()
+                            except RuntimeError:
+                                pass  # Object already deleted
+                except Exception as e:
+                    logger.error(f"Error cleaning up loading worker: {str(e)}")
+                finally:
+                    self.loading_worker = None
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in _on_loading_finished: {str(e)}")
+            # Try to show error to user
+            try:
+                QMessageBox.critical(
+                    self, 
+                    "Error", 
+                    f"An unexpected error occurred while finalizing the load: {str(e)}"
+                )
+            except:
+                pass  # If we can't show the message, at least we logged it
+
+    def _update_loading_progress(self, progress_value, status_message):
+        """Update the loading progress dialog with current progress.
+        
+        Args:
+            progress_value (int): Current progress value (0-100)
+            status_message (str or int): Status message to display
+        """
+        try:
+            # Ensure we're in the main thread and the application is still running
+            if not QApplication.instance() or not hasattr(self, 'progress_dialog'):
+                return
+                
+            # Get a local reference to the dialog to prevent race conditions
+            progress_dialog = self.progress_dialog
+            if progress_dialog is None:
+                return
+                
+            # Ensure status_message is a string
+            status_str = str(status_message) if status_message is not None else ""
+            
+            # Update progress dialog if it still exists
+            try:
+                # Check if the dialog was deleted
+                if sip and hasattr(sip, 'isdeleted') and sip.isdeleted(progress_dialog):
+                    return
+                    
+                # Update the dialog
+                progress_dialog.setValue(progress_value)
+                progress_dialog.setLabelText(status_str)
+                
+                # Process events to keep the UI responsive
+                QApplication.processEvents()
+                
+            except RuntimeError as e:
+                # Dialog was likely deleted
+                if 'wrapped C/C++ object' in str(e):
+                    self.progress_dialog = None
+                return
+                
+            # Update status bar if available
+            try:
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(status_str, 3000)  # Show for 3 seconds
+            except RuntimeError:
+                pass  # Status bar might be destroyed
+                
+        except Exception as e:
+            # Use logger if available, otherwise fall back to stderr
+            try:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error updating loading progress: {str(e)}", exc_info=True)
+            except:
+                import traceback
+                print(f"Error updating loading progress: {str(e)}\n{traceback.format_exc()}")
+                
+        finally:
+            # Ensure we don't hold references to deleted objects
+            if 'progress_dialog' in locals():
+                del progress_dialog
+                
+    def _update_ui_after_loading(self):
+        """Update the UI after loading an STL file."""
+        try:
+            # Enable relevant UI elements
+            if hasattr(self, 'convert_button'):
+                self.convert_button.setEnabled(True)
+                
+            if hasattr(self, 'view_3d_button'):
+                self.view_3d_button.setEnabled(True)
+                
+            if hasattr(self, 'save_gcode_action'):
+                self.save_gcode_action.setEnabled(False)  # Disable until G-code is generated
+                
+            # Update status bar
+            if hasattr(self, 'statusBar') and self.statusBar():
+                self.statusBar().showMessage("STL file loaded successfully", 3000)
+                
+            # Update window title with the current file
+            if hasattr(self, 'current_file') and self.current_file:
+                file_name = os.path.basename(self.current_file)
+                self.setWindowTitle(f"STL to GCode Converter - {file_name}")
+                
+        except Exception as e:
+            logger.error(f"Error updating UI after loading: {str(e)}")
+            # Re-raise to be handled by the caller
+            raise
+
 def main():
     """Main entry point for the application."""
     # Set up logging first
     try:
         log_file = setup_logging()
+        logger = get_logger(__name__)
         logger.info("=" * 80)
         logger.info(f"Starting STL to GCode Converter v{__version__}")
-        logger.info(f"Log file: {log_file.absolute()}")
+        logger.info(f"Log file: {log_file}")
         logger.info("=" * 80)
     except Exception as e:
         print(f"Failed to set up logging: {e}")

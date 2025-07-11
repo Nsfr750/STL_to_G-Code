@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 import datetime
 
+# Flag to track if logging has been configured
+_logging_configured = False
+
 def setup_logging():
     """
     Set up logging configuration for the application.
@@ -17,6 +20,12 @@ def setup_logging():
     Returns:
         Path: Path to the log file that was created
     """
+    global _logging_configured
+    
+    # Only configure logging once
+    if _logging_configured:
+        return logging.getLogger().handlers[0].baseFilename
+    
     # Create logs directory if it doesn't exist
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
@@ -25,34 +34,48 @@ def setup_logging():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"stl_to_gcode_{timestamp}.log"
     
+    # Clear any existing handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
     # Configure root logger
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler()
-        ]
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    console_handler = logging.StreamHandler()
+    
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # Set up specific loggers
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    # Log the absolute path of the log file
+    log_file_path = Path(log_file).absolute()
+    
+    # Set up specific loggers with higher levels
     loggers = [
         logging.getLogger('matplotlib'),
         logging.getLogger('PyQt6'),
-        logging.getLogger('OpenGL')
+        logging.getLogger('OpenGL'),
+        logging.getLogger('PIL')
     ]
     
     for logger in loggers:
         logger.setLevel(logging.WARNING)  # Reduce verbosity for these loggers
     
     # Log startup information
-    root_logger = logging.getLogger()
     root_logger.info("=" * 80)
     root_logger.info(f"STL to GCode Converter - Logging initialized")
-    root_logger.info(f"Log file: {log_file.absolute()}")
+    root_logger.info(f"Log file: {log_file_path}")
     root_logger.info("=" * 80)
     
+    _logging_configured = True
     return log_file
 
 def get_logger(name: str) -> logging.Logger:
@@ -65,7 +88,12 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Configured logger instance
     """
+    # Ensure logging is configured
+    if not _logging_configured:
+        setup_logging()
     return logging.getLogger(name)
 
 # Initialize logging when this module is imported
-log_file = setup_logging()
+# This ensures that if someone imports this module directly, logging is still configured
+if not _logging_configured:
+    setup_logging()

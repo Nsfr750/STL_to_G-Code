@@ -5,10 +5,24 @@ This module provides the About dialog window that displays application informati
 version details, and copyright notice using PyQt6.
 """
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
-                            QHBoxLayout, QApplication, QWidget)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+                             QHBoxLayout, QTextBrowser, QApplication)
+from PyQt6.QtCore import Qt, QSize, QUrl, QT_VERSION_STR, PYQT_VERSION_STR
+from PyQt6.QtGui import QPixmap, QIcon, QDesktopServices, QFont
+import os
+import sys
+import platform
+from pathlib import Path
 from .version import get_version  # Updated import to use relative import
+import logging
+logger = logging.getLogger(__name__)
+
+# Check if OpenGL is available
+OPENGL_AVAILABLE = False
+try:
+    from PyQt6.QtOpenGL import QOpenGLWidget  # noqa: F401
+    OPENGL_AVAILABLE = True
+except ImportError:
+    pass
 
 class About:
     """
@@ -44,7 +58,7 @@ class About:
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Copyright information
-        copyright = QLabel("© 2025 Nsfr750. All rights reserved.")
+        copyright = QLabel(" 2025 Nsfr750. All rights reserved.")
         copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Description
@@ -54,6 +68,48 @@ class About:
         description.setWordWrap(True)
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
+        # PyQt6 version information
+        pyqt_version = f"PyQt6 version: {PYQT_VERSION_STR}"
+        pyqt_label = QLabel(pyqt_version)
+        pyqt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Qt version information
+        qt_version = f"Qt version: {QT_VERSION_STR}"
+        qt_label = QLabel(qt_version)
+        qt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # System info
+        sys_info = QTextBrowser()
+        sys_info.setOpenLinks(True)
+        sys_info.setHtml(About.get_system_info())
+        sys_info.setMaximumHeight(250)
+        layout.addWidget(QLabel("<b>System Information:</b>"))
+        layout.addWidget(sys_info)
+        
+        # Open-GL
+        open_gl = QLabel("OpenGL: " + ("Available" if OPENGL_AVAILABLE else "Not available"))
+        open_gl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                
+        # GitHub button
+        github_btn = QPushButton("GitHub")
+        github_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2b579a;  /* Blue color */
+                color: white;
+                padding: 5px 15px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1e4b8b;  /* Darker blue on hover */
+            }
+            QPushButton:pressed {
+                background-color: #173f75;  /* Even darker when pressed */
+            }
+        """)
+        github_btn.clicked.connect(lambda: QDesktopServices.openUrl(
+            QUrl("https://github.com/Nsfr750/STL_to_G-Code")))
+
         # Add widgets to layout
         layout.addWidget(title)
         layout.addWidget(version)
@@ -62,17 +118,95 @@ class About:
         layout.addSpacing(10)
         layout.addWidget(copyright)
         
-        # Add OK button
-        button_box = QHBoxLayout()
-        button_box.addStretch()
+        # Create a horizontal layout for the buttons
+        button_layout = QHBoxLayout()
+        
+        # Add GitHub button with stretch on the left
+        button_layout.addStretch()
+        button_layout.addWidget(github_btn)
+        
+        # Add OK button with some spacing
+        button_layout.addSpacing(10)  # Add some space between buttons
         ok_button = QPushButton("OK")
         ok_button.clicked.connect(dialog.accept)
-        button_box.addWidget(ok_button)
-        button_box.addStretch()
+        button_layout.addWidget(ok_button)
+        button_layout.addStretch()  # Add stretch on the right
         
-        layout.addLayout(button_box)
+        # Add the button layout to the main layout
+        layout.addSpacing(10)
+        layout.addLayout(button_layout)
         
         # Set dialog properties
         dialog.setLayout(layout)
+        dialog.setWindowTitle("About STL to GCode Converter")
         dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         dialog.exec()
+
+    @staticmethod
+    def get_system_info():
+        """Get system information for the about dialog."""
+        try:
+            # Get PyQt version
+            python_version = sys.version.split(' ')[0]
+            
+            # Get operating system information
+            os_info = f"{platform.system()} {platform.release()} {platform.version()}"
+            
+            # Get screen resolution
+            screen = QApplication.primaryScreen()
+            screen_geometry = screen.availableGeometry()
+            resolution = f"{screen_geometry.width()}x{screen_geometry.height()}"
+
+            # Get CPU information
+            cpu_info = ""
+            try:
+                if hasattr(platform, 'processor'):
+                    cpu_info = platform.processor() or "Not available"
+                else:
+                    cpu_info = "Not available"
+                
+                # Get CPU cores using os.cpu_count() which is more reliable
+                cpu_cores = os.cpu_count() or "Not available"
+            except Exception as e:
+                logger.warning(f"Error getting CPU info: {e}")
+                cpu_info = "Error getting CPU info"
+                cpu_cores = "Error"
+            
+            # Get memory information
+            memory_info = ""
+            try:
+                import psutil
+                memory = psutil.virtual_memory()
+                total_memory = memory.total / (1024 ** 3)  # Convert to GB
+                available_memory = memory.available / (1024 ** 3)
+                memory_info = f"{available_memory:.1f} GB available of {total_memory:.1f} GB"
+            except ImportError:
+                memory_info = "psutil not available"
+            except Exception as e:
+                logger.warning(f"Error getting memory info: {e}")
+                memory_info = "Error getting memory info"
+            
+            # Format the information as HTML
+            info = f"""
+            <html>
+            <body>
+            <table>
+            <tr><td><b>Operating System:</b></td><td>{os_info}</td></tr>
+            <tr><td><b>Python Version:</b></td><td>{python_version}</td></tr>
+            <tr><td><b>Qt Version:</b></td><td>{QT_VERSION_STR}</td></tr>
+            <tr><td><b>PyQt Version:</b></td><td>{PYQT_VERSION_STR}</td></tr>
+            <tr><td><b>Screen Resolution:</b></td><td>{resolution}</td></tr>
+            <tr><td><b>CPU:</b></td><td>{cpu_info}</td></tr>
+            <tr><td><b>CPU Cores:</b></td><td>{cpu_cores}</td></tr>
+            <tr><td><b>OpenGL:</b></td><td>{"Available" if OPENGL_AVAILABLE else "Not available"}</td></tr>
+            <tr><td><b>Memory:</b></td><td>{memory_info}</td></tr>
+            </table>
+            </body>
+            </html>
+            """
+            
+            return info
+            
+        except Exception as e:
+            logger.error(f"Error getting system info: {e}")
+            return f"<p>Error getting system information: {str(e)}</p>"
