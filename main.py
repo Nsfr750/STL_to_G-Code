@@ -6,9 +6,14 @@ import os
 import logging
 from pathlib import Path
 import datetime
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QObject
+from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, 
+    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
+    QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter,
+    QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, QStyle
+)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -22,14 +27,13 @@ from scripts.updates import check_for_updates
 from scripts.ui_qt import UI  # Import the new UI module
 from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
-from scripts.workers import GCodeGenerationWorker
+from scripts.workers import GCodeGenerationWorker, STLLoadingWorker
 from scripts.gcode_visualizer import GCodeVisualizer
-from scripts.stl_processor import load_stl, MemoryEfficientSTLProcessor
+from scripts.stl_processor import load_stl, MemoryEfficientSTLProcessor, STLHeader, STLTriangle
 from scripts.gcode_simulator import GCodeSimulator, PrinterState
 import numpy as np
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
-from PyQt6.QtGui import QColor, QFont, QIcon
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QFont
 from scripts.gcode_editor import GCodeEditorWidget
 from scripts.gcode_validator import PrinterLimits
 
@@ -141,6 +145,9 @@ class STLToGCodeApp(QMainWindow):
             'feedrate': 3000,  # mm/min
             'travel_feedrate': 4800  # mm/min
         }
+        
+        # Initialize STL processor
+        self.current_stl_processor = None
         
         # Initialize UI components
         self._setup_ui()
@@ -434,88 +441,89 @@ class STLToGCodeApp(QMainWindow):
         # File menu
         file_menu = menubar.addMenu("&File")
         
-        open_action = file_menu.addAction("&Open STL...")
-        open_action.triggered.connect(self.open_file)
+        open_action = QAction("&Open STL File...", self)
         open_action.setShortcut("Ctrl+O")
+        open_action.setStatusTip("Open an STL file")
+        open_action.triggered.connect(self.open_file)
+        file_menu.addAction(open_action)
         
-        save_action = file_menu.addAction("&Save GCode As...")
-        save_action.triggered.connect(self.save_gcode)
-        save_action.setShortcut("Ctrl+Shift+S")
-        save_action.setEnabled(False)
+        # Save GCode action
+        self.save_gcode_action = QAction("&Save GCode As...", self)
+        self.save_gcode_action.setShortcut("Ctrl+Shift+S")
+        self.save_gcode_action.setStatusTip("Save the generated GCode to a file")
+        self.save_gcode_action.triggered.connect(self.save_gcode)
+        self.save_gcode_action.setEnabled(False)  # Will be enabled when GCode is generated
+        file_menu.addAction(self.save_gcode_action)
         
         file_menu.addSeparator()
         
-        # Add Settings action
-        settings_action = file_menu.addAction("&Settings...")
+        # Exit action
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.setStatusTip("Exit the application")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Edit menu
+        edit_menu = menubar.addMenu("&Edit")
+        
+        # Settings action
+        settings_action = QAction("&Settings...", self)
+        settings_action.setStatusTip("Configure application settings")
         settings_action.triggered.connect(self.show_settings)
         settings_action.setShortcut("Ctrl+,")
-        
-        file_menu.addSeparator()
-        
-        exit_action = file_menu.addAction("E&xit")
-        exit_action.triggered.connect(self.close)
-        exit_action.setShortcut("Alt+F4")
+        edit_menu.addAction(settings_action)
         
         # View menu
         view_menu = menubar.addMenu("&View")
         
-        # Add toggle for log viewer
-        self.toggle_log_viewer_action = view_menu.addAction("Show &Log Viewer")
+        # Toggle Log Viewer action
+        self.toggle_log_viewer_action = QAction("Show &Log", self)
         self.toggle_log_viewer_action.setCheckable(True)
         self.toggle_log_viewer_action.setChecked(False)
+        self.toggle_log_viewer_action.setStatusTip("Show or hide the log viewer")
         self.toggle_log_viewer_action.triggered.connect(self.toggle_log_viewer)
-        
-        # Tools menu
-        tools_menu = menubar.addMenu("&Tools")
-        
-        convert_action = tools_menu.addAction("&Convert to GCode")
-        convert_action.triggered.connect(self.generate_gcode)
-        convert_action.setEnabled(False)
+        view_menu.addAction(self.toggle_log_viewer_action)
         
         # Help menu
         help_menu = menubar.addMenu("&Help")
+
+        # About action
+        about_action = QAction("&About", self)
+        about_action.setStatusTip("Show the application's About box")
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
         
-        # Add Documentation action
-        doc_action = help_menu.addAction("&Documentation")
-        doc_action.triggered.connect(self.show_documentation)
-        doc_action.setShortcut("F1")
+        # Help action
+        help_action = QAction("&Help", self)
+        help_action.setShortcut("F1")
+        help_action.setStatusTip("Show help documentation")
+        help_action.triggered.connect(lambda: show_help(self))
+        help_menu.addAction(help_action)
+        
+        # Documentation action
+        docs_action = QAction("&Documentation", self)
+        docs_action.setStatusTip("Open the application documentation")
+        docs_action.triggered.connect(self.show_documentation)
+        help_menu.addAction(docs_action)
         
         help_menu.addSeparator()
-        
-        help_action = help_menu.addAction("&Help")
-        help_action.triggered.connect(lambda: show_help(self))
-        
-        about_action = help_menu.addAction("&About")
-        about_action.triggered.connect(self.show_about)
-        
-        sponsor_action = help_menu.addAction("&Sponsor")
+        # Sponsor action
+        sponsor_action = QAction("&Sponsor", self)
+        sponsor_action.setStatusTip("Support the project")
         sponsor_action.triggered.connect(self.show_sponsor)
+        help_menu.addAction(sponsor_action)
         
-        check_updates_action = help_menu.addAction("Check for &Updates")
-        check_updates_action.triggered.connect(self.check_updates)
+        help_menu.addSeparator()
+               
+        # Check for updates action
+        update_action = QAction("Check for &Updates...", self)
+        update_action.setStatusTip("Check for application updates")
+        update_action.triggered.connect(self.check_updates)
+        help_menu.addAction(update_action)
         
         # Store actions for later reference
-        self.save_action = save_action
-        self.convert_action = convert_action
-    
-    def _setup_logging(self):
-        """Set up logging configuration."""
-        # Configure root logger
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        logging.captureWarnings(True)
-        
-        # Log application version
-        logging.info(f"STL to GCode Converter v{__version__} starting up...")
-    
-    def _setup_status_bar(self):
-        """Set up the status bar with the UI module."""
-        self.status_bar = self.ui.create_status_bar(self)
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
+        self.open_action = open_action
     
     def open_file(self, file_path=None):
         """Open an STL file and load it into the viewer with progressive loading."""
@@ -529,28 +537,33 @@ class STLToGCodeApp(QMainWindow):
             
         try:
             logging.info(f"Opening file: {file_path}")
+            
+            # Reset any existing loading state
             self._reset_loading_state()
+            
+            # Show loading status
             self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
             QApplication.processEvents()
-        
+            
             # Initialize the STL processor
-            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path, chunk_size=1000)
-        
+            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path)
+            self.current_stl_processor.open()
+            
             # Store file info
             self.file_path = file_path
             self.current_file = os.path.basename(file_path)
             self.setWindowTitle(f"STL to GCode - {self.current_file}")
-        
+            
             # Add to recent files
             self.add_to_recent_files(file_path)
-        
+            
             # Start progressive loading
             logging.debug("Starting progressive loading")
             self._start_progressive_loading()
-        
+            
         except Exception as e:
             logging.error(f"Error opening file: {str(e)}", exc_info=True)
-            self._handle_loading_error(e, file_path)
+            self._handle_loading_error(str(e), "Error opening file")
     
     def _reset_loading_state(self):
         """Reset the state for a new loading operation."""
@@ -578,87 +591,170 @@ class STLToGCodeApp(QMainWindow):
     
     def _start_progressive_loading(self):
         """Start the progressive loading process in a background thread."""
+        logging.debug("Starting progressive loading process...")
+        
         if not self.current_stl_processor:
-            logging.error("No STL processor available")
+            error_msg = "No STL processor available"
+            logging.error(error_msg)
+            self._handle_loading_error(error_msg, "Loading Error")
             return
         
         try:
+            logging.debug("Creating progress dialog...")
             # Setup progress dialog
             self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
             self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
             self.progress_dialog.setMinimumDuration(0)
             self.progress_dialog.canceled.connect(self._cancel_loading)
             
-            # Configure chunk size (triangles per chunk)
-            chunk_size = 1000  # Process 1000 triangles per chunk
+            # Get total number of triangles for progress tracking
+            total_triangles = self.current_stl_processor._header.num_triangles
+            if total_triangles <= 0:
+                error_msg = f"Invalid number of triangles in STL file: {total_triangles}"
+                logging.error(error_msg)
+                raise ValueError(error_msg)
+            
+            logging.info(f"Starting progressive loading of {total_triangles} triangles")
+            
+            # Initialize loading state
+            self.is_loading = True
+            self.loaded_triangles = 0
+            self.total_triangles = total_triangles
             
             # Create and configure worker thread
+            logging.debug("Creating worker thread...")
             self.loading_thread = QThread()
             self.loading_worker = STLLoadingWorker(
                 stl_processor=self.current_stl_processor,
-                chunk_size=chunk_size
+                chunk_size=1000  # Process 1000 triangles at a time
             )
+            
+            # Move worker to thread
+            logging.debug("Moving worker to thread...")
             self.loading_worker.moveToThread(self.loading_thread)
             
             # Connect signals
+            logging.debug("Connecting signals...")
             self.loading_worker.chunk_loaded.connect(self._on_chunk_loaded)
             self.loading_worker.loading_finished.connect(self._on_loading_finished)
-            self.loading_worker.error_occurred.connect(self._on_loading_error)
+            self.loading_worker.error_occurred.connect(self._handle_loading_error)
             self.loading_worker.progress_updated.connect(self._update_loading_progress)
             
             # Clean up thread when done
+            self.loading_worker.finished.connect(self.loading_thread.quit)
+            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
             self.loading_thread.finished.connect(self.loading_thread.deleteLater)
-            self.loading_worker.deleteLater.connect(self.loading_thread.quit)
             
             # Start the thread
+            logging.debug("Starting worker thread...")
             self.loading_thread.start()
             
-            # Use a single-shot timer to start the worker in its thread
+            # Start the loading process using a single-shot timer
+            logging.debug("Starting loading process...")
             QTimer.singleShot(0, self.loading_worker.start_loading)
             
             # Start the processing timer
+            logging.debug("Starting processing timer...")
             self.loading_timer.start(100)  # Process queue every 100ms
-            self.is_loading = True
             
-            logging.info("Started progressive loading thread")
+            logging.info("Progressive loading started successfully")
             
         except Exception as e:
-            logging.error(f"Error starting progressive loading: {str(e)}", exc_info=True)
-            self._handle_loading_error(e, "Error starting loading process")
+            error_msg = f"Error starting progressive loading: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self._handle_loading_error(error_msg, "Error starting loading process")
     
     def _process_loading_queue(self):
-        """Process the loading queue to update the 3D view."""
-        try:
-            if not self.loading_queue:
-                return
-                
-            logging.debug(f"Processing loading queue with {len(self.loading_queue)} items")
+        """Process the loading queue to update the 3D view.
+        
+        This method processes chunks of STL data from the loading queue and updates
+        the 3D visualization. It processes a limited number of chunks per call to
+        maintain UI responsiveness.
+        """
+        if not hasattr(self, 'loading_queue') or not self.loading_queue or not self.is_loading:
+            logging.debug("No chunks in queue or loading not in progress")
+            return
             
-            # Process all available chunks in the queue
-            while self.loading_queue:
-                chunk_data = self.loading_queue.pop(0)
-                self._process_chunk(chunk_data)
+        try:
+            # Process a limited number of chunks per frame to keep the UI responsive
+            chunks_processed = 0
+            max_chunks_per_frame = 5  # Adjust this based on performance
+            
+            while self.loading_queue and chunks_processed < max_chunks_per_frame and self.is_loading:
+                chunk = self.loading_queue.pop(0)
+                chunks_processed += 1
                 
-                # Update visualization after processing each chunk
+                try:
+                    self._process_chunk(chunk)
+                    logging.debug(f"Processed chunk {chunks_processed}/{max_chunks_per_frame}")
+                except Exception as e:
+                    error_msg = f"Error processing chunk: {str(e)}"
+                    logging.error(error_msg, exc_info=True)
+                    continue  # Continue with next chunk even if one fails
+                
+                # Update progress if this was the last chunk
+                if not self.loading_queue and hasattr(self, 'progress_dialog') and self.progress_dialog:
+                    self.progress_dialog.setValue(100)
+            
+            # Update visualization if we processed any chunks
+            if chunks_processed > 0:
+                logging.debug(f"Updating visualization with {chunks_processed} chunks processed")
                 self._update_visualization()
                 
-                # Process events to keep the UI responsive
+                # Keep the UI responsive
                 QApplication.processEvents()
+            
+            # If there are still chunks to process, schedule another update
+            if self.loading_queue and self.is_loading:
+                logging.debug(f"Scheduling next chunk processing. Remaining chunks: {len(self.loading_queue)}")
+                QTimer.singleShot(0, self._process_loading_queue)
                 
         except Exception as e:
-            logging.error(f"Error processing loading queue: {str(e)}", exc_info=True)
-            self._handle_loading_error(e, "Error processing STL data")
+            error_msg = f"Error in _process_loading_queue: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self._handle_loading_error(error_msg, "Error processing STL data")
     
+    @pyqtSlot(dict)
     def _on_chunk_loaded(self, chunk_data):
-        """Handle a new chunk of STL data."""
+        """Handle a chunk of STL data that has been loaded.
+        
+        Args:
+            chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
+        """
         try:
-            logging.debug(f"Chunk received: {len(chunk_data.get('vertices', []))} vertices, "
-                       f"{len(chunk_data.get('faces', []))} faces")
+            if not self.is_loading:
+                logging.warning("Received chunk but loading is not in progress")
+                return
+                
+            logging.debug(f"Received chunk with {len(chunk_data.get('vertices', []))} vertices")
+            
+            # Validate chunk data
+            if 'vertices' not in chunk_data or 'faces' not in chunk_data:
+                error_msg = "Invalid chunk data: missing 'vertices' or 'faces' key"
+                logging.error(error_msg)
+                return
+                
+            # Add chunk to processing queue
             self.loading_queue.append(chunk_data)
-            logging.debug(f"Queue size: {len(self.loading_queue)}")
+            logging.debug(f"Added chunk to queue. Queue size: {len(self.loading_queue)}")
+            
+            # Update progress if available
+            if 'progress' in chunk_data:
+                progress = int(chunk_data['progress'])
+                if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                    self.progress_dialog.setValue(progress)
+                    QApplication.processEvents()
+            
+            # Ensure the processing timer is running
+            if not self.loading_timer.isActive():
+                logging.debug("Starting loading timer")
+                self.loading_timer.start(100)
+                
         except Exception as e:
-            logging.error(f"Error handling chunk: {str(e)}", exc_info=True)
-
+            error_msg = f"Error in _on_chunk_loaded: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            self._handle_loading_error(error_msg, "Error processing STL data")
+    
     def _process_chunk(self, chunk_data):
         """Process a single chunk of STL data."""
         if not chunk_data or 'vertices' not in chunk_data:
@@ -1072,121 +1168,21 @@ class STLToGCodeApp(QMainWindow):
             logging.error(f"Error cancelling G-code generation: {str(e)}", exc_info=True)
 
     def show_about(self):
-        """Show the About dialog with application information."""
+        """Show the About dialog using the About class from scripts.about."""
         try:
-            # Get application information
-            app_name = "STL to G-Code Converter"
-            version = "1.0.0"
-            year = "2025"
-            author = "Your Name"
-            email = "your.email@example.com"
-            github = "https://github.com/yourusername/STL_to_G-Code"
-            
-            # Create the about text with HTML formatting
-            about_text = f"""
-            <h3>{app_name} v{version}</h3>
-            <p>Convert 3D STL models to G-code for 3D printing.</p>
-            <p>Copyright {year} {author}<br>
-            <a href="mailto:{email}">{email}</a><br>
-            <a href="{github}">{github}</a></p>
-            <p>This application is open source and released under the MIT License.</p>
-            <p>Built with Python, PyQt6, and numpy-stl.</p>
-            """
-            
-            # Create and show the about dialog
-            about_dialog = QMessageBox(self)
-            about_dialog.setWindowTitle(f"About {app_name}")
-            about_dialog.setTextFormat(Qt.TextFormat.RichText)
-            about_dialog.setText(about_text)
-            
-            # Set application icon if available
-            if hasattr(self, 'windowIcon') and not self.windowIcon().isNull():
-                about_dialog.setWindowIcon(self.windowIcon())
-            
-            # Add a button to close the dialog
-            about_dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
-            
-            # Show the dialog
-            about_dialog.exec()
-            
-            logging.info("About dialog shown")
-            
+            About.show_about(self)  # This will use the static method from the About class
         except Exception as e:
-            error_msg = f"Error showing about dialog: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
-
-
+            logging.error(f"Error showing about dialog: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to show about dialog: {str(e)}")
+    
     def show_sponsor(self):
-        """Show sponsor information and ways to support the project."""
+        """Show the sponsor dialog using the Sponsor class from scripts.sponsor."""
         try:
-            # Create sponsor dialog
-            sponsor_dialog = QDialog(self)
-            sponsor_dialog.setWindowTitle("Support the Project")
-            sponsor_dialog.setMinimumSize(400, 300)
-            
-            # Create layout
-            layout = QVBoxLayout()
-            
-            # Add title
-            title = QLabel("<h2>Support Our Work</h2>")
-            title.setTextFormat(Qt.TextFormat.RichText)
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(title)
-            
-            # Add message
-            message = QLabel(
-                "<p>If you find this application useful, please consider supporting its development.</p>"
-                "<p>Your support helps cover development costs and encourages further improvements.</p>"
-            )
-            message.setWordWrap(True)
-            message.setTextFormat(Qt.TextFormat.RichText)
-            layout.addWidget(message)
-            
-            # Add ways to support
-            support_methods = QGroupBox("Ways to Support")
-            methods_layout = QVBoxLayout()
-            
-            # GitHub Sponsors
-            github_btn = QPushButton("Sponsor on GitHub")
-            github_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
-            github_btn.clicked.connect(lambda: self._open_url("https://github.com/sponsors/yourusername"))
-            methods_layout.addWidget(github_btn)
-            
-            # PayPal
-            paypal_btn = QPushButton("Donate via PayPal")
-            paypal_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
-            paypal_btn.clicked.connect(lambda: self._open_url("https://paypal.me/yourusername"))
-            methods_layout.addWidget(paypal_btn)
-            
-            # Patreon
-            patreon_btn = QPushButton("Become a Patron")
-            patreon_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
-            patreon_btn.clicked.connect(lambda: self._open_url("https://patreon.com/yourusername"))
-            methods_layout.addWidget(patreon_btn)
-            
-            # Add stretch to push buttons to the top
-            methods_layout.addStretch()
-            support_methods.setLayout(methods_layout)
-            layout.addWidget(support_methods)
-            
-            # Add close button
-            button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-            button_box.rejected.connect(sponsor_dialog.reject)
-            layout.addWidget(button_box)
-            
-            # Set dialog layout
-            sponsor_dialog.setLayout(layout)
-            
-            # Show dialog
-            sponsor_dialog.exec()
-            
-            logging.info("Sponsor dialog shown")
-            
+            sponsor_dialog = Sponsor(self)
+            sponsor_dialog.show_sponsor()
         except Exception as e:
-            error_msg = f"Error showing sponsor dialog: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
+            logging.error(f"Error showing sponsor dialog: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to show sponsor dialog: {str(e)}")
     
     def _open_url(self, url):
         """Open a URL in the default web browser."""
@@ -1219,7 +1215,7 @@ class STLToGCodeApp(QMainWindow):
                 # Simulate network request with timeout
                 # In a real app, replace this with your actual update check URL
                 response = requests.get(
-                    "https://api.github.com/repos/yourusername/STL_to_G-Code/releases/latest",
+                    "https://api.github.com/repos/Nsfr750/STL_to_G-Code/releases/latest",
                     timeout=5
                 )
                 response.raise_for_status()
@@ -1246,7 +1242,7 @@ class STLToGCodeApp(QMainWindow):
                     if reply == QMessageBox.StandardButton.Yes:
                         # Open the release page
                         self._open_url(release_info.get('html_url', 
-                            "https://github.com/yourusername/STL_to_G-Code/releases/latest"))
+                            "https://github.com/Nsfr750/STL_to_G-Code/releases/latest"))
                 else:
                     QMessageBox.information(
                         self,
@@ -1477,9 +1473,229 @@ class STLToGCodeApp(QMainWindow):
             logging.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
 
+    def _reset_loading_state(self):
+        """Reset the loading state and clean up any existing resources."""
+        self.is_loading = False
+        self.loaded_triangles = 0
+        self.total_triangles = 0
+        
+        # Clean up any existing loading thread
+        if hasattr(self, 'loading_thread') and self.loading_thread is not None:
+            if self.loading_thread.isRunning():
+                self.loading_thread.quit()
+                self.loading_thread.wait()
+            self.loading_thread = None
+            
+        # Clean up any existing STL processor
+        if hasattr(self, 'current_stl_processor') and self.current_stl_processor is not None:
+            self.current_stl_processor.close()
+            self.current_stl_processor = None
+            
+        # Reset the 3D view
+        if hasattr(self, 'view'):
+            self.view.clear()
+
+    def _start_progressive_loading(self):
+        """Start the progressive loading of the STL file in a background thread."""
+        logging.debug("Starting progressive loading process...")
+        
+        if not hasattr(self, 'current_stl_processor') or self.current_stl_processor is None:
+            logging.error("No STL processor available")
+            return
+            
+        try:
+            logging.debug("Creating progress dialog...")
+            # Initialize progress dialog
+            self.progress_dialog = QProgressDialog("Loading STL file...", "Cancel", 0, 100, self)
+            self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.progress_dialog.setMinimumDuration(0)
+            self.progress_dialog.canceled.connect(self._cancel_loading)
+            
+            # Get total number of triangles for progress tracking
+            total_triangles = self.current_stl_processor._header.num_triangles
+            if total_triangles <= 0:
+                error_msg = f"Invalid number of triangles in STL file: {total_triangles}"
+                logging.error(error_msg)
+                raise ValueError(error_msg)
+            
+            logging.info(f"Starting progressive loading of {total_triangles} triangles")
+            
+            # Initialize loading state
+            self.is_loading = True
+            self.loaded_triangles = 0
+            self.total_triangles = total_triangles
+            
+            # Create and configure worker thread
+            logging.debug("Creating worker thread...")
+            self.loading_thread = QThread()
+            self.loading_worker = STLLoadingWorker(
+                stl_processor=self.current_stl_processor,
+                chunk_size=1000  # Process 1000 triangles at a time
+            )
+            
+            # Move worker to thread
+            logging.debug("Moving worker to thread...")
+            self.loading_worker.moveToThread(self.loading_thread)
+            
+            # Connect signals
+            logging.debug("Connecting signals...")
+            self.loading_worker.chunk_loaded.connect(self._on_chunk_loaded)
+            self.loading_worker.loading_finished.connect(self._on_loading_finished)
+            self.loading_worker.error_occurred.connect(self._handle_loading_error)
+            self.loading_worker.progress_updated.connect(self._update_loading_progress)
+            
+            # Clean up thread when done
+            self.loading_worker.finished.connect(self.loading_thread.quit)
+            self.loading_worker.finished.connect(self.loading_worker.deleteLater)
+            self.loading_thread.finished.connect(self.loading_thread.deleteLater)
+            
+            # Start the thread
+            logging.debug("Starting worker thread...")
+            self.loading_thread.start()
+            
+            # Start the loading process using a single-shot timer
+            logging.debug("Starting loading process...")
+            QTimer.singleShot(0, self.loading_worker.start_loading)
+            
+            # Start the processing timer
+            logging.debug("Starting processing timer...")
+            self.loading_timer.start(100)  # Process queue every 100ms
+            self.is_loading = True
+            
+            logging.info("Started progressive loading thread")
+            
+        except Exception as e:
+            logging.error(f"Error starting progressive loading: {str(e)}", exc_info=True)
+            self._handle_loading_error(e, "Error starting loading process")
+
+    @pyqtSlot(dict)
+    def _on_chunk_loaded(self, chunk_data):
+        """Handle a chunk of STL data that has been loaded."""
+        try:
+            # Update the 3D view with the new chunk
+            if hasattr(self, 'view'):
+                self.view.add_mesh(
+                    vertices=chunk_data['vertices'],
+                    faces=chunk_data['faces'],
+                    color=(0.8, 0.8, 0.8, 0.5)
+                )
+                
+            # Update progress
+            progress = int(chunk_data['progress'])
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.setValue(progress)
+                
+            # Process events to keep the UI responsive
+            QApplication.processEvents()
+            
+        except Exception as e:
+            logging.error(f"Error processing chunk: {str(e)}", exc_info=True)
+
+    @pyqtSlot()
+    def _on_loading_finished(self):
+        """Handle completion of STL loading."""
+        try:
+            logging.info("STL loading completed successfully")
+            self.is_loading = False
+            
+            # Close progress dialog if it exists
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.close()
+                self.progress_dialog = None
+                
+            # Update status bar
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage("STL file loaded successfully", 5000)
+                
+            # Fit the view to the model
+            if hasattr(self, 'view'):
+                self.view.fit_view()
+                
+        except Exception as e:
+            logging.error(f"Error finalizing STL loading: {str(e)}", exc_info=True)
+
+    @pyqtSlot(str)
+    def _handle_loading_error(self, error_msg, context=""):
+        """Handle errors during STL loading."""
+        try:
+            logging.error(f"STL loading error: {error_msg}")
+            self.is_loading = False
+            
+            # Close progress dialog if it exists
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.close()
+                self.progress_dialog = None
+                
+            # Show error message
+            full_msg = f"Error loading STL file"
+            if context:
+                full_msg += f" ({context}): {error_msg}"
+            else:
+                full_msg += f": {error_msg}"
+                
+            QMessageBox.critical(self, "Loading Error", full_msg)
+            
+            # Update status bar
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage("Error loading STL file", 5000)
+                
+        except Exception as e:
+            logging.error(f"Error handling loading error: {str(e)}", exc_info=True)
+
+    @pyqtSlot(int, int)
+    def _update_loading_progress(self, current, total):
+        """Update the loading progress."""
+        try:
+            self.loaded_triangles = current
+            self.total_triangles = total
+            
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage(
+                    f"Loading STL: {current:,} / {total:,} triangles "
+                    f"({current/max(1, total)*100:.1f}%)"
+                )
+                
+        except Exception as e:
+            logging.error(f"Error updating progress: {str(e)}", exc_info=True)
+
+    def _cancel_loading(self):
+        """Cancel the current loading operation."""
+        try:
+            logging.info("Cancelling STL loading...")
+            
+            if hasattr(self, 'loading_worker'):
+                self.loading_worker.cancel()
+                
+            self._reset_loading_state()
+            
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage("Loading cancelled", 3000)
+                
+        except Exception as e:
+            logging.error(f"Error cancelling loading: {str(e)}", exc_info=True)
+            self._handle_loading_error(e, "Error cancelling loading")
+
 
 def main():
     """Main function to start the application."""
+    # Set up logging configuration
+    log_file = Path(__file__).parent / 'stl_to_gcode.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler(log_file, mode='w'),  # Overwrite log file on each run
+            logging.StreamHandler()  # Also log to console
+        ]
+    )
+    
+    # Log application start
+    logging.info("=" * 80)
+    logging.info(f"Starting STL to GCode Converter v{__version__}")
+    logging.info("=" * 80)
+    
+    # Initialize and run the application
     app = QApplication(sys.argv)
     window = STLToGCodeApp()
     sys.exit(app.exec())
