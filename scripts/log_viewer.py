@@ -35,8 +35,16 @@ class LogViewer(QDockWidget):
         geometry.setHeight(400)
         self.setGeometry(geometry)
         
+        # Top bar with controls
+        self.top_bar = QHBoxLayout()
+        
+        # Log file selector
+        self.log_file_label = QLabel("Log File:")
+        self.log_file_combo = QComboBox()
+        self.log_file_combo.setMinimumWidth(300)
+        self.log_file_combo.currentTextChanged.connect(self.change_log_file)
+        
         # Log level filter
-        self.filter_layout = QHBoxLayout()
         self.filter_label = QLabel("Log Level:")
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
@@ -47,11 +55,13 @@ class LogViewer(QDockWidget):
         self.clear_button = QPushButton("Clear Logs")
         self.clear_button.clicked.connect(self.clear_logs)
         
-        # Add widgets to filter layout
-        self.filter_layout.addWidget(self.filter_label)
-        self.filter_layout.addWidget(self.filter_combo)
-        self.filter_layout.addStretch()
-        self.filter_layout.addWidget(self.clear_button)
+        # Add widgets to top bar
+        self.top_bar.addWidget(self.log_file_label)
+        self.top_bar.addWidget(self.log_file_combo)
+        self.top_bar.addWidget(self.filter_label)
+        self.top_bar.addWidget(self.filter_combo)
+        self.top_bar.addStretch()
+        self.top_bar.addWidget(self.clear_button)
         
         # Log display
         self.log_display = QTextEdit()
@@ -59,7 +69,7 @@ class LogViewer(QDockWidget):
         self.log_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         
         # Add widgets to main layout
-        self.layout.addLayout(self.filter_layout)
+        self.layout.addLayout(self.top_bar)
         self.layout.addWidget(self.log_display)
         
         self.setWidget(self.main_widget)
@@ -74,22 +84,62 @@ class LogViewer(QDockWidget):
         }
         
         # Set up log file monitoring
-        self.log_file = Path(__file__).parent.parent / 'stl_to_gcode.log'
+        self.logs_dir = Path(__file__).parent.parent / 'logs'
+        self.log_file = None
         self.last_position = 0
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self.update_log_display)
         self.log_timer.start(1000)  # Update every second
         
-        # Load existing log content
-        self.update_log_display()
+        # Initialize log files list and select the most recent one
+        self.init_log_files()
+    
+    def init_log_files(self):
+        """Initialize the list of log files and select the most recent one."""
+        try:
+            # Create logs directory if it doesn't exist
+            self.logs_dir.mkdir(exist_ok=True)
+            
+            # Get all log files
+            log_files = list(self.logs_dir.glob('stl_to_gcode_*.log'))
+            
+            # Sort by modification time (newest first)
+            log_files.sort(key=os.path.getmtime, reverse=True)
+            
+            # Add to combo box
+            self.log_file_combo.clear()
+            for log_file in log_files:
+                self.log_file_combo.addItem(log_file.name, str(log_file))
+            
+            # Select the most recent log file
+            if log_files:
+                self.change_log_file(log_files[0].name)
+            
+        except Exception as e:
+            print(f"Error initializing log files: {e}")
+    
+    def change_log_file(self, file_name):
+        """Change the currently displayed log file."""
+        if not file_name:
+            return
+            
+        try:
+            file_path = self.logs_dir / file_name
+            if file_path.exists():
+                self.log_file = file_path
+                self.last_position = 0
+                self.log_display.clear()
+                self.update_log_display()
+        except Exception as e:
+            print(f"Error changing log file: {e}")
     
     def update_log_display(self):
         """Update the log display with new log entries."""
+        if not self.log_file or not self.log_file.exists():
+            return
+            
         try:
-            if not self.log_file.exists():
-                return
-                
-            with open(self.log_file, 'r', encoding='utf-8') as f:
+            with open(self.log_file, 'r', encoding='utf-8', errors='replace') as f:
                 f.seek(self.last_position)
                 new_content = f.read()
                 self.last_position = f.tell()
@@ -144,6 +194,9 @@ class LogViewer(QDockWidget):
     
     def filter_logs(self):
         """Filter the log display based on the selected log level."""
+        if not self.log_file:
+            return
+            
         # Save current scroll position
         scrollbar = self.log_display.verticalScrollBar()
         was_at_bottom = scrollbar.value() == scrollbar.maximum()
@@ -170,17 +223,26 @@ class LogViewer(QDockWidget):
             scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
     
     def clear_logs(self):
-        """Clear the log display."""
-        self.log_display.clear()
-        self.last_position = 0
+        """Clear the current log file."""
+        if not self.log_file:
+            return
+            
+        reply = QMessageBox.question(
+            self, 
+            'Clear Logs',
+            f'Are you sure you want to clear {self.log_file.name}?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
         
-        # Clear the log file
-        try:
-            with open(self.log_file, 'w', encoding='utf-8') as f:
-                f.write('')
-            self.last_position = 0
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not clear log file: {e}")
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                with open(self.log_file, 'w', encoding='utf-8') as f:
+                    f.write('')
+                self.log_display.clear()
+                self.last_position = 0
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not clear log file: {e}")
 
 
 class LogHandler(logging.Handler):
@@ -198,40 +260,25 @@ class LogHandler(logging.Handler):
             self.handleError(record)
 
 
-def setup_logging():
-    """Set up basic logging configuration."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
-    )
-
-
 # For testing
 if __name__ == "__main__":
     import sys
     
-    # Set up logging
-    setup_logging()
-    
-    # Create application
     app = QApplication(sys.argv)
     
-    # Create and show log viewer
+    # Create and show the log viewer
     log_viewer = LogViewer()
     log_viewer.show()
     
-    # Add a custom handler to forward logs to the viewer
+    # Add some test log messages
     logger = logging.getLogger()
-    handler = LogHandler(log_viewer)
-    handler.setFormatter(logging.Formatter('%(name)s: %(message)s'))
-    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(LogHandler(log_viewer))
     
-    # Log some test messages
-    logging.debug("This is a debug message")
-    logging.info("This is an info message")
-    logging.warning("This is a warning message")
-    logging.error("This is an error message")
-    logging.critical("This is a critical message")
+    logger.debug("This is a debug message")
+    logger.info("This is an info message")
+    logger.warning("This is a warning message")
+    logger.error("This is an error message")
+    logger.critical("This is a critical message")
     
     sys.exit(app.exec())
