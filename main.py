@@ -687,45 +687,52 @@ class STLToGCodeApp(QMainWindow):
             self._handle_loading_error(error_msg, "Error starting loading process")
     
     def _process_loading_queue(self):
-        """Process the loading queue to update the 3D view.
-        
-        This method processes chunks of STL data from the loading queue and updates
-        the 3D visualization. It processes a limited number of chunks per call to
-        maintain UI responsiveness.
-        """
-        if not hasattr(self, 'loading_queue') or not self.loading_queue or not self.is_loading:
-            logging.debug("No chunks in queue or loading not in progress")
-            return
-            
+        """Process chunks from the loading queue."""
         try:
-            # Process a limited number of chunks per frame to keep the UI responsive
-            max_chunks_per_frame = 5
-            processed_chunks = 0
+            if not hasattr(self, 'loading_queue') or not self.loading_queue:
+                return
             
-            while self.loading_queue and processed_chunks < max_chunks_per_frame and self.is_loading:
+            # Process up to 5 chunks per timer tick to keep UI responsive
+            chunks_processed = 0
+            max_chunks_per_tick = 5
+            
+            while self.loading_queue and chunks_processed < max_chunks_per_tick:
                 chunk_data = self.loading_queue.pop(0)
-                self._process_chunk(chunk_data)
-                processed_chunks += 1
+                chunks_processed += 1
                 
-                # Update the visualization periodically
-                if processed_chunks % 2 == 0:  # Update every 2 chunks
-                    self._update_visualization()
-                
-                # Keep the UI responsive
-                QApplication.processEvents()
+                try:
+                    # Process the chunk
+                    self._process_chunk(chunk_data)
+                    
+                    # Update progress
+                    progress = chunk_data.get('progress', 0)
+                    self.statusBar().showMessage(f"Loading STL: {progress}%")
+                    
+                    # Update visualization periodically or on last chunk
+                    if progress % 10 == 0 or progress >= 100 or not self.loading_queue:
+                        self._update_visualization()
+                        QApplication.processEvents()
+                    
+                except Exception as e:
+                    error_msg = f"Error processing chunk: {str(e)}"
+                    logging.error(error_msg, exc_info=True)
+                    QMessageBox.critical(self, "Processing Error", error_msg)
+                    continue
             
             # If there are more chunks to process, schedule the next batch
-            if self.loading_queue and self.is_loading:
-                QTimer.singleShot(0, self._process_loading_queue)
+            if self.loading_queue:
+                QTimer.singleShot(10, self._process_loading_queue)
             else:
-                # If we're done processing all chunks, ensure final visualization update
-                if not self.loading_queue and hasattr(self, 'current_vertices') and len(self.current_vertices) > 0:
-                    self._update_visualization()
+                # Final update when done
+                self._update_visualization()
+                self.statusBar().showMessage("STL loading completed", 3000)
                 
         except Exception as e:
             error_msg = f"Error in _process_loading_queue: {str(e)}"
             logging.error(error_msg, exc_info=True)
-            self._handle_loading_error(error_msg, "Error processing STL data")
+            QMessageBox.critical(self, "Error", error_msg)
+        finally:
+            QApplication.processEvents()
     
     def _process_chunk(self, chunk_data):
         """Process a single chunk of STL data."""

@@ -39,7 +39,7 @@ class LogViewer(QDockWidget):
         self.filter_layout = QHBoxLayout()
         self.filter_label = QLabel("Log Level:")
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+        self.filter_combo.addItems(["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
         self.filter_combo.setCurrentText("INFO")
         self.filter_combo.currentTextChanged.connect(self.filter_logs)
         
@@ -124,11 +124,12 @@ class LogViewer(QDockWidget):
         cursor = self.log_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         
-        # Only show lines that match or exceed the selected log level
+        # Get the selected filter level
         selected_level = self.filter_combo.currentText().upper()
         level_order = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         
-        if level_order.index(log_level) >= level_order.index(selected_level):
+        # Show all logs if ALL is selected, otherwise filter by level
+        if selected_level == 'ALL' or level_order.index(log_level) >= level_order.index(selected_level):
             # Apply color based on log level
             format = QTextCharFormat()
             format.setForeground(self.log_colors.get(log_level, QColor('#ffffff')))
@@ -141,11 +142,32 @@ class LogViewer(QDockWidget):
             
             cursor.insertText(f"{line}\n", format)
     
-    def filter_logs(self, level):
-        """Filter logs based on the selected log level."""
+    def filter_logs(self):
+        """Filter the log display based on the selected log level."""
+        # Save current scroll position
+        scrollbar = self.log_display.verticalScrollBar()
+        was_at_bottom = scrollbar.value() == scrollbar.maximum()
+        
+        # Get the current content
+        current_text = self.log_display.toPlainText()
         self.log_display.clear()
-        self.last_position = 0
-        self.update_log_display()
+        
+        # Get the selected filter level
+        selected_level = self.filter_combo.currentText().upper()
+        level_order = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        
+        # Process each line
+        cursor = self.log_display.textCursor()
+        for line in current_text.splitlines():
+            log_level = self._detect_log_level(line)
+            if log_level and (selected_level == 'ALL' or level_order.index(log_level) >= level_order.index(selected_level)):
+                self._append_log_line(line, log_level)
+        
+        # Restore scroll position
+        if was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
     
     def clear_logs(self):
         """Clear the log display."""
