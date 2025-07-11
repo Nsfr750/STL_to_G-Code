@@ -1,0 +1,192 @@
+"""
+STL visualization module for the STL to GCode Converter.
+
+This module provides functionality for visualizing STL files using matplotlib.
+"""
+import numpy as np
+import os
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+# Set up logging
+import logging
+logger = logging.getLogger(__name__)
+
+class STLVisualizer:
+    """
+    A class to handle visualization of STL files using matplotlib.
+    """
+    
+    def __init__(self, ax, canvas):
+        """
+        Initialize the STL visualizer.
+        
+        Args:
+            ax: Matplotlib 3D axis object
+            canvas: Matplotlib canvas for redrawing
+        """
+        self.ax = ax
+        self.canvas = canvas
+        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        self.file_path = None
+        
+    def update_mesh(self, vertices, faces, file_path=None):
+        """
+        Update the mesh data to be visualized.
+        
+        Args:
+            vertices: Numpy array of vertices (Nx3)
+            faces: Numpy array of face indices (Mx3)
+            file_path: Optional path to the STL file
+            
+        Returns:
+            bool: True if the mesh was updated successfully, False otherwise
+        """
+        try:
+            # Validate input data types and shapes
+            if not isinstance(vertices, np.ndarray) or len(vertices.shape) != 2 or vertices.shape[1] != 3:
+                logger.error(f"Invalid vertices shape: expected (N,3), got {vertices.shape if isinstance(vertices, np.ndarray) else type(vertices)}")
+                return False
+                
+            if not isinstance(faces, np.ndarray) or len(faces.shape) != 2 or faces.shape[1] != 3:
+                logger.error(f"Invalid faces shape: expected (M,3), got {faces.shape if isinstance(faces, np.ndarray) else type(faces)}")
+                return False
+                
+            # Check for empty arrays
+            if len(vertices) == 0 or len(faces) == 0:
+                logger.warning("Empty vertices or faces array provided")
+                return False
+                
+            # Make copies of the data to ensure we don't hold references to external arrays
+            self.current_vertices = np.array(vertices, dtype=np.float32, copy=True)
+            
+            # Process faces to handle invalid indices
+            num_vertices = len(self.current_vertices)
+            valid_faces = []
+            invalid_faces = 0
+            
+            for face in faces:
+                # Check if all vertex indices in this face are valid
+                if np.all((face >= 0) & (face < num_vertices)):
+                    valid_faces.append(face)
+                else:
+                    invalid_faces += 1
+                    logger.warning(f"Skipping face with invalid vertex indices: {face}")
+            
+            if invalid_faces > 0:
+                logger.warning(f"Skipped {invalid_faces} faces with invalid vertex indices")
+            
+            if not valid_faces:
+                logger.error("No valid faces found in the mesh")
+                return False
+                
+            self.current_faces = np.array(valid_faces, dtype=np.uint32)
+            
+            if file_path:
+                self.file_path = str(file_path)  # Ensure file_path is a string
+                
+            logger.info(f"Updated mesh with {len(self.current_vertices)} vertices and {len(self.current_faces)} faces")
+            if invalid_faces > 0:
+                logger.info(f"Warning: {invalid_faces} faces were skipped due to invalid vertex indices")
+                
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error updating mesh: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False
+
+    def clear(self):
+        """Clear the current visualization."""
+        self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+        self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+        self.file_path = None
+    
+    def render(self):
+        """
+        Render the STL visualization.
+        
+        Returns:
+            bool: True if rendering was successful, False otherwise
+        """
+        try:
+            # Clear the current plot
+            self.ax.clear()
+            
+            # Set up the 3D axes with default labels
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
+            
+            # Check if we have valid data to visualize
+            if len(self.current_vertices) == 0 or len(self.current_faces) == 0:
+                logger.warning("No valid mesh data to render")
+                self.ax.text(0.5, 0.5, 'No mesh data available', 
+                           horizontalalignment='center',
+                           verticalalignment='center',
+                           transform=self.ax.transAxes)
+                self.canvas.draw()
+                return False
+                
+            try:
+                # Plot the mesh using the collected vertices and faces
+                if len(self.current_faces) > 0:
+                    # Verify all face indices are valid before rendering
+                    max_vertex_idx = np.max(self.current_faces) if len(self.current_faces) > 0 else -1
+                    if max_vertex_idx >= len(self.current_vertices):
+                        error_msg = f"Invalid face indices detected (max index: {max_vertex_idx}, num vertices: {len(self.current_vertices)})"
+                        logger.error(error_msg)
+                        self.ax.text(0.5, 0.5, 'Invalid mesh data', 
+                                   horizontalalignment='center',
+                                   verticalalignment='center',
+                                   transform=self.ax.transAxes)
+                        self.canvas.draw()
+                        return False
+                    
+                    # Create a Poly3DCollection with the valid faces
+                    verts = self.current_vertices[self.current_faces]
+                    mesh = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
+                    mesh.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
+                    self.ax.add_collection3d(mesh)
+                    
+                    # Auto-scale the plot to fit the mesh
+                    min_vals = np.min(self.current_vertices, axis=0)
+                    max_vals = np.max(self.current_vertices, axis=0)
+                    
+                    # Add a small margin
+                    margin = np.max((max_vals - min_vals)) * 0.1 if len(self.current_vertices) > 0 else 1.0
+                    self.ax.set_xlim([min_vals[0] - margin, max_vals[0] + margin])
+                    self.ax.set_ylim([min_vals[1] - margin, max_vals[1] + margin])
+                    self.ax.set_zlim([min_vals[2] - margin, max_vals[2] + margin])
+                    
+                else:
+                    # Fall back to point cloud if no face data is available
+                    self.ax.scatter(
+                        self.current_vertices[:, 0],
+                        self.current_vertices[:, 1],
+                        self.current_vertices[:, 2],
+                        c='b', marker='.', alpha=0.5, s=1
+                    )
+                
+                # Set a title if we have a file path
+                if self.file_path:
+                    self.ax.set_title(f'STL: {os.path.basename(self.file_path)}')
+                
+                # Redraw the canvas
+                self.canvas.draw()
+                return True
+                
+            except Exception as e:
+                error_msg = f"Error rendering STL: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                self.ax.text(0.5, 0.5, 'Error rendering mesh', 
+                           horizontalalignment='center',
+                           verticalalignment='center',
+                           transform=self.ax.transAxes)
+                self.canvas.draw()
+                return False
+                
+        except Exception as e:
+            error_msg = f"Unexpected error in render: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False

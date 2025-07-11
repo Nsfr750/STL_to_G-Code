@@ -35,6 +35,7 @@ from scripts.gcode_simulator import GCodeSimulator, PrinterState
 from scripts.STL_load import open_stl_file, show_file_open_error  # Add this import
 from scripts.gcode_load import open_gcode_file, show_file_open_error
 from scripts.gcode_save import save_gcode_file, show_file_save_error
+from scripts.STL_view import STLVisualizer  # Add STLVisualizer import
 import numpy as np
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
 from PyQt6.QtGui import QColor, QFont
@@ -468,10 +469,13 @@ class STLToGCodeApp(QMainWindow):
         # Add controls to layout
         layout.addLayout(controls_layout)
         
-        # Create matplotlib Figure and Canvas for 3D visualization
-        self.figure = Figure(figsize=(5, 4), tight_layout=True)
+        # Create matplotlib figure and canvas
+        self.figure = Figure(figsize=(5, 4), dpi=100)
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111, projection='3d')
+        
+        # Initialize STL visualizer
+        self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
         
         # Set up the 3D axes
         self.ax.set_xlabel('X')
@@ -861,53 +865,52 @@ class STLToGCodeApp(QMainWindow):
             raise
     
     def _on_chunk_loaded(self, chunk_data):
-        """Handle a chunk of STL data that has been loaded.
+        """
+        Handle a chunk of STL data that has been loaded.
         
         Args:
             chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
         """
+        if not chunk_data or 'progress' not in chunk_data:
+            return
+            
         try:
-            if not self.is_loading:
-                logger.warning("Received chunk but loading is not in progress")
-                return
-                
-            logger.debug(f"Received chunk with {len(chunk_data.get('vertices', []))} vertices")
+            # Update the progress bar
+            progress = int(chunk_data['progress'])
+            self.loading_progress = progress
             
-            # Add the chunk to the processing queue
-            if not hasattr(self, 'loading_queue'):
-                self.loading_queue = []
+            # Update the mesh data if vertices are provided
+            if 'vertices' in chunk_data and 'faces' in chunk_data:
+                # Update the STL visualizer with the new mesh data
+                if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
+                    self.stl_visualizer.update_mesh(
+                        chunk_data['vertices'],
+                        chunk_data['faces'],
+                        self.file_path
+                    )
                 
-            self.loading_queue.append(chunk_data)
+                # Also update the local references (for backward compatibility)
+                self.current_vertices = chunk_data['vertices']
+                self.current_faces = chunk_data['faces']
+                
+                # Update the visualization
+                self._update_visualization()
             
-            # If this is the first chunk, start the processing timer
-            if not hasattr(self, 'loading_timer') or not self.loading_timer.isActive():
-                logger.debug("Starting loading timer")
-                self.loading_timer = QTimer()
-                self.loading_timer.timeout.connect(self._process_loading_queue)
-                self.loading_timer.start(50)  # Process queue every 50ms for smoother updates
-            
-            # Update progress
-            if 'progress' in chunk_data:
-                progress = int(chunk_data['progress'])
-                if hasattr(self, 'progress_dialog'):
-                    self.progress_dialog.setValue(progress)
-                    
-                    # Close the progress dialog when loading is complete
-                    if progress >= 100:
-                        self.progress_dialog.close()
-                        self.is_loading = False
-                        self._on_loading_finished()
+            # Update the progress dialog
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                self.progress_dialog.setValue(progress)
                 
-                # Update status bar
-                self.statusBar().showMessage(f"Loading STL: {progress}%")
+                # Update the progress message
+                if 'status' in chunk_data:
+                    self.progress_dialog.setLabelText(chunk_data['status'])
                 
-                # Force UI update
+                # Process events to keep the UI responsive
                 QApplication.processEvents()
-            
+                
         except Exception as e:
-            error_msg = f"Error in _on_chunk_loaded: {str(e)}"
+            error_msg = f"Error processing chunk: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            self._handle_loading_error(error_msg, "Error processing STL data")
+            self._handle_loading_error(error_msg)
     
     def _process_gcode_buffer(self):
         """Process the G-code buffer and update the editor."""
@@ -1487,33 +1490,30 @@ class STLToGCodeApp(QMainWindow):
             state: The state of the checkbox that triggered the update (if any)
         """
         try:
-            # Clear the current plot
-            self.ax.clear()
+            # Initialize visualizer if it doesn't exist
+            if not hasattr(self, 'stl_visualizer') or not self.stl_visualizer:
+                if not hasattr(self, 'ax') or not self.ax:
+                    logger.error("Cannot update visualization: Matplotlib axes not initialized")
+                    return False
+                self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
+                
+            # Update the visualization using the STL visualizer
+            success = self.stl_visualizer.render()
             
-            # Set up the 3D axes
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
-            self.ax.set_zlabel('Z')
-            
-            # Get the current visualization settings
-            show_travel = self.show_travel_moves.isChecked() if hasattr(self, 'show_travel_moves') else True
-            
-            # TODO: Add actual G-code visualization logic here
-            # For now, just show an empty plot with axes
-            
-            # Set equal aspect ratio for all axes
-            self.ax.set_box_aspect([1, 1, 1])
-            
-            # Redraw the canvas
-            self.canvas.draw()
-            
-            # Update status bar
-            self.statusBar().showMessage("Visualization updated", 2000)
-            
+            if not success:
+                error_msg = "Failed to update visualization"
+                logger.warning(error_msg)
+                self.statusBar().showMessage(error_msg, 5000)
+            else:
+                self.statusBar().showMessage("Visualization updated", 2000)
+                
+            return success
+                
         except Exception as e:
             error_msg = f"Error updating visualization: {str(e)}"
             logger.error(error_msg, exc_info=True)
             self.statusBar().showMessage(error_msg, 5000)
+            return False
     
     def _reset_visualization_view(self):
         """Reset the 3D visualization view to default."""
@@ -1812,20 +1812,27 @@ class STLToGCodeApp(QMainWindow):
         """
         logger.debug(f"Loading finished. Success: {success}, Error: {error_msg}")
         
-        # Stop any active timers first
-        if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
-            self.loading_timer.stop()
+        # Make local copies of resources we need to clean up
+        worker = getattr(self, 'loading_worker', None)
+        thread = getattr(self, 'loading_thread', None)
+        progress_dialog = getattr(self, 'progress_dialog', None)
+        
+        # Clear references first to prevent re-entry
+        self.loading_worker = None
+        self.loading_thread = None
+        self.loading_timer.stop()
         
         try:
             # Close the progress dialog if it exists
-            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            if progress_dialog is not None:
                 try:
-                    self.progress_dialog.close()
-                    self.progress_dialog.deleteLater()
+                    progress_dialog.close()
+                    progress_dialog.deleteLater()
                 except Exception as e:
                     logger.error(f"Error closing progress dialog: {str(e)}")
                 finally:
-                    self.progress_dialog = None
+                    if hasattr(self, 'progress_dialog'):
+                        self.progress_dialog = None
             
             # Handle error case
             if not success or error_msg:
@@ -1845,46 +1852,113 @@ class STLToGCodeApp(QMainWindow):
             logger.error(f"Error in _on_loading_finished: {str(e)}", exc_info=True)
             self._handle_loading_error(f"Error finalizing load: {str(e)}")
         finally:
-            # Clean up worker and thread
-            self._cleanup_loading_resources()
+            # Clean up worker and thread in the correct order
+            if worker is not None:
+                try:
+                    # Disconnect signals safely
+                    signals = [
+                        ('chunk_loaded', self._on_chunk_loaded),
+                        ('loading_finished', self._on_loading_finished),
+                        ('error_occurred', self._handle_loading_error),
+                        ('progress_updated', self._update_loading_progress)
+                    ]
+                    
+                    for signal, slot in signals:
+                        try:
+                            getattr(worker, signal).disconnect(slot)
+                        except (TypeError, RuntimeError):
+                            # Signal was not connected or already disconnected
+                            pass
+                    
+                    # Schedule the worker for deletion
+                    worker.deleteLater()
+                except Exception as e:
+                    if 'wrapped C/C++ object' not in str(e):
+                        logger.error(f"Error during worker cleanup: {str(e)}")
+            
+            # Clean up thread
+            if thread is not None:
+                try:
+                    if thread.isRunning():
+                        thread.quit()
+                        if not thread.wait(1000):  # Wait up to 1 second
+                            logger.warning("Thread didn't stop gracefully, terminating")
+                            thread.terminate()
+                            thread.wait(500)  # Give it a moment to terminate
+                    
+                    thread.deleteLater()
+                except Exception as e:
+                    logger.error(f"Error during thread cleanup: {str(e)}")
             
             # Reset loading state
             self.is_loading = False
             
             # Force UI update
             QApplication.processEvents()
-
+    
     def _cleanup_loading_resources(self):
         """Safely clean up loading resources."""
         try:
-            # Disconnect all signals from worker
-            if hasattr(self, 'loading_worker'):
+            # Clean up worker if it exists
+            if hasattr(self, 'loading_worker') and self.loading_worker is not None:
                 try:
-                    if self.loading_worker:
-                        self.loading_worker.chunk_loaded.disconnect()
-                        self.loading_worker.loading_finished.disconnect()
-                        self.loading_worker.error_occurred.disconnect()
-                        self.loading_worker.progress_updated.disconnect()
+                    # Check if the worker still exists before trying to disconnect
+                    if not sip.isdeleted(self.loading_worker) if hasattr(sip, 'isdeleted') else True:
+                        try:
+                            # Disconnect signals safely
+                            signals = [
+                                ('chunk_loaded', self._on_chunk_loaded),
+                                ('loading_finished', self._on_loading_finished),
+                                ('error_occurred', self._handle_loading_error),
+                                ('progress_updated', self._update_loading_progress)
+                            ]
+                            
+                            for signal, slot in signals:
+                                try:
+                                    getattr(self.loading_worker, signal).disconnect(slot)
+                                except (TypeError, RuntimeError):
+                                    # Signal was not connected or already disconnected
+                                    pass
+                            
+                            # Schedule the worker for deletion
+                            self.loading_worker.deleteLater()
+                        except RuntimeError as e:
+                            if "wrapped C/C++ object" not in str(e):
+                                logger.error(f"Error disconnecting worker signals: {str(e)}")
                 except Exception as e:
-                    logger.error(f"Error disconnecting worker signals: {str(e)}")
-                
-                # Delete worker
-                self.loading_worker.deleteLater()
-                self.loading_worker = None
+                    logger.error(f"Error during worker cleanup: {str(e)}")
+                finally:
+                    self.loading_worker = None
             
             # Clean up thread
-            if hasattr(self, 'loading_thread'):
-                if self.loading_thread.isRunning():
-                    self.loading_thread.quit()
-                    if not self.loading_thread.wait(2000):  # Wait up to 2 seconds
-                        logger.warning("Thread didn't stop gracefully, terminating")
-                        self.loading_thread.terminate()
-                self.loading_thread.deleteLater()
-                self.loading_thread = None
-                
+            if hasattr(self, 'loading_thread') and self.loading_thread is not None:
+                try:
+                    if self.loading_thread.isRunning():
+                        self.loading_thread.quit()
+                        if not self.loading_thread.wait(1000):  # Wait up to 1 second
+                            logger.warning("Thread didn't stop gracefully, terminating")
+                            self.loading_thread.terminate()
+                            self.loading_thread.wait(500)  # Give it a moment to terminate
+                    
+                    self.loading_thread.deleteLater()
+                except Exception as e:
+                    logger.error(f"Error during thread cleanup: {str(e)}")
+                finally:
+                    self.loading_thread = None
+            
+            # Clean up progress dialog if it exists
+            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                try:
+                    self.progress_dialog.close()
+                    self.progress_dialog.deleteLater()
+                except Exception as e:
+                    logger.error(f"Error during progress dialog cleanup: {str(e)}")
+                finally:
+                    self.progress_dialog = None
+                    
         except Exception as e:
-            logger.error(f"Error cleaning up loading resources: {str(e)}", exc_info=True)
-
+            logger.error(f"Unexpected error during resource cleanup: {str(e)}", exc_info=True)
+    
     def _update_loading_progress(self, progress_value, status_message):
         """Update the loading progress dialog with current progress.
         
