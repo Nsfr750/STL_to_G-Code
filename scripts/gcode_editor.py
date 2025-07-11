@@ -56,15 +56,16 @@ class GCodeLexer(QsciLexerCustom):
         return self.styles.get(style, "")
     
     def styleText(self, start, end):
+        """Style the text in the editor."""
         if not self.editor():
             return
             
-        # Get the text
+        # Get the text to style
         text = self.editor().text()[start:end]
         if not text:
             return
-        
-        # Initialize the styling
+            
+        # Initialize styling
         self.startStyling(start)
         
         # Split into lines
@@ -81,22 +82,26 @@ class GCodeLexer(QsciLexerCustom):
             
             # Find and style G-commands
             for match in self.g_command.finditer(line):
-                self.setStyling(match.end() - match.start(), 1, match.start())
+                self.startStyling(start + match.start())
+                self.setStyling(match.end() - match.start(), 1)
             
             # Find and style M-commands
             for match in self.m_command.finditer(line):
-                self.setStyling(match.end() - match.start(), 2, match.start())
+                self.startStyling(start + match.start())
+                self.setStyling(match.end() - match.start(), 2)
             
             # Find and style parameters
             for match in self.parameter.finditer(line):
                 param = match.group(0)
                 if not (param.startswith(('G', 'g', 'M', 'm')) and param[1:].isdigit()):
-                    self.setStyling(match.end() - match.start(), 3, match.start())
+                    self.startStyling(start + match.start())
+                    self.setStyling(match.end() - match.start(), 3)
             
             # Find and style comments
             comment_match = self.comment.search(line)
             if comment_match:
-                self.setStyling(len(line) - comment_match.start(), 4, comment_match.start())
+                self.startStyling(start + comment_match.start())
+                self.setStyling(len(line) - comment_match.start(), 4)
             
             position += len(line) + 1  # +1 for the newline
 
