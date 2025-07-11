@@ -4,7 +4,8 @@ UI styling and layout management for STL to GCode Converter using PyQt6.
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStatusBar,
-    QProgressBar, QListWidget, QFrame, QSizePolicy, QApplication, QCheckBox, QDoubleSpinBox
+    QProgressBar, QListWidget, QFrame, QSizePolicy, QApplication, QCheckBox, QDoubleSpinBox,
+    QToolBar, QToolButton
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPalette, QColor, QFont, QIcon
@@ -224,6 +225,98 @@ class UI:
                 background-color: #2b2b2b;
                 color: #aaa;
                 border-top: 1px solid #555;
+            }
+            
+            QToolBar {
+                background-color: #333;
+                border-bottom: 1px solid #444;
+                spacing: 2px;
+                padding: 2px;
+            }
+            
+            QToolBar::separator {
+                background: #555;
+                width: 1px;
+                margin: 4px 2px;
+            }
+            
+            QToolButton {
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 4px 8px;
+                margin: 0 1px;
+                min-width: 80px;
+                min-height: 28px;
+                text-align: center;
+            }
+            
+            QToolButton:hover {
+                background-color: #444;
+                border: 1px solid #555;
+            }
+            
+            QToolButton:pressed {
+                background-color: #555;
+                border: 1px solid #666;
+            }
+            
+            QToolButton:disabled {
+                color: #666;
+                background-color: transparent;
+                border: 1px solid transparent;
+            }
+            
+            QToolButton#primaryButton {
+                background-color: #1976D2;
+                font-weight: bold;
+                color: white;
+                min-width: 90px;
+            }
+            
+            QToolButton#primaryButton:hover {
+                background-color: #1E88E5;
+                border-color: #42A5F5;
+            }
+            
+            QToolButton#primaryButton:pressed {
+                background-color: #1565C0;
+            }
+            
+            QToolButton#successButton {
+                background-color: #2E7D32;
+                color: white;
+                font-weight: bold;
+                min-width: 120px;
+            }
+            
+            QToolButton#successButton:hover {
+                background-color: #388E3C;
+                border-color: #66BB6A;
+            }
+            
+            QToolButton#successButton:pressed {
+                background-color: #1B5E20;
+            }
+            
+            QToolButton#dangerButton {
+                background-color: #C62828;
+                color: white;
+                font-weight: bold;
+            }
+            
+            QToolButton#dangerButton:hover {
+                background-color: #D32F2F;
+                border-color: #EF5350;
+            }
+            
+            QToolButton#dangerButton:pressed {
+                background-color: #B71C1C;
+            }
+            
+            QToolButton QMenu::indicator {
+                width: 0px;
+                height: 0px;
             }
         """
         

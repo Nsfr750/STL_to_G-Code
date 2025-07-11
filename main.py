@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
     QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter,
     QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, 
-    QStyle, QFrame, QStatusBar, QToolBar, QPlainTextEdit
+    QStyle, QFrame, QStatusBar, QToolBar, QPlainTextEdit, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QSettings, QSize, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -239,74 +239,90 @@ class STLToGCodeApp(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
         
-        # Create main toolbar
-        toolbar, toolbar_layout = self.ui.create_toolbar(central_widget)
+        # Create main toolbar with improved organization
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setIconSize(QSize(16, 16))
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.addToolBar(toolbar)
         
-        # Add file operations to toolbar
-        self.open_button = self.ui.create_button(
-            toolbar, 
+        # File Operations Group
+        open_action = QAction(
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogOpenButton')),
             "Open STL",
-            self.open_file,
-            "Open an STL file (Ctrl+O)",
-            'primary',
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogOpenButton'))
+            self
         )
-        toolbar_layout.addWidget(self.open_button)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_file)
+        toolbar.addAction(open_action)
         
-        # Add convert button
-        self.convert_button = self.ui.create_button(
-            toolbar,
+        # Add separator after file operations
+        toolbar.addSeparator()
+        
+        # Conversion Group
+        convert_action = QAction(
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay')),
             "Convert to G-code",
-            self.generate_gcode,
-            "Convert the loaded STL to G-code",
-            'success',
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay'))
+            self
         )
-        self.convert_button.setEnabled(False)
-        toolbar_layout.addWidget(self.convert_button)
+        convert_action.setShortcut("F5")
+        convert_action.setStatusTip("Convert the loaded STL to G-code")
+        convert_action.triggered.connect(self.generate_gcode)
+        self.convert_action = convert_action  # Save reference for enabling/disabling
+        self.convert_action.setEnabled(False)
+        toolbar.addAction(convert_action)
         
-        # Add view buttons
-        self.view_gcode_button = self.ui.create_button(
-            toolbar,
+        # View Group
+        view_gcode_action = QAction(
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_FileDialogDetailedView')),
             "View G-code",
-            self.view_gcode,
-            "View and edit the generated G-code",
-            'default',
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_FileDialogDetailedView'))
+            self
         )
-        self.view_gcode_button.setEnabled(False)
-        toolbar_layout.addWidget(self.view_gcode_button)
+        view_gcode_action.setShortcut("Ctrl+G")
+        view_gcode_action.setStatusTip("View and edit the generated G-code")
+        view_gcode_action.triggered.connect(self.view_gcode)
+        self.view_gcode_action = view_gcode_action  # Save reference for enabling/disabling
+        self.view_gcode_action.setEnabled(False)
+        toolbar.addAction(view_gcode_action)
         
-        # Add separator
-        toolbar_layout.addWidget(self._create_separator())
+        # Add separator before simulation controls
+        toolbar.addSeparator()
         
-        # Add simulation controls
-        self.simulate_button = self.ui.create_button(
-            toolbar,
+        # Simulation Group
+        simulate_action = QAction(
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay')),
             "Simulate",
-            self.simulate_from_editor,
-            "Simulate the G-code (Ctrl+R)",
-            'default',
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay'))
+            self
         )
-        self.simulate_button.setEnabled(False)
-        toolbar_layout.addWidget(self.simulate_button)
+        simulate_action.setShortcut("Ctrl+R")
+        simulate_action.setStatusTip("Simulate the G-code")
+        simulate_action.triggered.connect(self.simulate_from_editor)
+        self.simulate_action = simulate_action  # Save reference for enabling/disabling
+        self.simulate_action.setEnabled(False)
+        toolbar.addAction(simulate_action)
         
         # Add stretch to push help button to the right
-        toolbar_layout.addStretch()
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
         
-        # Add help button
-        help_button = self.ui.create_button(
-            toolbar,
+        # Help Group
+        help_action = QAction(
+            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogHelpButton')),
             "Help",
-            self.show_documentation,
-            "Show help documentation",
-            'default',
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_DialogHelpButton'))
+            self
         )
-        toolbar_layout.addWidget(help_button)
+        help_action.setShortcut("F1")
+        help_action.setStatusTip("Show help documentation")
+        help_action.triggered.connect(self.show_documentation)
+        toolbar.addAction(help_action)
         
-        main_layout.addWidget(toolbar)
+        # Set up keyboard shortcuts
+        self.shortcuts = {
+            Qt.Key.Key_F1: self.show_documentation,
+            Qt.Key.Key_F5: self.generate_gcode,
+            Qt.Key.Key_F12: self.toggle_log_viewer
+        }
         
         # Main content area
         content_widget = QWidget()
@@ -415,15 +431,6 @@ class STLToGCodeApp(QMainWindow):
         
         # Set initial tab
         self.tab_widget.setCurrentIndex(0)  # Show 3D View by default
-    
-    def _create_separator(self):
-        """Create a vertical separator for toolbars."""
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.VLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("color: #555;")
-        line.setFixedWidth(1)
-        return line
     
     def _setup_stl_view(self):
         """Set up the STL view tab."""
@@ -1045,10 +1052,10 @@ class STLToGCodeApp(QMainWindow):
                         padding: 5px;
                     }
                     QPushButton:hover {
-                        background-color: #4e5254;
+                        background-color: #555;
                     }
                     QPushButton:pressed {
-                        background-color: #2c2f30;
+                        background-color: #666;
                     }
                 """)
             else:  # Default light theme
@@ -1731,7 +1738,7 @@ class STLToGCodeApp(QMainWindow):
                     )
                     action.setToolTip(file_path)
             
-            # Add clear menu action if there are recent files
+            # Add a separator and clear action if there are recent files
             self.recent_files_menu.addSeparator()
             clear_action = self.recent_files_menu.addAction("Clear Recent Files")
             clear_action.triggered.connect(self._clear_recent_files)
@@ -2044,52 +2051,61 @@ class STLToGCodeApp(QMainWindow):
                 
     def _update_ui_after_loading(self):
         """Update the UI after an STL file has been successfully loaded."""
+        # Enable/disable toolbar actions based on loaded state
+        if hasattr(self, 'convert_action'):
+            self.convert_action.setEnabled(True)
+        if hasattr(self, 'view_gcode_action'):
+            self.view_gcode_action.setEnabled(False)  # Disable until G-code is generated
+            
+        # Update window title with the current file
+        if self.current_file:
+            self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(self.current_file)}")
+        
+        # Update the status bar
+        self.statusBar().showMessage(f"Loaded {os.path.basename(self.current_file)}", 3000)
+        
+        # Update the recent files list in the menu
+        self._update_recent_files_menu()
+        
+    def _update_file_list(self):
+        """Update the recent files list in the UI."""
+        # This method is kept for backward compatibility
+        # The actual implementation is in _update_recent_files_menu
+        self._update_recent_files_menu()
+        
+    def _update_recent_files_menu(self):
+        """Update the recent files list in the File menu."""
         try:
-            logger.debug("Updating UI after STL loading")
+            # Clear the recent files menu
+            if hasattr(self, 'recent_files_menu'):
+                self.recent_files_menu.clear()
+            else:
+                # Create the recent files menu if it doesn't exist
+                self.recent_files_menu = self.file_menu.addMenu("Recent Files")
             
-            # Enable relevant UI elements
-            if hasattr(self, 'convert_button'):
-                self.convert_button.setEnabled(True)
-                logger.debug("Enabled convert button")
+            # Add recent files to the menu
+            if hasattr(self, 'recent_files') and self.recent_files:
+                for i, file_path in enumerate(self.recent_files[:10]):  # Show max 10 recent files
+                    if os.path.exists(file_path):
+                        action = QAction(f"{i+1}. {os.path.basename(file_path)}", self)
+                        action.setData(file_path)
+                        action.triggered.connect(lambda checked, path=file_path: self._open_recent_file(path))
+                        self.recent_files_menu.addAction(action)
                 
-            if hasattr(self, 'view_3d_button'):
-                self.view_3d_button.setEnabled(True)
-                logger.debug("Enabled 3D view button")
+                # Add a separator and clear action if there are recent files
+                self.recent_files_menu.addSeparator()
+                clear_action = QAction("Clear Recent Files", self)
+                clear_action.triggered.connect(self._clear_recent_files)
+                self.recent_files_menu.addAction(clear_action)
+            else:
+                # Add a disabled action if no recent files
+                no_files = QAction("No recent files", self)
+                no_files.setEnabled(False)
+                self.recent_files_menu.addAction(no_files)
                 
-            if hasattr(self, 'save_gcode_action'):
-                self.save_gcode_action.setEnabled(False)  # Disable until G-code is generated
-                logger.debug("Disabled save G-code action")
-            
-            # Update window title with the current file
-            if hasattr(self, 'current_file') and self.current_file:
-                file_name = os.path.basename(self.current_file)
-                self.setWindowTitle(f"STL to GCode Converter - {file_name}")
-                logger.debug(f"Updated window title with file: {file_name}")
-            
-            # Add to recent files if not already there
-            if hasattr(self, 'current_file') and self.current_file:
-                try:
-                    self.add_to_recent_files(self.current_file)
-                    logger.debug("Added file to recent files")
-                except Exception as e:
-                    logger.error(f"Error adding to recent files: {str(e)}", exc_info=True)
-            
-            # Update status bar
-            if hasattr(self, 'statusBar'):
-                self.statusBar().showMessage("STL file loaded successfully", 5000)
-                logger.debug("Updated status bar")
-                
-            logger.info("UI updated after STL loading")
-            
         except Exception as e:
-            error_msg = f"Error updating UI after loading: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            # Try to show the error to the user
-            try:
-                QMessageBox.warning(self, "UI Update Error", error_msg)
-            except:
-                pass  # If we can't show the message, at least we logged it
-
+            logger.error(f"Error updating recent files menu: {str(e)}", exc_info=True)
+    
 def main():
     """Main entry point for the application."""
     # Set up logging first
