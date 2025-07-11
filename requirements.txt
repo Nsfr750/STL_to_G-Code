@@ -17,6 +17,9 @@ scipy>=1.10.0    # Scientific computing
 scikit-image>=0.19.0  # For optimized infill generation
 PyQt6-Qsci==6.5.0  # For G-code editor
 QScintilla==2.14.1  # For G-code editor
+requests>=2.25.0
+packaging>=20.0
+urllib3>=1.26.0
 
 # Development Dependencies
 black>=22.3.0

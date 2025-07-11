@@ -24,7 +24,7 @@ from scripts.version import __version__
 from scripts.about import About
 from scripts.sponsor import Sponsor
 from scripts.help import show_help
-from scripts.updates import check_for_updates
+from scripts.updates import UpdateChecker  # Import the new UpdateChecker class
 from scripts.ui_qt import UI  # Import the new UI module
 from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
@@ -1292,25 +1292,49 @@ class STLToGCodeApp(QMainWindow):
             self.statusBar().showMessage("Checking for updates...")
             QApplication.processEvents()  # Update the UI
             
-            from scripts.updates import check_for_updates
+            from scripts.updates import UpdateChecker
             
             # Store the current status bar message to restore it later
             current_message = self.statusBar().currentMessage()
             
             def on_update_available(update_info):
-                # Update will be shown by the check_for_updates function
-                self.statusBar().showMessage("Update check complete", 3000)
-                
+                try:
+                    # Show update dialog
+                    msg = QMessageBox(self)
+                    msg.setIcon(QMessageBox.Icon.Information)
+                    msg.setWindowTitle("Update Available")
+                    msg.setText(f"Version {update_info['version']} is available!")
+                    msg.setInformativeText("Would you like to download the latest version?")
+                    
+                    download_btn = msg.addButton("Download", QMessageBox.ButtonRole.AcceptRole)
+                    msg.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+                    
+                    msg.exec()
+                    
+                    if msg.clickedButton() == download_btn:
+                        import webbrowser
+                        webbrowser.open(update_info['url'])
+                except Exception as e:
+                    logger.error(f"Error showing update dialog: {str(e)}", exc_info=True)
+                    QMessageBox.warning(
+                        self,
+                        "Update Error",
+                        "An error occurred while showing update information.",
+                        QMessageBox.StandardButton.Ok
+                    )
+                finally:
+                    self.statusBar().showMessage("Update check complete", 3000)
+            
             def on_no_update():
                 if force_check:  # Only show message if user explicitly checked
                     QMessageBox.information(
                         self,
                         "No Updates",
-                        "You are running the latest version.",
+                        f"You are running the latest version ({__version__}).",
                         QMessageBox.StandardButton.Ok
                     )
                 self.statusBar().showMessage("You are running the latest version", 3000)
-                
+            
             def on_error(error_msg):
                 logger.error(f"Update check failed: {error_msg}")
                 self.statusBar().showMessage("Update check failed", 3000)
@@ -1322,16 +1346,14 @@ class STLToGCodeApp(QMainWindow):
                         QMessageBox.StandardButton.Ok
                     )
             
-            # Start the update check
-            update_available, update_info = check_for_updates(
-                parent=self,
-                current_version=__version__,
-                force_check=force_check,
-                silent_if_no_update=not force_check
-            )
+            # Create and configure the update checker
+            self.update_checker = UpdateChecker(current_version=__version__)
+            self.update_checker.update_available.connect(on_update_available)
+            self.update_checker.no_update_available.connect(on_no_update)
+            self.update_checker.error_occurred.connect(on_error)
             
-            # The check_for_updates function will show UI dialogs as needed
-            # We don't need to do anything with the return values here
+            # Start the update check in a background thread
+            self.update_checker.check_for_updates(force=force_check)
             
         except ImportError as e:
             error_msg = f"Failed to import update module: {str(e)}"
@@ -1341,7 +1363,7 @@ class STLToGCodeApp(QMainWindow):
                 QMessageBox.critical(
                     self,
                     "Update Error",
-                    f"Could not check for updates: {error_msg}",
+                    f"Could not check for updates: {error_msg}\n\nPlease make sure all dependencies are installed.",
                     QMessageBox.StandardButton.Ok
                 )
         except Exception as e:
@@ -1355,7 +1377,7 @@ class STLToGCodeApp(QMainWindow):
                     "An unexpected error occurred while checking for updates.",
                     QMessageBox.StandardButton.Ok
                 )
-
+    
     def open_gcode_in_editor(self):
         """
         Open a G-code file and display it in the editor.
