@@ -29,8 +29,9 @@ from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
 from scripts.workers import GCodeGenerationWorker, STLLoadingWorker
 from scripts.gcode_visualizer import GCodeVisualizer
-from scripts.stl_processor import load_stl, MemoryEfficientSTLProcessor, STLHeader, STLTriangle
+from scripts.stl_processor import MemoryEfficientSTLProcessor, STLHeader, STLTriangle
 from scripts.gcode_simulator import GCodeSimulator, PrinterState
+from scripts.STL_load import open_stl_file, show_file_open_error  # Add this import
 import numpy as np
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
 from PyQt6.QtGui import QColor, QFont
@@ -527,43 +528,34 @@ class STLToGCodeApp(QMainWindow):
     
     def open_file(self, file_path=None):
         """Open an STL file and load it into the viewer with progressive loading."""
-        if file_path is None:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "Open STL File", "", "STL Files (*.stl);;All Files (*)")
+        # Reset any existing loading state
+        self._reset_loading_state()
         
-        if not file_path:
-            logging.debug("No file selected")
-            return
-            
         try:
-            logging.info(f"Opening file: {file_path}")
+            # Use the new STL loading function
+            self.current_stl_processor, result = open_stl_file(self, file_path)
             
-            # Reset any existing loading state
-            self._reset_loading_state()
-            
-            # Show loading status
-            self.statusBar().showMessage(f"Loading {os.path.basename(file_path)}...")
-            QApplication.processEvents()
-            
-            # Initialize the STL processor
-            self.current_stl_processor = MemoryEfficientSTLProcessor(file_path)
-            self.current_stl_processor.open()
-            
+            if not result['success']:
+                if result.get('error_details'):
+                    show_file_open_error(self, result['error_details'])
+                return
+                
             # Store file info
-            self.file_path = file_path
-            self.current_file = os.path.basename(file_path)
+            self.file_path = result['file_path']
+            self.current_file = result['file_name']
             self.setWindowTitle(f"STL to GCode - {self.current_file}")
             
             # Add to recent files
-            self.add_to_recent_files(file_path)
+            self.add_to_recent_files(self.file_path)
             
             # Start progressive loading
             logging.debug("Starting progressive loading")
             self._start_progressive_loading()
             
         except Exception as e:
-            logging.error(f"Error opening file: {str(e)}", exc_info=True)
-            self._handle_loading_error(str(e), "Error opening file")
+            error_msg = str(e)
+            logging.error(f"Error in open_file: {error_msg}", exc_info=True)
+            show_file_open_error(self, error_msg)
     
     def _reset_loading_state(self):
         """Reset the state for a new loading operation."""
