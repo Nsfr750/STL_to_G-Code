@@ -80,7 +80,8 @@ class GCodeSimulator:
         self.current_layer: int = 0
         self.total_layers: int = 0
         self.print_time: float = 0.0  # seconds
-        self.filament_used: float = 0.0  # mm
+        self.filament_used: float = 0.0  # Total filament used
+        self._filament_since_reset: float = 0.0  # Filament used since last G92 E0
         self.travel_distance: float = 0.0  # mm
         self.extrusion_distance: float = 0.0  # mm
         self.max_feedrate: float = 0.0
@@ -88,12 +89,11 @@ class GCodeSimulator:
         self._previous_position = None
         self._previous_feedrate = 0.0
         self._previous_command = ""
-        self._e_offset = 0.0  # Track E position offset from G92 commands
         
         # Regular expressions for parsing G-code
         self.command_regex = re.compile(r'^([GM][0-9]+)')
         self.param_regex = re.compile(r'([A-Za-z])([-+]?[0-9]*\.?[0-9]*)')
-    
+
     def reset(self):
         """Reset the simulator to its initial state."""
         self.state = PrinterState()
@@ -104,6 +104,7 @@ class GCodeSimulator:
         self.total_layers = 0
         self.print_time = 0.0
         self.filament_used = 0.0
+        self._filament_since_reset = 0.0
         self.travel_distance = 0.0
         self.extrusion_distance = 0.0
         self.max_feedrate = 0.0
@@ -111,8 +112,7 @@ class GCodeSimulator:
         self._previous_position = None
         self._previous_feedrate = 0.0
         self._previous_command = ""
-        self._e_offset = 0.0
-    
+
     def simulate(self, gcode: str) -> Tuple[bool, List[GCodeError], List[GCodeError]]:
         """Simulate G-code execution.
         
@@ -187,16 +187,17 @@ class GCodeSimulator:
             
             # Handle G-code commands
             if command in ('G0', 'G1', 'G2', 'G3'):  # Movement commands
-                self._process_movement(command, params, line_num)
+                if not self._process_movement(command, params, line_num):
+                    return  # Stop processing if movement failed
             
             # Handle temperature commands
             elif command == 'M104':  # Set hotend temperature
                 self._process_set_temperature(params, line_num, wait=False)
-            elif command == 'M109':  # Set and wait for hotend temperature
+            elif command == 'M109':  # Set hotend temperature and wait
                 self._process_set_temperature(params, line_num, wait=True)
             elif command == 'M140':  # Set bed temperature
                 self._process_set_bed_temperature(params, line_num, wait=False)
-            elif command == 'M190':  # Set and wait for bed temperature
+            elif command == 'M190':  # Set bed temperature and wait
                 self._process_set_bed_temperature(params, line_num, wait=True)
             
             # Handle fan commands
@@ -205,58 +206,45 @@ class GCodeSimulator:
             elif command == 'M107':  # Fan off
                 self._process_fan_off(params, line_num)
             
-            # Handle positioning modes
+            # Handle homing and positioning
+            elif command == 'G28':  # Auto home
+                self._process_auto_home(params, line_num)
+            elif command == 'G29':  # Bed leveling
+                self._process_bed_leveling(params, line_num)
             elif command == 'G90':  # Absolute positioning
                 self.state.absolute_positioning = True
+                if 'X' in params or 'Y' in params or 'Z' in params:
+                    self.state.absolute_positioning = True
+                if 'E' in params:
+                    self.state.absolute_extrusion = True
             elif command == 'G91':  # Relative positioning
                 self.state.absolute_positioning = False
-            
-            # Handle units
-            elif command == 'G20':  # Inches
-                self.state.units_mm = False
-            elif command == 'G21':  # Millimeters
-                self.state.units_mm = True
-            
-            # Handle G92 (Set Position)
-            elif command == 'G92':
+                if 'X' in params or 'Y' in params or 'Z' in params:
+                    self.state.absolute_positioning = False
+                if 'E' in params:
+                    self.state.absolute_extrusion = False
+            elif command == 'G92':  # Set position
                 self._process_set_position(params, line_num)
             
-            # Handle M82/M83 (E Absolute/Relative)
-            elif command in ('M82', 'M83'):
-                self.state.absolute_extrusion = (command == 'M82')
-            
-            # Handle G28 (Auto Home)
-            elif command == 'G28':
-                self._process_auto_home(params, line_num)
-            
-            # Handle G29 (Bed Leveling)
-            elif command == 'G29':
-                self._process_bed_leveling(params, line_num)
-            
-            # Handle M204 (Set starting acceleration)
-            elif command == 'M204':
+            # Handle advanced settings
+            elif command == 'M204':  # Set acceleration
                 self._process_set_acceleration(params, line_num)
-            
-            # Handle M205 (Advanced settings)
-            elif command == 'M205':
+            elif command == 'M205':  # Advanced settings
                 self._process_advanced_settings(params, line_num)
-            
-            # Handle M220 (Set feedrate percentage)
-            elif command == 'M220':
+            elif command == 'M220':  # Set feedrate percentage
                 self._process_set_feedrate_percentage(params, line_num)
-            
-            # Handle M221 (Set flow percentage)
-            elif command == 'M221':
+            elif command == 'M221':  # Set flow percentage
                 self._process_set_flow_percentage(params, line_num)
             
-            # Unsupported but non-critical commands
-            elif command in ('M105', 'M114', 'M115', 'M117', 'M118', 'M119'):
-                pass  # These are query/status commands
-                
-            # Unsupported commands
+            # Unsupported but non-fatal commands
+            elif command in ('M82', 'M83'):  # E absolute/relative mode
+                # These are handled by G90/G91 with E parameter
+                pass
+            
+            # Unknown command
             else:
                 self._add_warning(line_num, GCodeErrorType.UNSUPPORTED_COMMAND,
-                                f"Unsupported command: {command}", original_line)
+                              f"Unsupported command: {command}", original_line)
             
             # Update print time based on movement
             if command in ('G0', 'G1', 'G2', 'G3'):
@@ -290,11 +278,10 @@ class GCodeSimulator:
         # Handle E (extrusion) parameter
         if 'E' in params:
             e_value = params['E']
+            
             if self.state.absolute_extrusion:
                 # In absolute mode, calculate relative extrusion from current position
-                # Adjust for any G92 E0 offset
-                adjusted_e = e_value + self._e_offset
-                extrusion = adjusted_e - (self.state.position[3] + self._e_offset)
+                extrusion = e_value - self.state.position[3]
                 new_pos[3] = e_value  # Store the raw E value
             else:
                 # In relative mode, use the value directly
@@ -303,7 +290,7 @@ class GCodeSimulator:
             
             # Only track positive extrusion (not retractions)
             if extrusion > 0:
-                self.filament_used += extrusion
+                self._filament_since_reset += extrusion
                 
                 # Calculate actual distance moved in XY plane for extrusion distance
                 xy_distance = math.sqrt(distances[0]**2 + distances[1]**2)
@@ -311,7 +298,7 @@ class GCodeSimulator:
                     # If there's XY movement, use that for extrusion distance
                     self.extrusion_distance += xy_distance
                 else:
-                    # If no XY movement (e.g., retract/prime), use the absolute extrusion
+                    # If no XY movement, use the absolute extrusion
                     self.extrusion_distance += abs(extrusion)
         
         # Update feedrate if specified
@@ -340,24 +327,36 @@ class GCodeSimulator:
 
     def _process_set_position(self, params: Dict[str, float], line_num: int):
         """Process G92 (Set Position)."""
-        # Update the specified axes
+        # For G92 E0, we want to reset the E position without affecting the physical position
+        if 'E' in params and abs(params['E']) < 0.0001:  # G92 E0
+            # Add the filament used since last reset to the total
+            self.filament_used += self._filament_since_reset
+            # Reset the E position to 0 without changing the physical position
+            self.state.position[3] = 0.0
+            # Reset the filament since reset counter
+            self._filament_since_reset = 0.0
+            return
+            
+        # For other G92 commands, update the specified axes
         for i, axis in enumerate(['X', 'Y', 'Z', 'E']):
             if axis in params:
-                if axis == 'E' and abs(params[axis]) < 0.0001:  # G92 E0
-                    # For G92 E0, we want to reset the E position without affecting the physical position
-                    # We do this by adjusting the E offset
-                    self._e_offset = -self.state.position[3]
                 self.state.position[i] = params[axis]
-        
-        # Update the previous position to prevent incorrect movement calculations
-        self._previous_position = self.state.position.copy()
     
     def _check_feedrate_limits(self, line_num: int):
         """Check if the current feedrate exceeds any limits."""
-        if self.state.feedrate * 60 > self.state.max_feedrate['x']:  # Convert mm/s to mm/min for comparison
-            self._add_warning(line_num, GCodeErrorType.MAX_FEEDRATE_EXCEEDED,
-                            f"Feedrate {self.state.feedrate*60:.1f} mm/min exceeds maximum of {self.state.max_feedrate['x']} mm/min",
-                            self._previous_command)
+        # Convert feedrate from mm/s to mm/min for comparison with max_feedrate
+        feedrate_mm_min = self.state.feedrate * 60.0
+        
+        # Check against each axis's max feedrate
+        for axis in ['x', 'y', 'z', 'e']:
+            if feedrate_mm_min > self.state.max_feedrate[axis]:
+                self._add_warning(
+                    line_num, 
+                    GCodeErrorType.MAX_FEEDRATE_EXCEEDED,
+                    f"Feedrate {feedrate_mm_min:.1f} mm/min exceeds maximum {axis.upper()} feedrate of {self.state.max_feedrate[axis]} mm/min",
+                    self._previous_command
+                )
+                break  # Only report the first exceeded limit
     
     def _process_set_temperature(self, params: Dict[str, float], line_num: int, wait: bool):
         """Process M104/M109 (Set Extruder Temperature)."""
