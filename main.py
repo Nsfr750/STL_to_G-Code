@@ -1354,106 +1354,52 @@ class STLToGCodeApp(QMainWindow):
         try:
             # Check if we have vertices to visualize
             if not hasattr(self, 'current_vertices') or len(self.current_vertices) == 0:
-                logging.warning("No vertices to visualize")
+                logging.debug("No vertices to visualize")
                 return
 
             # Ensure we have a valid figure and canvas
             if not hasattr(self, 'figure') or not hasattr(self, 'ax'):
                 try:
-                    # Create a new figure with 3D projection if OpenGL is available
-                    self.figure = Figure(figsize=(8, 6), dpi=100)
-                    try:
-                        self.ax = self.figure.add_subplot(111, projection='3d')
-                    except Exception as e:
-                        logging.warning(f"3D projection not available, falling back to 2D: {str(e)}")
-                        self.ax = self.figure.add_subplot(111)
-                    
-                    # Create the canvas and toolbar
-                    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-                    from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-                    
-                    # Create a new widget for the visualization
-                    self.visualization_widget = QWidget()
-                    layout = QVBoxLayout(self.visualization_widget)
-                    layout.setContentsMargins(0, 0, 0, 0)
-                    
-                    # Create the canvas and toolbar
-                    self.canvas = FigureCanvas(self.figure)
-                    self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-                    
-                    # Add widgets to layout
-                    self.toolbar = NavigationToolbar(self.canvas, self.visualization_widget)
-                    layout.addWidget(self.toolbar)
-                    layout.addWidget(self.canvas)
-                    
-                    # Set the visualization widget in the tab
-                    if hasattr(self, 'stl_view_tab'):
-                        # Clear existing layout if it exists
-                        if self.stl_view_tab.layout():
-                            QWidget().setLayout(self.stl_view_tab.layout())
-                        self.stl_view_tab.setLayout(layout)
-                    
-                    # Connect mouse events for better interaction
-                    self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
-                    self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
-                    self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
-                    
+                    self._initialize_visualization_components()
                 except Exception as e:
                     error_msg = f"Failed to initialize visualization: {str(e)}"
                     logging.error(error_msg, exc_info=True)
                     self.statusBar().showMessage("Failed to initialize visualization", 5000)
                     return
 
-            # Clear the current plot
-            self.ax.clear()
+            # Clear the current plot but preserve the camera position
+            try:
+                # Store the current view
+                if hasattr(self.ax, 'elev') and hasattr(self.ax, 'azim'):
+                    elev, azim = self.ax.elev, self.ax.azim
+                else:
+                    elev = azim = None
+                
+                self.ax.clear()
+                
+                # Restore the view if it was set
+                if elev is not None and azim is not None:
+                    self.ax.view_init(elev=elev, azim=azim)
+            except Exception as e:
+                logging.warning(f"Could not preserve camera position: {str(e)}")
+                self.ax.clear()
             
             try:
                 # Plot the mesh if we have faces, otherwise plot points
-                if hasattr(self, 'current_faces') and len(self.current_faces) > 0:
-                    try:
-                        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-                        
-                        # Create a Poly3DCollection from the vertices and faces
-                        verts = self.current_vertices[self.current_faces]
-                        mesh = Poly3DCollection(
-                            verts,
-                            alpha=0.8,
-                            linewidths=0.5,
-                            edgecolor='#555555'
-                        )
-                        mesh.set_facecolor([0.8, 0.8, 1.0])  # Light blue
-                        self.ax.add_collection3d(mesh)
-                        
-                        # Auto-scale the plot
-                        if len(self.current_vertices) > 0:
-                            self.ax.set_xlim([self.current_vertices[:, 0].min(), self.current_vertices[:, 0].max()])
-                            self.ax.set_ylim([self.current_vertices[:, 1].min(), self.current_vertices[:, 1].max()])
-                            self.ax.set_zlim([self.current_vertices[:, 2].min(), self.current_vertices[:, 2].max()])
-                            
-                    except Exception as e:
-                        logging.warning(f"Failed to create 3D mesh, falling back to point cloud: {str(e)}")
-                        # Fall back to point cloud if mesh creation fails
-                        self.ax.scatter(
-                            self.current_vertices[:, 0],
-                            self.current_vertices[:, 1],
-                            self.current_vertices[:, 2],
-                            c='b', marker='.', alpha=0.5, s=1
-                        )
+                if hasattr(self, 'current_faces') and len(self.current_faces) > 0 and len(self.current_vertices) > 0:
+                    self._plot_3d_mesh()
+                elif len(self.current_vertices) > 0:
+                    # Fall back to point cloud if no faces or if mesh creation fails
+                    self._plot_point_cloud()
                 else:
-                    # Just plot the vertices as points
-                    self.ax.scatter(
-                        self.current_vertices[:, 0],
-                        self.current_vertices[:, 1],
-                        self.current_vertices[:, 2],
-                        c='b', marker='.', alpha=0.5, s=1
-                    )
+                    logging.warning("No valid geometry to visualize")
+                    return
                 
-                # Set labels and title
-                self.ax.set_xlabel('X (mm)')
-                self.ax.set_ylabel('Y (mm)')
-                if hasattr(self.ax, 'set_zlabel'):  # Only for 3D plots
-                    self.ax.set_zlabel('Z (mm)')
-                self.ax.set_title('STL Model')
+                # Configure plot appearance
+                self._configure_plot_appearance()
+                
+                # Optimize rendering for better performance
+                self._optimize_rendering()
                 
                 # Use draw_idle instead of draw for better performance
                 self.canvas.draw_idle()
@@ -1467,6 +1413,165 @@ class STLToGCodeApp(QMainWindow):
             error_msg = f"Unexpected error in visualization: {str(e)}"
             logging.error(error_msg, exc_info=True)
             self.statusBar().showMessage("Unexpected error in visualization", 5000)
+    
+    def _optimize_rendering(self):
+        """Optimize the rendering performance of the plot."""
+        try:
+            # Reduce the number of segments for smoother interaction
+            if hasattr(self.ax, 'dist'):
+                self.ax.dist = 10  # Adjust camera distance
+                
+            # Disable minor ticks for better performance
+            if hasattr(self.ax, 'xaxis') and hasattr(self.ax.xaxis, 'set_ticks'):
+                self.ax.xaxis.set_ticks_position('none')
+                self.ax.yaxis.set_ticks_position('none')
+                if hasattr(self.ax, 'zaxis'):
+                    self.ax.zaxis.set_ticks_position('none')
+            
+            # Use a more efficient renderer if available
+            if hasattr(self.figure, 'canvas') and hasattr(self.figure.canvas, 'renderer'):
+                renderer = self.figure.canvas.renderer
+                if hasattr(renderer, 'set_use_blit'):
+                    renderer.set_use_blit(True)
+        except Exception as e:
+            logging.warning(f"Could not optimize rendering: {str(e)}")
+
+    def _plot_3d_mesh(self):
+        """Plot the 3D mesh using the current vertices and faces."""
+        try:
+            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+            
+            # Limit the number of faces for better performance with large models
+            max_faces = 10000  # Adjust based on performance testing
+            if len(self.current_faces) > max_faces:
+                # Use a subset of faces for better performance
+                step = max(1, len(self.current_faces) // max_faces)
+                faces = self.current_faces[::step]
+                logging.info(f"Downsampling mesh from {len(self.current_faces)} to {len(faces)} faces")
+            else:
+                faces = self.current_faces
+            
+            # Create a Poly3DCollection from the vertices and faces
+            verts = self.current_vertices[faces]
+            
+            # Use a single color for better performance
+            mesh = Poly3DCollection(
+                verts,
+                alpha=0.8,
+                linewidths=0.5,
+                edgecolor='#555555',
+                facecolor=[0.8, 0.8, 1.0],  # Light blue
+                shade=True,
+                antialiaseds=(len(faces) < 5000)  # Disable antialiasing for large meshes
+            )
+            
+            self.ax.add_collection3d(mesh)
+            
+            # Auto-scale the plot to fit the model
+            self._auto_scale_plot()
+            
+        except Exception as e:
+            logging.warning(f"Failed to create 3D mesh, falling back to point cloud: {str(e)}")
+            self._plot_point_cloud()
+    
+    def _plot_point_cloud(self):
+        """Plot the vertices as a point cloud with optimizations."""
+        if len(self.current_vertices) == 0:
+            return
+            
+        # Limit the number of points for better performance
+        max_points = 10000  # Adjust based on performance testing
+        if len(self.current_vertices) > max_points:
+            step = max(1, len(self.current_vertices) // max_points)
+            vertices = self.current_vertices[::step]
+            logging.info(f"Downsampling point cloud from {len(self.current_vertices)} to {len(vertices)} points")
+        else:
+            vertices = self.current_vertices
+        
+        # Use scatter with optimized parameters
+        self.ax.scatter(
+            vertices[:, 0],
+            vertices[:, 1],
+            vertices[:, 2],
+            c='b', 
+            marker='.', 
+            alpha=0.5, 
+            s=1,
+            depthshade=False  # Disable depth shading for better performance
+        )
+        
+        # Auto-scale the plot to fit the points
+        self._auto_scale_plot()
+    
+    def _auto_scale_plot(self):
+        """Auto-scale the plot to fit the current geometry with better handling of edge cases."""
+        if len(self.current_vertices) == 0:
+            return
+            
+        try:
+            # Calculate bounds with a small margin
+            margin = 0.1  # 10% margin
+            x_min, x_max = np.nanmin(self.current_vertices[:, 0]), np.nanmax(self.current_vertices[:, 0])
+            y_min, y_max = np.nanmin(self.current_vertices[:, 1]), np.nanmax(self.current_vertices[:, 1])
+            z_min, z_max = np.nanmin(self.current_vertices[:, 2]), np.nanmax(self.current_vertices[:, 2])
+            
+            # Check for invalid bounds
+            if np.isnan(x_min) or np.isinf(x_min) or np.isnan(x_max) or np.isinf(x_max) or \
+               np.isnan(y_min) or np.isinf(y_min) or np.isnan(y_max) or np.isinf(y_max) or \
+               np.isnan(z_min) or np.isinf(z_min) or np.isnan(z_max) or np.isinf(z_max):
+                logging.warning("Invalid bounds detected, using default view")
+                x_min, x_max = -100, 100
+                y_min, y_max = -100, 100
+                z_min, z_max = -100, 100
+            else:
+                # Add margin
+                x_range = max(0.1, x_max - x_min)  # Ensure range is not zero
+                y_range = max(0.1, y_max - y_min)
+                z_range = max(0.1, z_max - z_min)
+                
+                x_min -= x_range * margin
+                x_max += x_range * margin
+                y_min -= y_range * margin
+                y_max += y_range * margin
+                z_min -= z_range * margin
+                z_max += z_range * margin
+            
+            # Set the plot limits
+            self.ax.set_xlim(x_min, x_max)
+            self.ax.set_ylim(y_min, y_max)
+            if hasattr(self.ax, 'set_zlim'):  # Only for 3D plots
+                self.ax.set_zlim(z_min, z_max)
+                
+        except Exception as e:
+            logging.error(f"Error in auto-scaling: {str(e)}", exc_info=True)
+            # Fall back to default view if auto-scaling fails
+            self.ax.set_xlim(-100, 100)
+            self.ax.set_ylim(-100, 100)
+            if hasattr(self.ax, 'set_zlim'):
+                self.ax.set_zlim(-100, 100)
+    
+    def _configure_plot_appearance(self):
+        """Configure the appearance of the plot."""
+        # Set labels and title
+        self.ax.set_xlabel('X (mm)')
+        self.ax.set_ylabel('Y (mm)')
+        if hasattr(self.ax, 'set_zlabel'):  # Only for 3D plots
+            self.ax.set_zlabel('Z (mm)')
+        self.ax.set_title('STL Model')
+        
+        # Set grid and background color
+        self.ax.grid(True, linestyle='--', alpha=0.7)
+        self.ax.set_facecolor('#f0f0f0')
+        
+        # Set aspect ratio to 'equal' for better 3D visualization
+        if hasattr(self.ax, 'set_box_aspect'):
+            try:
+                self.ax.set_box_aspect([1, 1, 1])
+            except Exception:
+                pass  # Ignore errors for older matplotlib versions
+        
+        # Enable auto-scaling
+        self.ax.autoscale_view(scalex=True, scaley=True, scalez=True)
     
     def on_mouse_press(self, event):
         """Handle mouse press events for the visualization."""
@@ -1894,6 +1999,41 @@ def main():
         print(f"Warning: Could not create log file: {e}")
         log_file = None
     
+    # Configure logging
+    log_handlers = [logging.StreamHandler()]  # Always log to console
+    if log_file and os.access(log_file, os.W_OK):
+        file_handler = logging.FileHandler(log_file, mode='a')  # Append to log file
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        log_handlers.append(file_handler)
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=log_handlers
+    )
+    
+    # Log application start
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 80)
+    logger.info(f"Starting STL to GCode Converter v{__version__}")
+    logger.info(f"Log file: {log_file.absolute() if log_file else 'Console only'}")
+    logger.info("=" * 80)
+    
+    # Initialize and run the application
+    try:
+        app = QApplication(sys.argv)
+        window = STLToGCodeApp()
+        sys.exit(app.exec())
+    except Exception as e:
+        logger.critical(f"Application crashed: {e}", exc_info=True)
+        raise
+
+if __name__ == "__main__":
+    main()
     # Configure logging
     log_handlers = [logging.StreamHandler()]  # Always log to console
     if log_file and os.access(log_file, os.W_OK):
