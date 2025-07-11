@@ -12,9 +12,14 @@ for the STL to GCode Converter application. It includes:
 """
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextEdit, QPushButton, 
-                            QHBoxLayout, QApplication, QWidget)
-from PyQt6.QtCore import Qt
+                            QHBoxLayout, QApplication, QWidget, QLabel, QFrame)
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices
 import webbrowser
+import os
+
+# Import the markdown viewer
+from .markdown_viewer import show_documentation
 
 HELP_CONTENT = """
 <h1>STL to GCode Converter - User Guide</h1>
@@ -113,8 +118,36 @@ class HelpDialog(QDialog):
         # Set window modality
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         
-        # Create main layout
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Set up the user interface."""
         layout = QVBoxLayout(self)
+        
+        # Toolbar
+        toolbar = QHBoxLayout()
+        
+        # Documentation button
+        doc_btn = QPushButton("View Full Documentation")
+        doc_btn.setToolTip("Open the complete documentation in Markdown viewer")
+        doc_btn.clicked.connect(self.open_documentation)
+        toolbar.addWidget(doc_btn)
+        
+        # Add some stretch
+        toolbar.addStretch()
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        toolbar.addWidget(close_btn)
+        
+        layout.addLayout(toolbar)
+        
+        # Add a line separator
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(line)
         
         # Create text edit for help content
         self.text_edit = QTextEdit()
@@ -144,41 +177,15 @@ class HelpDialog(QDialog):
         """)
         layout.addWidget(self.text_edit)
         
-        # Create buttons layout
-        buttons_layout = QHBoxLayout()
-        
-        # Documentation button
-        docs_btn = QPushButton("Open Documentation")
-        docs_btn.clicked.connect(
-            lambda: webbrowser.open("https://github.com/Nsfr750/STL_to_G-Code/tree/main/docs")
-        )
-        buttons_layout.addWidget(docs_btn)
-        
-        # Discord button
-        discord_btn = QPushButton("Join Discord")
-        discord_btn.clicked.connect(
-            lambda: webbrowser.open("https://discord.gg/BvvkUEP9")
-        )
-        buttons_layout.addWidget(discord_btn)
-        
-        # GitHub button
-        github_btn = QPushButton("View on GitHub")
-        github_btn.clicked.connect(
-            lambda: webbrowser.open("https://github.com/Nsfr750/STL_to_G-Code")
-        )
-        buttons_layout.addWidget(github_btn)
-        
-        # Add stretch to push buttons to the right
-        buttons_layout.addStretch()
-        
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        buttons_layout.addWidget(close_btn)
-        
-        # Add buttons layout to main layout
-        layout.addLayout(buttons_layout)
-
+        # Add some padding
+        self.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+    
+    def open_documentation(self):
+        """Open the full documentation in the markdown viewer."""
+        self.close()  # Close the help dialog
+        from .markdown_viewer import show_documentation
+        show_documentation()  # Don't pass parent to avoid the callable error
 
 def show_help(parent=None):
     """
@@ -189,7 +196,6 @@ def show_help(parent=None):
     """
     dialog = HelpDialog(parent)
     dialog.exec()
-
 
 # For testing
 if __name__ == "__main__":

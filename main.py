@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, 
     QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
     QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter,
-    QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, QStyle
+    QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, QStyle, QFrame, QStatusBar
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -32,6 +32,8 @@ from scripts.gcode_visualizer import GCodeVisualizer
 from scripts.stl_processor import MemoryEfficientSTLProcessor, STLHeader, STLTriangle
 from scripts.gcode_simulator import GCodeSimulator, PrinterState
 from scripts.STL_load import open_stl_file, show_file_open_error  # Add this import
+from scripts.gcode_load import open_gcode_file, show_file_open_error
+from scripts.gcode_save import save_gcode_file, show_file_save_error
 import numpy as np
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
 from PyQt6.QtGui import QColor, QFont
@@ -293,25 +295,34 @@ class STLToGCodeApp(QMainWindow):
         content_layout.addWidget(left_panel, stretch=1)
         
         # Right panel for main content
-        right_panel, right_layout = self.ui.create_frame(content_widget, "vertical")
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(5)
         
         # Tab widget for different views
         self.tab_widget = QTabWidget()
-        right_layout.addWidget(self.tab_widget)
+        self.tab_widget.setDocumentMode(True)  # Better look on some platforms
+        self.tab_widget.setTabsClosable(False)
+        self.tab_widget.setMovable(True)
         
         # Add tabs
         self.stl_view_tab = QWidget()
-        self.tab_widget.addTab(self.stl_view_tab, "3D View")
-        self._setup_stl_view()
-        
         self.gcode_view_tab = QWidget()
-        self.tab_widget.addTab(self.gcode_view_tab, "G-code Editor")
-        self._setup_gcode_view()
-        
         self.visualization_tab = QWidget()
+        
+        # Add tabs with proper names
+        self.tab_widget.addTab(self.stl_view_tab, "3D View")
+        self.tab_widget.addTab(self.gcode_view_tab, "G-code Editor")
         self.tab_widget.addTab(self.visualization_tab, "G-code Visualization")
+        
+        # Set up each tab's content
+        self._setup_stl_view()
+        self._setup_gcode_view()
         self._setup_visualization_view()
+        
+        # Add tab widget to right layout
+        right_layout.addWidget(self.tab_widget)
         
         # Add right panel to content
         content_layout.addWidget(right_panel, stretch=4)
@@ -329,6 +340,12 @@ class STLToGCodeApp(QMainWindow):
         self.progress_bar.setMaximum(100)
         self.progress_bar.setVisible(False)
         self.status_bar.addPermanentWidget(self.progress_bar)
+        
+        # Set up the editor tab
+        self._setup_editor_tab()
+        
+        # Set initial tab
+        self.tab_widget.setCurrentIndex(0)  # Show 3D View by default
     
     def _create_separator(self):
         """Create a vertical separator for toolbars."""
@@ -534,28 +551,40 @@ class STLToGCodeApp(QMainWindow):
         
         try:
             # Use the new STL loading function
-            self.current_stl_processor, result = open_stl_file(self, file_path)
+            file_path, file_name, success, error_msg = open_stl_file(self, file_path)
             
-            if not result['success']:
-                if result.get('error_details'):
-                    show_file_open_error(self, result['error_details'])
+            if not success:
+                if error_msg:
+                    show_file_open_error(self, error_msg)
                 return
                 
             # Store file info
-            self.file_path = result['file_path']
-            self.current_file = result['file_name']
+            self.file_path = file_path
+            self.current_file = file_name
             self.setWindowTitle(f"STL to GCode - {self.current_file}")
             
             # Add to recent files
             self.add_to_recent_files(self.file_path)
             
-            # Start progressive loading
-            logging.debug("Starting progressive loading")
-            self._start_progressive_loading()
+            # Initialize STL processor
+            try:
+                from scripts.stl_processor import MemoryEfficientSTLProcessor
+                self.current_stl_processor = MemoryEfficientSTLProcessor(file_path)
+                self.current_stl_processor.open()
+                
+                # Start progressive loading
+                logging.debug("Starting progressive loading")
+                self._start_progressive_loading()
+                
+            except Exception as e:
+                error_msg = f"Failed to initialize STL processor: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                show_file_open_error(self, error_msg)
+                return
             
         except Exception as e:
-            error_msg = str(e)
-            logging.error(f"Error in open_file: {error_msg}", exc_info=True)
+            error_msg = f"Error in open_file: {str(e)}"
+            logging.error(error_msg, exc_info=True)
             show_file_open_error(self, error_msg)
     
     def _reset_loading_state(self):
@@ -767,18 +796,24 @@ class STLToGCodeApp(QMainWindow):
                 logging.debug("Starting loading timer")
                 self.loading_timer = QTimer()
                 self.loading_timer.timeout.connect(self._process_loading_queue)
-                self.loading_timer.start(100)  # Process queue every 100ms
+                self.loading_timer.start(50)  # Process queue every 50ms for smoother updates
             
             # Update progress
             if 'progress' in chunk_data:
                 progress = int(chunk_data['progress'])
                 if hasattr(self, 'progress_dialog'):
                     self.progress_dialog.setValue(progress)
+                    
+                    # Close the progress dialog when loading is complete
+                    if progress >= 100:
+                        self.progress_dialog.close()
+                        self.is_loading = False
+                        self._on_loading_finished()
                 
                 # Update status bar
                 self.statusBar().showMessage(f"Loading STL: {progress}%")
                 
-                # Keep the UI responsive
+                # Force UI update
                 QApplication.processEvents()
             
         except Exception as e:
@@ -808,45 +843,44 @@ class STLToGCodeApp(QMainWindow):
         except Exception as e:
             logging.error(f"Error processing G-code buffer: {str(e)}", exc_info=True)
     
-    def save_gcode(self):
-        """Save the current G-code to a file."""
-        try:
-            if not hasattr(self, 'gcode_editor') or not self.gcode_editor.toPlainText():
-                QMessageBox.warning(self, "No G-code", "No G-code to save.")
-                return
-                
-            # Get the G-code from the editor
-            gcode = self.gcode_editor.toPlainText()
+    def save_gcode(self, file_path=None):
+        """
+        Save the current G-code to a file.
+        
+        Args:
+            file_path (str, optional): Path to save the file. If None, a save dialog will be shown.
+        """
+        if not hasattr(self, 'editor_widget') or not self.editor_widget:
+            QMessageBox.warning(self, "Error", "No G-code editor is available.")
+            return
+        
+        content = self.editor_widget.text()
+        
+        # If file_path is provided, use it as the default filename
+        default_filename = file_path if file_path else self.gcode_file_path
+        
+        # Use the gcode_save module to handle file saving
+        result = save_gcode_file(
+            parent=self,
+            content=content,
+            default_filename=default_filename
+        )
+        
+        if result['success']:
+            # Update the current file path and window title
+            self.gcode_file_path = result['file_path']
+            self.setWindowTitle(f"STL to GCode - {result['file_name']}")
             
-            # Get the default filename based on the STL filename if available
-            default_filename = ""
-            if hasattr(self, 'current_file') and self.current_file:
-                default_filename = os.path.splitext(self.current_file)[0] + ".gcode"
+            # Add to recent files
+            self.add_to_recent_files(self.gcode_file_path)
             
-            # Open file dialog to select save location
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 
-                "Save G-code", 
-                default_filename,
-                "G-code Files (*.gcode *.nc);;All Files (*)"
-            )
-            
-            if file_path:
-                # Ensure the file has the correct extension
-                if not file_path.lower().endswith(('.gcode', '.nc')):
-                    file_path += ".gcode"
-                
-                # Write the G-code to the file
-                with open(file_path, 'w') as f:
-                    f.write(gcode)
-                
-                self.statusBar().showMessage(f"G-code saved to {os.path.basename(file_path)}", 5000)
-                logging.info(f"G-code saved to {file_path}")
-                
-        except Exception as e:
-            error_msg = f"Error saving G-code: {str(e)}"
-            logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
+            # Update status bar
+            self.statusBar().showMessage(f"G-code saved to {result['file_name']}", 3000)
+        else:
+            # Show error message if save failed
+            show_file_save_error(self, result)
+        
+        return result['success']
     
     def show_settings(self):
         """Show the application settings dialog."""
@@ -878,7 +912,7 @@ class STLToGCodeApp(QMainWindow):
             error_msg = f"Error showing settings: {str(e)}"
             logging.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
-    
+
     def _apply_settings(self):
         """Apply the current settings to the application."""
         try:
@@ -1157,89 +1191,59 @@ class STLToGCodeApp(QMainWindow):
             logging.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
 
-
-    def check_updates(self):
-        """Check for application updates."""
+    def check_updates(self, force_check: bool = False):
+        """Check for application updates using the updates module.
+        
+        Args:
+            force_check: If True, skip the cache and force a check.
+        """
         try:
-            # Get current version
-            current_version = "1.0.0"  # This should match your version
-            
             # Show checking message
             self.statusBar().showMessage("Checking for updates...")
             QApplication.processEvents()
             
-            try:
-                # In a real application, you would fetch this from your update server or GitHub releases
-                # This is a placeholder implementation
-                import requests
-                import json
-                
-                # Simulate network request with timeout
-                # In a real app, replace this with your actual update check URL
-                response = requests.get(
-                    "https://api.github.com/repos/Nsfr750/STL_to_G-Code/releases/latest",
-                    timeout=5
-                )
-                response.raise_for_status()
-                
-                # Parse the response
-                release_info = response.json()
-                latest_version = release_info.get('tag_name', '').lstrip('v')
-                
-                if not latest_version:
-                    raise ValueError("Invalid version format in response")
-                
-                # Compare versions (simple string comparison, might need more sophisticated logic)
-                if latest_version > current_version:
-                    # New version available
-                    reply = QMessageBox.information(
-                        self,
-                        "Update Available",
-                        f"Version {latest_version} is available!\n\n"
-                        f"Current version: {current_version}\n\n"
-                        f"Would you like to download the update?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    
-                    if reply == QMessageBox.StandardButton.Yes:
-                        # Open the release page
-                        self._open_url(release_info.get('html_url', 
-                            "https://github.com/Nsfr750/STL_to_G-Code/releases/latest"))
-                else:
-                    QMessageBox.information(
-                        self,
-                        "No Updates",
-                        f"You are using the latest version ({current_version}).",
-                        QMessageBox.StandardButton.Ok
-                    )
-                
-            except requests.RequestException as e:
-                QMessageBox.warning(
+            # Import the update function
+            from scripts.updates import check_for_updates
+            
+            # Check for updates
+            update_available, update_info = check_for_updates(
+                parent=self,
+                current_version=__version__,
+                force_check=force_check,
+                silent_if_no_update=not force_check
+            )
+            
+            # Show appropriate message if no update is available and this was a forced check
+            if force_check and not update_available:
+                QMessageBox.information(
                     self,
-                    "Update Check Failed",
-                    f"Could not check for updates: {str(e)}\n\n"
-                    "Please check your internet connection and try again.",
+                    "No Updates",
+                    f"You are using the latest version ({__version__}).",
                     QMessageBox.StandardButton.Ok
                 )
-                logging.error(f"Update check failed: {str(e)}", exc_info=True)
-            
-            except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    "Update Error",
-                    f"An error occurred while checking for updates: {str(e)}",
-                    QMessageBox.StandardButton.Ok
-                )
-                logging.error(f"Error in update check: {str(e)}", exc_info=True)
-            
-            finally:
-                self.statusBar().showMessage("Ready", 3000)
                 
+            # Update status bar
+            self.statusBar().showMessage("Ready", 3000)
+            
+        except ImportError as e:
+            error_msg = "Failed to import updates module. Update check disabled."
+            logging.error(f"{error_msg} Error: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+            
         except Exception as e:
             error_msg = f"Error during update check: {str(e)}"
             logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
-
+            
+            # Only show error if this was a forced check
+            if force_check:
+                QMessageBox.critical(
+                    self,
+                    "Update Error",
+                    f"An error occurred while checking for updates:\n{str(e)}",
+                    QMessageBox.StandardButton.Ok
+                )
+            
+            self.statusBar().showMessage("Update check failed", 3000)
 
     def view_gcode(self):
         """Display the generated G-code in a dedicated viewer."""
@@ -1339,68 +1343,139 @@ class STLToGCodeApp(QMainWindow):
             QMessageBox.critical(self, "Error", error_msg)
     
     def _update_visualization(self):
-        """Update the 3D visualization based on current settings."""
+        """Update the 3D visualization with the current STL data."""
         try:
-            # Check if we have the required matplotlib components
-            if not hasattr(self, 'ax') or not hasattr(self, 'canvas') or not hasattr(self, 'figure'):
-                logging.warning("Matplotlib components not initialized - skipping visualization update")
+            # Check if we have vertices to visualize
+            if not hasattr(self, 'current_vertices') or len(self.current_vertices) == 0:
+                logging.warning("No vertices to visualize")
                 return
-            
-            # Clear previous visualization
+
+            # Ensure we have a valid figure and canvas
+            if not hasattr(self, 'figure') or not hasattr(self, 'ax'):
+                try:
+                    # Create a new figure with 3D projection if OpenGL is available
+                    self.figure = Figure(figsize=(8, 6), dpi=100)
+                    try:
+                        self.ax = self.figure.add_subplot(111, projection='3d')
+                    except Exception as e:
+                        logging.warning(f"3D projection not available, falling back to 2D: {str(e)}")
+                        self.ax = self.figure.add_subplot(111)
+                    
+                    # Create the canvas and toolbar
+                    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+                    from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+                    
+                    # Create a new widget for the visualization
+                    self.visualization_widget = QWidget()
+                    layout = QVBoxLayout(self.visualization_widget)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    
+                    # Create the canvas and toolbar
+                    self.canvas = FigureCanvas(self.figure)
+                    self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                    
+                    # Add widgets to layout
+                    self.toolbar = NavigationToolbar(self.canvas, self.visualization_widget)
+                    layout.addWidget(self.toolbar)
+                    layout.addWidget(self.canvas)
+                    
+                    # Set the visualization widget in the tab
+                    if hasattr(self, 'stl_view_tab'):
+                        # Clear existing layout if it exists
+                        if self.stl_view_tab.layout():
+                            QWidget().setLayout(self.stl_view_tab.layout())
+                        self.stl_view_tab.setLayout(layout)
+                    
+                    # Connect mouse events for better interaction
+                    self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
+                    self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
+                    self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+                    
+                except Exception as e:
+                    error_msg = f"Failed to initialize visualization: {str(e)}"
+                    logging.error(error_msg, exc_info=True)
+                    self.statusBar().showMessage("Failed to initialize visualization", 5000)
+                    return
+
+            # Clear the current plot
             self.ax.clear()
             
-            # Check if we have vertices and faces to visualize
-            if not hasattr(self, 'current_vertices') or len(self.current_vertices) == 0:
-                logging.debug("No vertices to visualize")
-                self.canvas.draw()
-                return
-            
-            # Get vertices and faces
-            vertices = self.current_vertices
-            faces = self.current_faces if hasattr(self, 'current_faces') else []
-            
-            # Plot the mesh
-            if len(faces) > 0:
-                # Create a Poly3DCollection from the faces
-                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+            try:
+                # Plot the mesh if we have faces, otherwise plot points
+                if hasattr(self, 'current_faces') and len(self.current_faces) > 0:
+                    try:
+                        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+                        
+                        # Create a Poly3DCollection from the vertices and faces
+                        verts = self.current_vertices[self.current_faces]
+                        mesh = Poly3DCollection(
+                            verts,
+                            alpha=0.8,
+                            linewidths=0.5,
+                            edgecolor='#555555'
+                        )
+                        mesh.set_facecolor([0.8, 0.8, 1.0])  # Light blue
+                        self.ax.add_collection3d(mesh)
+                        
+                        # Auto-scale the plot
+                        if len(self.current_vertices) > 0:
+                            self.ax.set_xlim([self.current_vertices[:, 0].min(), self.current_vertices[:, 0].max()])
+                            self.ax.set_ylim([self.current_vertices[:, 1].min(), self.current_vertices[:, 1].max()])
+                            self.ax.set_zlim([self.current_vertices[:, 2].min(), self.current_vertices[:, 2].max()])
+                            
+                    except Exception as e:
+                        logging.warning(f"Failed to create 3D mesh, falling back to point cloud: {str(e)}")
+                        # Fall back to point cloud if mesh creation fails
+                        self.ax.scatter(
+                            self.current_vertices[:, 0],
+                            self.current_vertices[:, 1],
+                            self.current_vertices[:, 2],
+                            c='b', marker='.', alpha=0.5, s=1
+                        )
+                else:
+                    # Just plot the vertices as points
+                    self.ax.scatter(
+                        self.current_vertices[:, 0],
+                        self.current_vertices[:, 1],
+                        self.current_vertices[:, 2],
+                        c='b', marker='.', alpha=0.5, s=1
+                    )
                 
-                # Convert vertices to the format expected by Poly3DCollection
-                verts = vertices[faces]
+                # Set labels and title
+                self.ax.set_xlabel('X (mm)')
+                self.ax.set_ylabel('Y (mm)')
+                if hasattr(self.ax, 'set_zlabel'):  # Only for 3D plots
+                    self.ax.set_zlabel('Z (mm)')
+                self.ax.set_title('STL Model')
                 
-                # Create the 3D polygon collection
-                mesh = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
-                mesh.set_facecolor([0.8, 0.8, 1.0])  # Light blue
-                self.ax.add_collection3d(mesh)
+                # Use draw_idle instead of draw for better performance
+                self.canvas.draw_idle()
                 
-                # Auto-scale the axes
-                min_vals = vertices.min(axis=0)
-                max_vals = vertices.max(axis=0)
-                center = (min_vals + max_vals) / 2
-                max_range = (max_vals - min_vals).max() / 2
-                
-                self.ax.set_xlim(center[0] - max_range, center[0] + max_range)
-                self.ax.set_ylim(center[1] - max_range, center[1] + max_range)
-                self.ax.set_zlim(center[2] - max_range, center[2] + max_range)
-                
-                # Set labels
-                self.ax.set_xlabel('X')
-                self.ax.set_ylabel('Y')
-                self.ax.set_zlabel('Z')
-                
-                # Set title
-                if hasattr(self, 'current_file'):
-                    self.ax.set_title(f'STL: {self.current_file}')
-                
-                # Redraw the canvas
-                self.canvas.draw()
-                logging.info("STL visualization updated successfully")
+            except Exception as e:
+                error_msg = f"Error during visualization update: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                self.statusBar().showMessage("Error updating visualization", 5000)
                 
         except Exception as e:
-            error_msg = f"Error in _update_visualization: {str(e)}"
+            error_msg = f"Unexpected error in visualization: {str(e)}"
             logging.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Visualization Error", error_msg)
-
-
+            self.statusBar().showMessage("Unexpected error in visualization", 5000)
+    
+    def on_mouse_press(self, event):
+        """Handle mouse press events for the visualization."""
+        if hasattr(self, 'canvas') and hasattr(self, 'toolbar'):
+            self.toolbar.press_pan(event) if event.button == 1 else self.toolbar.press_zoom(event)
+    
+    def on_mouse_release(self, event):
+        """Handle mouse release events for the visualization."""
+        if hasattr(self, 'canvas') and hasattr(self, 'toolbar'):
+            self.toolbar.release_pan(event) if event.button == 1 else self.toolbar.release_zoom(event)
+    
+    def on_mouse_move(self, event):
+        """Handle mouse move events for the visualization."""
+        if hasattr(self, 'canvas') and hasattr(self, 'toolbar'):
+            self.toolbar.mouse_move(event)
+    
     def _reset_visualization_view(self):
         """Reset the 3D visualization view to default settings."""
         try:
@@ -1741,23 +1816,31 @@ class STLToGCodeApp(QMainWindow):
             self.save_gcode_action.setEnabled(True)
     
     def open_gcode_in_editor(self):
-        """Open a G-code file in the editor."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open G-code File", "", "G-code Files (*.gcode *.nc *.txt);;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r') as f:
-                    content = f.read()
+        """Open a G-code file in the editor using the gcode_load module."""
+        try:
+            # Use the gcode_load module to handle file opening
+            gcode_content, result = open_gcode_file(parent=self)
+            
+            if not result['success']:
+                if result.get('error_details'):
+                    show_gcode_open_error(self, result['error_details'])
+                return
                 
-                self.editor_widget.set_text(content)
-                self.current_file = file_path
-                self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(file_path)}")
-                self.statusBar().showMessage(f"Loaded {os.path.basename(file_path)}", 3000)
-                
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+            # Set the editor content
+            self.editor_widget.set_text(gcode_content) 
+            self.current_file = result['file_path']
+            
+            # Update window title and status bar
+            self.setWindowTitle(f"STL to GCode Converter v{__version__} - {result['file_name']}")
+            self.statusBar().showMessage(f"Loaded {result['file_name']}", 3000)
+            
+            # Add to recent files
+            self.add_to_recent_files(self.current_file)
+            
+        except Exception as e:
+            error_msg = f"Failed to open file: {str(e)}"
+            logging.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
     
     def save_gcode_from_editor(self):
         """Save the current editor content to a file."""
@@ -1794,26 +1877,48 @@ def main():
     """Main function to start the application."""
     # Set up logging configuration
     log_file = Path(__file__).parent / 'stl_to_gcode.log'
+    
+    # Ensure the log file exists and is writable
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        if not log_file.exists():
+            log_file.touch()
+    except Exception as e:
+        print(f"Warning: Could not create log file: {e}")
+        log_file = None
+    
+    # Configure logging
+    log_handlers = [logging.StreamHandler()]  # Always log to console
+    if log_file and os.access(log_file, os.W_OK):
+        file_handler = logging.FileHandler(log_file, mode='a')  # Append to log file
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        log_handlers.append(file_handler)
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            logging.FileHandler(log_file, mode='w'),  # Overwrite log file on each run
-            logging.StreamHandler()  # Also log to console
-        ]
+        handlers=log_handlers
     )
     
     # Log application start
-    logging.info("=" * 80)
-    logging.info(f"Starting STL to GCode Converter v{__version__}")
-    logging.info("=" * 80)
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 80)
+    logger.info(f"Starting STL to GCode Converter v{__version__}")
+    logger.info(f"Log file: {log_file.absolute() if log_file else 'Console only'}")
+    logger.info("=" * 80)
     
     # Initialize and run the application
-    app = QApplication(sys.argv)
-    window = STLToGCodeApp()
-    sys.exit(app.exec())
-
+    try:
+        app = QApplication(sys.argv)
+        window = STLToGCodeApp()
+        sys.exit(app.exec())
+    except Exception as e:
+        logger.critical(f"Application crashed: {e}", exc_info=True)
+        raise
 
 if __name__ == "__main__":
     main()
