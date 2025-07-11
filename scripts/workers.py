@@ -249,74 +249,102 @@ class STLLoadingWorker(QObject):
             chunk_size: Number of triangles to process in each chunk
         """
         super().__init__()
+        logging.debug(f"Initializing STLLoadingWorker with chunk_size={chunk_size}")
         self.stl_processor = stl_processor
         self.chunk_size = chunk_size
         self._is_cancelled = False
-    
-    @pyqtSlot()
-    def cancel(self):
-        """Request cancellation of the loading process."""
-        self._is_cancelled = True
+        
+        # Log STL processor info
+        if hasattr(stl_processor, '_header'):
+            logging.debug(f"STL header: {stl_processor._header}")
+        else:
+            logging.warning("STL processor has no _header attribute")
     
     @pyqtSlot()
     def start_loading(self):
         """Start the loading process in the background thread."""
+        logging.info("STL loading worker started")
+        
         try:
-            logging.info("Starting STL loading worker")
-            
             # Get total number of triangles for progress reporting
+            if not hasattr(self.stl_processor, '_header') or not hasattr(self.stl_processor._header, 'num_triangles'):
+                error_msg = "STL processor is missing required header information"
+                logging.error(error_msg)
+                self.error_occurred.emit(error_msg)
+                return
+                
             total_triangles = self.stl_processor._header.num_triangles
-            processed_triangles = 0
+            logging.info(f"Total triangles to process: {total_triangles}")
             
-            # Process STL in chunks
+            if total_triangles <= 0:
+                error_msg = f"Invalid number of triangles in STL file: {total_triangles}"
+                logging.error(error_msg)
+                self.error_occurred.emit(error_msg)
+                return
+            
+            # Initialize chunk buffers
             chunk_vertices = []
             chunk_faces = []
             face_offset = 0
+            processed_triangles = 0
             
+            logging.debug("Starting triangle iteration...")
+            
+            # Process STL in chunks
             for i, triangle in enumerate(self.stl_processor.iter_triangles()):
                 if self._is_cancelled:
-                    logging.info("STL loading cancelled by user")
+                    logging.info("Loading cancelled by user")
                     break
                 
-                # Add triangle vertices to current chunk
+                # Add triangle vertices and face
                 chunk_vertices.extend(triangle.vertices)
-                
-                # Add triangle faces with offset
-                chunk_faces.append([
-                    face_offset,
-                    face_offset + 1,
-                    face_offset + 2
-                ])
+                chunk_faces.append([face_offset, face_offset + 1, face_offset + 2])
                 face_offset += 3
+                processed_triangles += 1
                 
-                # Emit chunk if we've reached chunk size or end of file
-                if (i + 1) % self.chunk_size == 0 or (i + 1) == total_triangles:
-                    if chunk_vertices and chunk_faces:
-                        # Convert to numpy arrays
-                        vertices = np.array(chunk_vertices, dtype=np.float32)
-                        faces = np.array(chunk_faces, dtype=np.uint32)
-                        
-                        # Emit chunk
-                        chunk_data = {
-                            'vertices': vertices,
-                            'faces': faces,
-                            'progress': (i + 1) / total_triangles * 100
-                        }
-                        self.chunk_loaded.emit(chunk_data)
-                        self.progress_updated.emit(i + 1, total_triangles)
-                        
-                        # Reset chunk buffers
-                        chunk_vertices = []
-                        chunk_faces = []
+                # Emit progress update every 100 triangles
+                if processed_triangles % 100 == 0:
+                    self.progress_updated.emit(processed_triangles, total_triangles)
+                
+                # Process chunk if we've reached the chunk size
+                if len(chunk_vertices) >= self.chunk_size * 3:  # 3 vertices per triangle
+                    logging.debug(f"Emitting chunk with {len(chunk_vertices)//3} triangles")
+                    self.chunk_loaded.emit({
+                        'vertices': np.array(chunk_vertices, dtype=np.float32),
+                        'faces': np.array(chunk_faces, dtype=np.uint32),
+                        'progress': (processed_triangles / total_triangles) * 100
+                    })
+                    
+                    # Reset chunk buffers
+                    chunk_vertices = []
+                    chunk_faces = []
+            
+            # Process any remaining triangles in the last chunk
+            if chunk_vertices and not self._is_cancelled:
+                logging.debug(f"Emitting final chunk with {len(chunk_vertices)//3} triangles")
+                self.chunk_loaded.emit({
+                    'vertices': np.array(chunk_vertices, dtype=np.float32),
+                    'faces': np.array(chunk_faces, dtype=np.uint32),
+                    'progress': 100.0
+                })
             
             if not self._is_cancelled:
                 logging.info("STL loading completed successfully")
                 self.loading_finished.emit()
                 
         except Exception as e:
-            error_msg = f"Error loading STL: {str(e)}"
+            error_msg = f"Error in STL loading worker: {str(e)}"
             logging.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
         finally:
             # Clean up
-            self.stl_processor.close()
+            try:
+                if hasattr(self.stl_processor, 'close'):
+                    self.stl_processor.close()
+            except Exception as e:
+                logging.error(f"Error closing STL processor: {str(e)}", exc_info=True)
+    
+    def cancel(self):
+        """Cancel the loading process."""
+        logging.info("Cancellation requested for STL loading")
+        self._is_cancelled = True

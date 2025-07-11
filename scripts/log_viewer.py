@@ -30,6 +30,10 @@ class LogViewer(QDockWidget):
         self.main_widget = QWidget()
         self.layout = QVBoxLayout(self.main_widget)
         self.layout.setContentsMargins(2, 2, 2, 2)
+        geometry = self.geometry()
+        geometry.setWidth(500)
+        geometry.setHeight(400)
+        self.setGeometry(geometry)
         
         # Log level filter
         self.filter_layout = QHBoxLayout()
