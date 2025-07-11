@@ -122,7 +122,11 @@ class GCodeSimulator:
         Returns:
             Tuple of (success, errors, warnings)
         """
+        # Save the current state to restore after reset
+        saved_state = self.state
         self.reset()
+        # Restore the saved state (including custom bed size)
+        self.state = saved_state
         
         # Split into lines and process each line
         lines = gcode.split('\n')
@@ -133,6 +137,10 @@ class GCodeSimulator:
             # Check for cancellation
             if hasattr(self, '_is_cancelled') and self._is_cancelled:
                 return False, self.errors, self.warnings
+        
+        # Add any remaining filament to the total
+        self.filament_used += self._filament_since_reset
+        self._filament_since_reset = 0.0
         
         return len(self.errors) == 0, self.errors, self.warnings
     

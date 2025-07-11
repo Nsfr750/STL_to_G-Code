@@ -158,8 +158,20 @@ class TestGCodeSimulator(unittest.TestCase):
     
     def test_filament_calculation(self):
         """Test filament usage calculation."""
-        # Set up test with larger bed size
-        self.simulator.state.bed_size = (400, 400, 400)  # X, Y, Z in mm
+        from scripts.gcode_simulator import PrinterState, GCodeSimulator, GCodeErrorType
+        
+        # Create a new printer state with the desired bed size
+        printer_state = PrinterState()
+        printer_state.bed_size = (400, 400, 400)  # X, Y, Z in mm
+        
+        print(f"Initial bed size: {printer_state.bed_size}")
+        
+        # Create a new simulator with the custom printer state
+        self.simulator = GCodeSimulator(printer_state=printer_state)
+        
+        # Verify the bed size was set correctly in the simulator's state
+        print(f"Simulator bed size after init: {self.simulator.state.bed_size}")
+        self.assertEqual(self.simulator.state.bed_size, (400, 400, 400))
         
         gcode = """
         G21
@@ -170,7 +182,17 @@ class TestGCodeSimulator(unittest.TestCase):
         G1 X300 E50 ; 50mm more
         """
         
+        # Print simulator state before simulation
+        print(f"Simulator bed size before simulation: {self.simulator.state.bed_size}")
+        
         success, errors, warnings = self.simulator.simulate(gcode)
+        
+        # Print all errors for debugging
+        for error in errors:
+            print(f"Error: {error}")
+            if error.error_type == GCodeErrorType.OUT_OF_BOUNDS:
+                print(f"Current bed size during error: {self.simulator.state.bed_size}")
+        
         self.assertTrue(success, f"Simulation failed with errors: {errors}")
         self.assertAlmostEqual(self.simulator.filament_used, 150.0)  # 50 + 50 + 50
         self.assertAlmostEqual(self.simulator.extrusion_distance, 300.0)  # 100 + 100 + 100
