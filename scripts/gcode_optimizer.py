@@ -797,6 +797,129 @@ class GCodeOptimizer:
         
         return (nx1, ny1, nx2, ny2)
 
+    def generate_gcode(self, stl_mesh, start_gcode: str = "", end_gcode: str = "", context: Optional[Dict] = None):
+        """Generate G-code from an STL mesh with custom start/end G-code.
+        
+        Args:
+            stl_mesh: The STL mesh to generate G-code for
+            start_gcode: Custom G-code to insert at the start (supports {variable} substitution)
+            end_gcode: Custom G-code to insert at the end (supports {variable} substitution)
+            context: Optional dictionary of variables for string formatting
+            
+        Yields:
+            Chunks of G-code as strings
+            
+        Raises:
+            ValueError: If there are any invalid G-code commands
+        """
+        context = context or {}
+        
+        # Define valid G-code commands
+        valid_commands = {
+            'G0', 'G1', 'G2', 'G3', 'G4', 'G10', 'G11', 'G20', 'G21', 'G28', 'G29',
+            'G90', 'G91', 'G92', 'M0', 'M1', 'M2', 'M17', 'M18', 'M20', 'M21', 'M22',
+            'M23', 'M24', 'M25', 'M26', 'M27', 'M28', 'M29', 'M30', 'M31', 'M32',
+            'M33', 'M42', 'M80', 'M81', 'M82', 'M83', 'M84', 'M85', 'M92', 'M104',
+            'M105', 'M106', 'M107', 'M108', 'M109', 'M110', 'M111', 'M112', 'M113',
+            'M114', 'M115', 'M117', 'M118', 'M119', 'M120', 'M121', 'M122', 'M126',
+            'M127', 'M128', 'M129', 'M140', 'M141', 'M142', 'M143', 'M144', 'M146',
+            'M149', 'M150', 'M155', 'M163', 'M164', 'M190', 'M191', 'M200', 'M201',
+            'M202', 'M203', 'M204', 'M205', 'M206', 'M207', 'M208', 'M209', 'M211',
+            'M218', 'M220', 'M221', 'M226', 'M240', 'M250', 'M251', 'M260', 'M261',
+            'M280', 'M281', 'M282', 'M290', 'M300', 'M301', 'M302', 'M303', 'M304',
+            'M305', 'M306', 'M350', 'M351', 'M355', 'M360', 'M361', 'M362', 'M363',
+            'M364', 'M365', 'M366', 'M370', 'M371', 'M372', 'M373', 'M374', 'M375',
+            'M376', 'M380', 'M381', 'M400', 'M401', 'M402', 'M404', 'M405', 'M406',
+            'M407', 'M410', 'M420', 'M421', 'M450', 'M451', 'M452', 'M453', 'M460',
+            'M500', 'M501', 'M502', 'M503', 'M540', 'M600', 'M605', 'M665', 'M666',
+            'M667', 'M851', 'M900', 'M907', 'M908', 'M909', 'M910', 'M911', 'M912',
+            'M913', 'M914', 'M928', 'M997', 'M998', 'M999'
+        }
+        
+        def validate_gcode(gcode: str) -> None:
+            """Validate G-code commands."""
+            lines = gcode.split('\n')
+            for line_num, line in enumerate(lines, 1):
+                line = line.split(';', 1)[0].strip()  # Remove comments
+                if not line:
+                    continue
+                    
+                # Skip empty lines and comments
+                if not line or line.startswith(';'):
+                    continue
+                    
+                # Check for valid command
+                parts = line.split()
+                if not parts:
+                    continue
+                    
+                command = parts[0].upper()
+                if command not in valid_commands and not any(cmd in valid_commands for cmd in [command.split('.')[0], command[:-1] if command[-1].isdigit() else ""]):
+                    raise ValueError(f"Invalid G-code command: {command} at line {line_num}")
+        
+        # Process start G-code with variable substitution and validation
+        if start_gcode:
+            try:
+                formatted_start = start_gcode.format(**context)
+                validate_gcode(formatted_start)
+                yield "\n".join([
+                    "; --- Custom Start G-code ---",
+                    formatted_start,
+                    "; --- End of Custom Start G-code ---\n"
+                ])
+            except KeyError as e:
+                raise ValueError(f"Missing variable in start G-code: {e}")
+            except ValueError as e:
+                raise  # Re-raise validation errors
+            except Exception as e:
+                raise ValueError(f"Error in start G-code: {str(e)}")
+        
+        # Generate main G-code
+        try:
+            z_min = stl_mesh.z.min()
+            z_max = stl_mesh.z.max()
+            
+            for z in np.arange(z_min, z_max, self.layer_height):
+                if hasattr(self, '_is_cancelled') and self._is_cancelled:
+                    return
+                    
+                layer_gcode = self._generate_layer_gcode(stl_mesh, z)
+                if layer_gcode:
+                    yield layer_gcode
+        except Exception as e:
+            raise ValueError(f"Error generating G-code: {str(e)}")
+        
+        # Process end G-code with variable substitution and validation
+        if end_gcode:
+            try:
+                formatted_end = end_gcode.format(**context)
+                validate_gcode(formatted_end)
+                yield "\n".join([
+                    "\n; --- Custom End G-code ---",
+                    formatted_end,
+                    "; --- End of Custom End G-code ---"
+                ])
+            except KeyError as e:
+                raise ValueError(f"Missing variable in end G-code: {e}")
+            except ValueError as e:
+                raise  # Re-raise validation errors
+            except Exception as e:
+                raise ValueError(f"Error in end G-code: {str(e)}")
+    
+    def _generate_layer_gcode(self, stl_mesh, z: float) -> str:
+        """Generate G-code for a single layer.
+        
+        Args:
+            stl_mesh: The STL mesh
+            z: Z-coordinate of the layer
+            
+        Returns:
+            G-code for the layer as a string
+        """
+        # This is a placeholder - implement actual layer generation
+        # This should be implemented to generate the actual G-code for each layer
+        return f"; Layer at Z={z:.3f}\n"
+
     def __init__(self, 
                  layer_height: float,
                  nozzle_diameter: float,
@@ -857,60 +980,3 @@ class GCodeOptimizer:
         self.enable_optimized_infill = enable_optimized_infill
         self.infill_resolution = infill_resolution
         self.last_preview_data = None
-        
-    def generate_gcode(self, stl_mesh, start_gcode: str = "", end_gcode: str = ""):
-        """Generate G-code from an STL mesh with custom start/end G-code.
-        
-        Args:
-            stl_mesh: The STL mesh to generate G-code for
-            start_gcode: Custom G-code to insert at the start
-            end_gcode: Custom G-code to insert at the end
-            
-        Yields:
-            Chunks of G-code as strings
-        """
-        # Process start G-code
-        if start_gcode:
-            yield "\n".join([
-                "; --- Custom Start G-code ---",
-                start_gcode,
-                "\n; --- End of Custom Start G-code ---\n"
-            ])
-        
-        # Generate main G-code (to be implemented)
-        # This is a placeholder - actual implementation will generate G-code in chunks
-        z_min = stl_mesh.z.min()
-        z_max = stl_mesh.z.max()
-        layer_height = self.layer_height
-        
-        for z in np.arange(z_min, z_max, layer_height):
-            # Skip if cancelled
-            if hasattr(self, '_is_cancelled') and self._is_cancelled:
-                return
-                
-            # Generate G-code for this layer
-            layer_gcode = self._generate_layer_gcode(stl_mesh, z)
-            if layer_gcode:
-                yield layer_gcode
-        
-        # Process end G-code
-        if end_gcode:
-            yield "\n".join([
-                "\n; --- Custom End G-code ---",
-                end_gcode,
-                "; --- End of Custom End G-code ---\n"
-            ])
-    
-    def _generate_layer_gcode(self, stl_mesh, z: float) -> str:
-        """Generate G-code for a single layer.
-        
-        Args:
-            stl_mesh: The STL mesh
-            z: Z-coordinate of the layer
-            
-        Returns:
-            G-code for the layer as a string
-        """
-        # This is a placeholder - implement actual layer generation
-        # This should be implemented to generate the actual G-code for each layer
-        return f"; Layer at Z={z:.3f}\n"

@@ -1331,6 +1331,10 @@ class STLToGCodeApp(QMainWindow):
                     )
                 finally:
                     self.statusBar().showMessage("Update check complete", 3000)
+                    # Clean up the update checker
+                    if hasattr(self, 'update_checker'):
+                        self.update_checker.deleteLater()
+                        del self.update_checker
             
             def on_no_update():
                 if force_check:  # Only show message if user explicitly checked
@@ -1341,6 +1345,10 @@ class STLToGCodeApp(QMainWindow):
                         QMessageBox.StandardButton.Ok
                     )
                 self.statusBar().showMessage("You are running the latest version", 3000)
+                # Clean up the update checker
+                if hasattr(self, 'update_checker'):
+                    self.update_checker.deleteLater()
+                    del self.update_checker
             
             def on_error(error_msg):
                 logger.error(f"Update check failed: {error_msg}")
@@ -1352,9 +1360,15 @@ class STLToGCodeApp(QMainWindow):
                         f"Could not check for updates: {error_msg}",
                         QMessageBox.StandardButton.Ok
                     )
+                # Clean up the update checker
+                if hasattr(self, 'update_checker'):
+                    self.update_checker.deleteLater()
+                    del self.update_checker
             
-            # Create and configure the update checker
+            # Create the update checker as an instance variable to maintain signal connections
             self.update_checker = UpdateChecker(current_version=__version__)
+            
+            # Connect signals after defining the handlers
             self.update_checker.update_available.connect(on_update_available)
             self.update_checker.no_update_available.connect(on_no_update)
             self.update_checker.error_occurred.connect(on_error)
@@ -1384,6 +1398,10 @@ class STLToGCodeApp(QMainWindow):
                     "An unexpected error occurred while checking for updates.",
                     QMessageBox.StandardButton.Ok
                 )
+            # Clean up the update checker if it was created
+            if hasattr(self, 'update_checker'):
+                self.update_checker.deleteLater()
+                del self.update_checker
     
     def open_gcode_in_editor(self):
         """

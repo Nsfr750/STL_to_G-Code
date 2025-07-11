@@ -39,6 +39,7 @@ class STLVisualizer:
         self.current_faces = np.zeros((0, 3), dtype=np.uint32)
         self.file_path = None
         self.use_opengl = is_opengl_available()
+        self.mesh_plot = None  # Store reference to the mesh plot
         
         if not self.use_opengl:
             logger.warning("OpenGL not available. Using software rendering.")
@@ -194,8 +195,9 @@ class STLVisualizer:
             bool: True if rendering was successful, False otherwise
         """
         try:
-            # Clear the current plot
+            # Clear the current plot and reset mesh_plot reference
             self.ax.clear()
+            self.mesh_plot = None
             
             # Set up the 3D axes with default labels
             self.ax.set_xlabel('X')
@@ -224,10 +226,10 @@ class STLVisualizer:
                 try:
                     verts = self.current_vertices[self.current_faces]
                     
-                    # Use software rendering (more reliable)
-                    mesh = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
-                    mesh.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
-                    self.ax.add_collection3d(mesh)
+                    # Create the mesh plot and store the reference
+                    self.mesh_plot = Poly3DCollection(verts, alpha=0.5, linewidths=0.5, edgecolor='k')
+                    self.mesh_plot.set_facecolor([0.7, 0.7, 1.0])  # Light blue color
+                    self.ax.add_collection3d(self.mesh_plot)
                     
                     # Auto-scale the plot to fit the mesh
                     min_vals = np.min(self.current_vertices, axis=0)
@@ -263,6 +265,26 @@ class STLVisualizer:
         except Exception as e:
             logger.error(f"Unexpected error in render: {str(e)}", exc_info=True)
             self._show_error_message(f"Rendering error: {str(e)}")
+            return False
+    
+    def toggle_wireframe(self, show):
+        """
+        Toggle wireframe visibility.
+        
+        Args:
+            show: If True, show wireframe; if False, hide it
+            
+        Returns:
+            bool: True if toggled successfully, False otherwise
+        """
+        try:
+            if self.mesh_plot is not None:
+                self.mesh_plot.set_edgecolor('k' if show else 'none')
+                self.canvas.draw()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error toggling wireframe: {str(e)}", exc_info=True)
             return False
     
     def _show_error_message(self, message):

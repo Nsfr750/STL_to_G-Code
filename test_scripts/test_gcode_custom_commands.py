@@ -4,7 +4,12 @@ Tests for custom start/end G-code functionality.
 import unittest
 import numpy as np
 from stl import mesh
-from scripts.gcode_optimizer import GCodeOptimizer
+
+try:
+    from scripts.gcode_optimizer import GCodeOptimizer
+except ImportError:
+    # Fall back to relative import if running as a module
+    from ..scripts.gcode_optimizer import GCodeOptimizer
 
 class TestCustomGCode(unittest.TestCase):
     """Test cases for custom start/end G-code functionality."""

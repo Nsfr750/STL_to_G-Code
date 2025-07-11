@@ -2,7 +2,13 @@
 Tests for the G-code simulator and validator.
 """
 import unittest
-from scripts.gcode_simulator import GCodeSimulator, PrinterState, GCodeErrorType
+import numpy as np
+
+try:
+    from scripts.gcode_simulator import GCodeSimulator, PrinterState, GCodeErrorType
+except ImportError:
+    # Fall back to relative import if running as a module
+    from ..scripts.gcode_simulator import GCodeSimulator, PrinterState, GCodeErrorType
 
 class TestGCodeSimulator(unittest.TestCase):
     """Test cases for G-code simulation and validation."""
