@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QPushButton, QApplication, QTextBrowser, QMessageBox
 )
 from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QFont
+from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QFont, QPalette
 
 class LogViewer(QDockWidget):
     """
@@ -27,22 +27,65 @@ class LogViewer(QDockWidget):
                            Qt.DockWidgetArea.LeftDockWidgetArea |
                            Qt.DockWidgetArea.RightDockWidgetArea)
         
+        # Apply dark theme
+        self.setStyleSheet("""
+            QDockWidget {
+                background-color: #2b2b2b;
+                color: #e0e0e0;
+                border: 1px solid #3a3a3a;
+                titlebar-close-icon: url(close-light.png);
+                titlebar-normal-icon: url(undock-light.png);
+            }
+            QDockWidget::title {
+                text-align: left;
+                padding: 3px;
+                background-color: #2b2b2b;
+            }
+            QTextEdit, QTextBrowser {
+                background-color: #2b2b2b;
+                color: #e0e0e0;
+                border: 1px solid #3a3a3a;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 10pt;
+            }
+            QComboBox, QPushButton, QLabel {
+                background-color: #3a3a3a;
+                color: #e0e0e0;
+                border: 1px solid #4a4a4a;
+                padding: 3px;
+                min-width: 80px;
+            }
+            QComboBox:on, QPushButton:pressed {
+                background-color: #4a4a4a;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3a3a3a;
+                color: #e0e0e0;
+                selection-background-color: #4a4a4a;
+            }
+        """)
+        
         # Main widget and layout
         self.main_widget = QWidget()
+        self.main_widget.setStyleSheet("background-color: #2b2b2b; color: #e0e0e0;")
         self.layout = QVBoxLayout(self.main_widget)
-        self.layout.setContentsMargins(2, 2, 2, 2)
+        self.layout.setContentsMargins(5, 5, 5, 5)
+        self.layout.setSpacing(5)
+        
+        # Set initial size
         geometry = self.geometry()
-        geometry.setWidth(500)
+        geometry.setWidth(800)
         geometry.setHeight(400)
         self.setGeometry(geometry)
         
         # Top bar with controls
         self.top_bar = QHBoxLayout()
+        self.top_bar.setSpacing(5)
         
         # Log file selector
         self.log_file_label = QLabel("Log File:")
         self.log_file_combo = QComboBox()
-        self.log_file_combo.setMinimumWidth(300)
+        self.log_file_combo.setMinimumWidth(400)
         self.log_file_combo.currentTextChanged.connect(self.change_log_file)
         
         # Log level filter
@@ -58,16 +101,25 @@ class LogViewer(QDockWidget):
         
         # Add widgets to top bar
         self.top_bar.addWidget(self.log_file_label)
-        self.top_bar.addWidget(self.log_file_combo)
+        self.top_bar.addWidget(self.log_file_combo, 1)  # Add stretch factor
         self.top_bar.addWidget(self.filter_label)
         self.top_bar.addWidget(self.filter_combo)
-        self.top_bar.addStretch()
         self.top_bar.addWidget(self.clear_button)
         
         # Log display
         self.log_display = QTextEdit()
         self.log_display.setReadOnly(True)
         self.log_display.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.log_display.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #e0e0e0;
+                border: 1px solid #3a3a3a;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 10pt;
+                padding: 5px;
+            }
+        """)
         
         # Add widgets to main layout
         self.layout.addLayout(self.top_bar)
@@ -75,17 +127,17 @@ class LogViewer(QDockWidget):
         
         self.setWidget(self.main_widget)
         
-        # Set up log level colors
+        # Set up log level colors (brighter for dark theme)
         self.log_colors = {
             'DEBUG': QColor('#888888'),
-            'INFO': QColor('#ffffff'),
-            'WARNING': QColor('#ffcc00'),
+            'INFO': QColor('#e0e0e0'),
+            'WARNING': QColor('#ffcc66'),
             'ERROR': QColor('#ff6b6b'),
-            'CRITICAL': QColor('#ff0000')
+            'CRITICAL': QColor('#ff4444')
         }
         
         # Set up log file monitoring
-        self.logs_dir = Path(__file__).parent.parent / 'logs'
+        self.logs_dir = Path.cwd() / 'logs'
         self.log_file = None
         self.last_position = 0
         self.log_timer = QTimer(self)
@@ -101,8 +153,12 @@ class LogViewer(QDockWidget):
             # Create logs directory if it doesn't exist
             self.logs_dir.mkdir(exist_ok=True)
             
-            # Get all log files
-            log_files = list(self.logs_dir.glob('stl_to_gcode_*.log'))
+            # Get all log files (including rotated ones)
+            log_files = list(self.logs_dir.glob('STL_To_GCode-*.log*'))
+            
+            # If no log files found, try the old pattern for backward compatibility
+            if not log_files:
+                log_files = list(self.logs_dir.glob('stl_to_gcode_*.log*'))
             
             # Sort by modification time (newest first)
             log_files.sort(key=os.path.getmtime, reverse=True)
@@ -112,7 +168,7 @@ class LogViewer(QDockWidget):
             for log_file in log_files:
                 self.log_file_combo.addItem(log_file.name, str(log_file))
             
-            # Select the most recent log file
+            # Select the most recent log file if available
             if log_files:
                 self.change_log_file(log_files[0].name)
             
@@ -164,11 +220,11 @@ class LogViewer(QDockWidget):
     
     def _detect_log_level(self, line):
         """Detect the log level from a log line."""
-        line = line.upper()
+        line_upper = line.upper()
         for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
-            if f" - {level} - " in line:
+            if f" - {level} - " in line_upper:
                 return level
-        return 'INFO'
+        return 'INFO'  # Default to INFO if no level detected
     
     def _append_log_line(self, line, log_level):
         """Append a log line with appropriate formatting."""
@@ -183,7 +239,7 @@ class LogViewer(QDockWidget):
         if selected_level == 'ALL' or level_order.index(log_level) >= level_order.index(selected_level):
             # Apply color based on log level
             format = QTextCharFormat()
-            format.setForeground(self.log_colors.get(log_level, QColor('#ffffff')))
+            format.setForeground(self.log_colors.get(log_level, QColor('#e0e0e0')))
             
             # Make critical errors bold
             if log_level == 'CRITICAL':
@@ -199,51 +255,34 @@ class LogViewer(QDockWidget):
             return
             
         # Save current scroll position
-        scrollbar = self.log_display.verticalScrollBar()
-        was_at_bottom = scrollbar.value() == scrollbar.maximum()
+        scroll_bar = self.log_display.verticalScrollBar()
+        was_at_bottom = scroll_bar.value() >= scroll_bar.maximum() - 10
         
-        # Get the current content
-        current_text = self.log_display.toPlainText()
-        self.log_display.clear()
-        
-        # Get the selected filter level
-        selected_level = self.filter_combo.currentText().upper()
-        level_order = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        
-        # Process each line
-        cursor = self.log_display.textCursor()
-        for line in current_text.splitlines():
-            log_level = self._detect_log_level(line)
-            if log_level and (selected_level == 'ALL' or level_order.index(log_level) >= level_order.index(selected_level)):
-                self._append_log_line(line, log_level)
-        
-        # Restore scroll position
-        if was_at_bottom:
-            scrollbar.setValue(scrollbar.maximum())
-        else:
-            scrollbar.setValue(min(scrollbar.value(), scrollbar.maximum()))
+        # Get all log content
+        try:
+            with open(self.log_file, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+                
+            # Clear and re-add filtered content
+            self.log_display.clear()
+            for line in content.splitlines():
+                log_level = self._detect_log_level(line)
+                if log_level and log_level in self.log_colors:
+                    self._append_log_line(line, log_level)
+            
+            # Restore scroll position
+            if was_at_bottom:
+                scroll_bar.setValue(scroll_bar.maximum())
+        except Exception as e:
+            print(f"Error filtering logs: {e}")
     
     def clear_logs(self):
-        """Clear the current log file."""
-        if not self.log_file:
-            return
-            
-        reply = QMessageBox.question(
-            self, 
-            'Clear Logs',
-            f'Are you sure you want to clear {self.log_file.name}?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        """Clear the current log display."""
+        self.log_display.clear()
         
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                with open(self.log_file, 'w', encoding='utf-8') as f:
-                    f.write('')
-                self.log_display.clear()
-                self.last_position = 0
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Could not clear log file: {e}")
+        # Reset file position to show only new logs
+        if self.log_file and self.log_file.exists():
+            self.last_position = self.log_file.stat().st_size
 
 
 class LogHandler(logging.Handler):

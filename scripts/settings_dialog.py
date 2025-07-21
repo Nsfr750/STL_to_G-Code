@@ -4,36 +4,207 @@ Settings dialog for STL to GCode Converter.
 This module provides a settings dialog for configuring optimization parameters.
 """
 
-from scripts.logger import get_logger
+import os
+import json
+from pathlib import Path
+from typing import Dict, Any, Optional
 
+from scripts.logger import get_logger
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
-                            QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit, QWidget, QComboBox)
-from PyQt6.QtCore import Qt, pyqtSignal
+                           QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
+                           QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit, QWidget, QComboBox,
+                           QMessageBox)
+from PyQt6.QtCore import Qt, pyqtSignal, QStandardPaths
+from PyQt6.QtCore import QSettings
+
+
+class SettingsManager:
+    """Manages loading and saving of application settings."""
+    
+    def __init__(self, config_dir: str = "config", filename: str = "settings.json"):
+        """Initialize the settings manager.
+        
+        Args:
+            config_dir: Directory to store the settings file
+            filename: Name of the settings file
+        """
+        self.config_dir = Path(config_dir)
+        self.config_file = self.config_dir / filename
+        self.logger = get_logger(__name__)
+        self.settings = {}
+        self._ensure_config_dir()
+    
+    def _ensure_config_dir(self) -> None:
+        """Ensure the config directory exists."""
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self.logger.error(f"Failed to create config directory: {e}")
+            raise
+    
+    def load_settings(self) -> Dict[str, Any]:
+        """Load settings from the config file.
+        
+        Returns:
+            dict: Loaded settings or empty dict if file doesn't exist or is invalid
+        """
+        if not self.config_file.exists():
+            self.logger.info("No settings file found, using default settings")
+            return {}
+            
+        try:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                self.settings = json.load(f)
+                self.logger.info("Settings loaded successfully")
+                return self.settings
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error parsing settings file: {e}")
+            return {}
+        except Exception as e:
+            self.logger.error(f"Error loading settings: {e}")
+            return {}
+    
+    def save_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save settings to the config file.
+        
+        Args:
+            settings: Dictionary of settings to save
+            
+        Returns:
+            bool: True if save was successful, False otherwise
+        """
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=4, sort_keys=True)
+            self.logger.info("Settings saved successfully")
+            self.settings = settings.copy()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error saving settings: {e}")
+            return False
+    
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        """Get a setting value by key.
+        
+        Args:
+            key: Setting key
+            default: Default value if key doesn't exist
+            
+        Returns:
+            The setting value or default if not found
+        """
+        return self.settings.get(key, default)
+
 
 class SettingsDialog(QDialog):
     """Dialog for configuring optimization settings."""
     
     settings_changed = pyqtSignal(dict)  # Signal emitted when settings are saved
     
-    def __init__(self, settings, parent=None):
+    def __init__(self, settings: Optional[Dict[str, Any]] = None, parent=None):
         """Initialize the settings dialog.
         
         Args:
-            settings: Dictionary containing current settings
+            settings: Optional initial settings (dict or QSettings)
             parent: Parent widget
         """
         super().__init__(parent)
-        self.settings = settings.copy()
         self.setWindowTitle("Optimization Settings")
         self.setMinimumWidth(600)
+        
+        # Initialize settings manager
+        self.settings_manager = SettingsManager()
+        
+        # Load settings or use provided defaults
+        self.default_settings = {
+            'layer_height': 0.2,
+            'print_speed': 60,
+            'travel_speed': 120,
+            'retraction_length': 5.0,
+            'enable_path_optimization': True,
+            'enable_arc_detection': True,
+            'arc_tolerance': 0.05,
+            'min_arc_segments': 8,
+            'remove_redundant_moves': True,
+            'combine_coincident_moves': True,
+            'optimize_travel_moves': True,
+            'infill_density': 0.2,
+            'infill_pattern': 'grid',
+            'infill_angle': 45,
+            'enable_optimized_infill': True,
+            'infill_resolution': 1.0,
+            'extrusion_width': 0.48,
+            'filament_diameter': 1.75,
+            'first_layer_height': 0.3,
+            'first_layer_speed': 30,
+            'z_hop': 0.4,
+            'skirt_line_count': 1,
+            'skirt_distance': 5.0,
+            'temperature': 200,
+            'bed_temperature': 60,
+            'fan_speed': 100,
+            'fan_layer': 2,
+            'start_gcode': '',
+            'end_gcode': ''
+        }
+        
+        # Load saved settings
+        saved_settings = self.settings_manager.load_settings()
+        self.settings = self.default_settings.copy()
+        
+        # Update with saved settings if any
+        if saved_settings:
+            self.settings.update(saved_settings)
+        
+        # If QSettings or other settings were provided, update with them
+        if settings is not None:
+            if hasattr(settings, 'allKeys'):  # QSettings object
+                # Convert QSettings to dict
+                settings_dict = {}
+                for key in settings.allKeys():
+                    settings_dict[key] = settings.value(key)
+                self.settings.update(settings_dict)
+            elif isinstance(settings, dict):  # Regular dict
+                self.settings.update(settings)
         
         self._create_widgets()
         self._setup_layout()
         self._load_settings()
     
+    def _set_checkbox_style(self):
+        """Set the style for checkboxes to use a checkmark."""
+        style = """
+        QCheckBox::indicator {
+            width: 16px;
+            height: 16px;
+        }
+        QCheckBox::indicator:unchecked {
+            border: 1px solid #999999;
+            background: #ffffff;
+            border-radius: 3px;
+        }
+        QCheckBox::indicator:checked {
+            border: 1px solid #0078d7;
+            background: #ffffff;
+            border-radius: 3px;
+            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="%230078d7" d="M13.5 3.5L6 11 2.5 7.5l-1 1L6 13l8.5-8.5z"/></svg>');
+        }
+        QCheckBox::indicator:indeterminate {
+            border: 1px solid #999999;
+            background: #ffffff;
+            border-radius: 3px;
+            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="2" fill="%23999999"/></svg>');
+        }
+        """
+        
+        # Apply the style to all QCheckBox widgets
+        self.setStyleSheet(style)
+    
     def _create_widgets(self):
         """Create the dialog widgets."""
+        # Set checkbox style first
+        self._set_checkbox_style()
+        
         # Create tab widget
         self.tab_widget = QTabWidget()
         
@@ -440,13 +611,13 @@ class SettingsDialog(QDialog):
     
     def accept(self):
         """Handle dialog accept."""
-        self.apply()
-        super().accept()
+        if self._save_settings():
+            super().accept()
     
     def apply(self):
         """Apply the current settings."""
-        self.settings = self.get_settings()
-        self.settings_changed.emit(self.settings)
+        if self._save_settings():
+            self.settings_changed.emit(self.settings)
     
     def reset_to_defaults(self):
         """Reset settings to default values."""
@@ -489,6 +660,31 @@ class SettingsDialog(QDialog):
         
         # Emit settings changed signal
         self.settings_changed.emit(self.settings)
+    
+    def _save_settings(self):
+        """Save current settings to the config file.
+        
+        Returns:
+            bool: True if save was successful, False otherwise
+        """
+        try:
+            # Update settings from UI elements
+            self.settings = self.get_settings()
+            
+            # Save to file
+            if self.settings_manager.save_settings(self.settings):
+                return True
+            return False
+                
+        except Exception as e:
+            get_logger(__name__).error(f"Error saving settings: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to save settings: {str(e)}",
+                QMessageBox.StandardButton.Ok
+            )
+            return False
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
 # Flag to track if logging has been configured
@@ -18,23 +19,51 @@ _logging_configured = False
 LOG_DIR = Path("logs")
 
 class DailyRotatingFileHandler(TimedRotatingFileHandler):
-    """Custom handler that rotates logs at midnight and keeps logs for 30 days."""
+    """Custom handler that creates a new log file each day with the date in the filename."""
     def __init__(self, filename, **kwargs):
         # Ensure the logs directory exists
         LOG_DIR.mkdir(exist_ok=True, parents=True)
         
-        # Create the full log file path
-        log_file = LOG_DIR / f"{filename}.log"
+        # Get current date in YYYY-MM-DD format
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Create the log file with date in the name
+        log_file = LOG_DIR / f"{filename}-{date_str}.log"
         
         # Initialize the parent class with daily rotation at midnight
+        # Set backupCount to 0 since we're handling the date in the filename
         super().__init__(
             filename=str(log_file.absolute()),
             when='midnight',
             interval=1,
-            backupCount=30,  # Keep logs for 30 days
+            backupCount=0,  # We don't need backup files since we have date in the filename
             encoding='utf-8',
             **kwargs
         )
+        
+        # Set the current log file name
+        self.baseFilename = str(log_file.absolute())
+    
+    def doRollover(self):
+        """Override to create a new log file with the current date."""
+        # Close the old file
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        
+        # Get current date in YYYY-MM-DD format
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Create new log file with current date
+        log_file = LOG_DIR / f"{self.baseFilename.rsplit('-', 1)[0].rsplit(os.sep, 1)[-1]}-{date_str}.log"
+        self.baseFilename = str(log_file.absolute())
+        
+        # Open the new log file
+        if not self.delay:
+            self.stream = self._open()
+        
+        # Update the modification time for the next rollover check
+        self.rolloverAt = self.rolloverAt + self.interval
 
 def setup_logging():
     """

@@ -32,7 +32,6 @@ from scripts.gcode_optimizer import GCodeOptimizer
 from scripts.workers import GCodeGenerationWorker, STLLoadingWorker
 from scripts.gcode_visualizer import GCodeVisualizer
 from scripts.stl_processor import MemoryEfficientSTLProcessor, STLHeader, STLTriangle
-from scripts.gcode_simulator import GCodeSimulator, PrinterState
 from scripts.STL_load import open_stl_file, show_file_open_error  # Add this import
 from scripts.gcode_load import open_gcode_file, show_file_open_error
 from scripts.gcode_save import save_gcode_file, show_file_save_error
@@ -65,46 +64,6 @@ except ImportError:
 
 # Get logger for this module
 logger = get_logger(__name__)
-
-class SimulationWorker(QObject):
-    """Worker for running G-code simulation in a separate thread."""
-    
-    progress = pyqtSignal(int, str)  # progress percentage, status message
-    finished = pyqtSignal(bool, str)  # success, message
-    error = pyqtSignal(str)  # error message
-    
-    def __init__(self, gcode):
-        super().__init__()
-        self.gcode = gcode
-        self._is_running = True
-        
-    def run(self):
-        """Run the simulation."""
-        try:
-            # TODO: Implement actual simulation logic
-            # For now, just parse the G-code and emit progress
-            lines = [line.strip() for line in self.gcode.split('\n') if line.strip()]
-            total_lines = len(lines)
-            
-            for i, line in enumerate(lines, 1):
-                if not self._is_running:
-                    break
-                    
-                # Process line here
-                # ...
-                
-                # Update progress
-                progress = int((i / total_lines) * 100) if total_lines > 0 else 100
-                self.progress.emit(progress, f"Simulating line {i}/{total_lines}")
-                
-            self.finished.emit(True, "Simulation completed successfully")
-            
-        except Exception as e:
-            self.error.emit(f"Simulation error: {str(e)}")
-            
-    def stop(self):
-        """Stop the simulation."""
-        self._is_running = False
 
 class STLToGCodeApp(QMainWindow):
     """
@@ -155,15 +114,6 @@ class STLToGCodeApp(QMainWindow):
         
         # Initialize the log viewer
         self.log_viewer = None
-        
-        # Initialize G-code simulator
-        self.gcode_simulator = GCodeSimulator()
-        self.simulation_worker = None
-        self.simulation_thread = None
-        self.simulation_running = False
-        self.simulation_paused = False
-        self.current_sim_line = 0
-        self.total_sim_lines = 0
         
         # Set window properties
         self.setWindowTitle(f"STL to GCode Converter v{__version__}")
@@ -265,22 +215,6 @@ class STLToGCodeApp(QMainWindow):
         self.view_gcode_action = view_gcode_action  # Save reference for enabling/disabling
         self.view_gcode_action.setEnabled(False)
         toolbar.addAction(view_gcode_action)
-        
-        # Add separator before simulation controls
-        toolbar.addSeparator()
-        
-        # Simulation Group
-        simulate_action = QAction(
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_MediaPlay')),
-            "Simulate",
-            self
-        )
-        simulate_action.setShortcut("Ctrl+R")
-        simulate_action.setStatusTip("Simulate the G-code")
-        simulate_action.triggered.connect(self.simulate_from_editor)
-        self.simulate_action = simulate_action  # Save reference for enabling/disabling
-        self.simulate_action.setEnabled(False)
-        toolbar.addAction(simulate_action)
         
         # Add stretch to push help button to the right
         spacer = QWidget()
@@ -780,52 +714,53 @@ class STLToGCodeApp(QMainWindow):
             self._handle_loading_error(error_msg, "Error starting loading process")
     
     def _process_loading_queue(self):
-        """Process chunks from the loading queue."""
+        """Process chunks from the loading queue in a thread-safe manner."""
+        # Skip if we're not loading or if the queue is empty
+        if not hasattr(self, 'is_loading') or not self.is_loading or not hasattr(self, 'loading_queue'):
+            return
+        
+        # Create a mutex if it doesn't exist
+        if not hasattr(self, '_queue_mutex'):
+            from PyQt6.QtCore import QMutex
+            self._queue_mutex = QMutex()
+        
+        chunks_to_process = []
+        
         try:
-            if not hasattr(self, 'loading_queue') or not self.loading_queue:
-                return
+            # Lock the mutex while accessing the shared queue
+            self._queue_mutex.lock()
             
-            # Process up to 5 chunks per timer tick to keep UI responsive
-            chunks_processed = 0
+            # Get up to 5 chunks to process in this batch
             max_chunks_per_tick = 5
-            
-            while self.loading_queue and chunks_processed < max_chunks_per_tick:
-                chunk_data = self.loading_queue.pop(0)
-                chunks_processed += 1
-                
-                try:
-                    # Process the chunk
-                    self._process_chunk(chunk_data)
-                    
-                    # Update progress
-                    progress = chunk_data.get('progress', 0)
-                    self.statusBar().showMessage(f"Loading STL: {progress}%")
-                    
-                    # Update visualization periodically or on last chunk
-                    if progress % 10 == 0 or progress >= 100 or not self.loading_queue:
-                        self._update_visualization()
-                        QApplication.processEvents()
-                    
-                except Exception as e:
-                    error_msg = f"Error processing chunk: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
-                    QMessageBox.critical(self, "Processing Error", error_msg)
-                    continue
-            
-            # If there are more chunks to process, schedule the next batch
-            if self.loading_queue:
-                QTimer.singleShot(10, self._process_loading_queue)
-            else:
-                # Final update when done
-                self._update_visualization()
-                self.statusBar().showMessage("STL loading completed", 3000)
-                
+            while self.loading_queue and len(chunks_to_process) < max_chunks_per_tick:
+                chunks_to_process.append(self.loading_queue.pop(0))
         except Exception as e:
-            error_msg = f"Error in _process_loading_queue: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
+            logger.error(f"Error accessing loading queue: {e}", exc_info=True)
+            return
         finally:
-            QApplication.processEvents()
+            # Always unlock the mutex, even if an exception occurs
+            if hasattr(self, '_queue_mutex') and self._queue_mutex.tryLock():
+                self._queue_mutex.unlock()
+        
+        # Process the chunks we've taken from the queue
+        for chunk_data in chunks_to_process:
+            try:
+                if not hasattr(self, 'is_loading') or not self.is_loading:
+                    break
+                    
+                # Process the chunk
+                self._process_chunk(chunk_data)
+                
+                # Update progress if available
+                if 'progress' in chunk_data:
+                    status = chunk_data.get('status', '')
+                    self._update_loading_progress(chunk_data['progress'], status)
+                    
+            except Exception as e:
+                logger.error(f"Error processing chunk: {e}", exc_info=True)
+                
+                # If we encounter an error, try to continue with the next chunk
+                continue
     
     def _process_chunk(self, chunk_data):
         """Process a single chunk of STL data."""
@@ -880,30 +815,59 @@ class STLToGCodeApp(QMainWindow):
             chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
         """
         try:
-            if not chunk_data or 'vertices' not in chunk_data or 'faces' not in chunk_data:
-                logger.error("Invalid chunk data received")
+            # Make sure we're still in a loading state
+            if not hasattr(self, 'is_loading') or not self.is_loading:
+                logger.debug("Ignoring chunk - loading already completed or cancelled")
                 return
                 
             # Update progress if available
             if 'progress' in chunk_data:
-                self._update_loading_progress(chunk_data['progress'], f"Loading STL... {chunk_data['progress']}%")
+                self.loading_progress = chunk_data['progress']
+                if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                    self.progress_dialog.setValue(int(self.loading_progress))
             
-            # Update the visualization with the new chunk
-            if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
-                self.stl_visualizer.update_mesh(
-                    chunk_data['vertices'],
-                    chunk_data['faces'],
-                    is_chunk=True
-                )
+            # Get vertices and faces from chunk
+            if 'vertices' not in chunk_data or len(chunk_data['vertices']) == 0:
+                logger.warning("Received chunk with no vertices")
+                return
+                
+            new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
+            new_faces = np.array(chunk_data.get('faces', []), dtype=np.uint32)
             
-            # If this is the last chunk, finalize the loading process
-            if 'progress' in chunk_data and chunk_data['progress'] >= 100:
-                self._on_loading_finished(success=True)
+            # Initialize arrays if they don't exist
+            if not hasattr(self, 'current_vertices') or self.current_vertices is None:
+                self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+            if not hasattr(self, 'current_faces') or self.current_faces is None:
+                self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+            
+            # Store the current vertex count for face index offset
+            vertex_offset = len(self.current_vertices)
+            
+            try:
+                # Add the new vertices
+                self.current_vertices = np.vstack((self.current_vertices, new_vertices))
+                
+                # If we have faces, add them with the correct offset
+                if len(new_faces) > 0:
+                    new_faces_offset = new_faces + vertex_offset
+                    self.current_faces = np.vstack((self.current_faces, new_faces_offset))
+                
+                logger.debug(f"Processed chunk. Total vertices: {len(self.current_vertices)}, "
+                           f"Total faces: {len(self.current_faces)}")
+                
+                # If this is the final chunk, update visualization
+                if chunk_data.get('is_final', False):
+                    logger.info(f"Final chunk received. Total vertices: {len(self.current_vertices)}, "
+                               f"Total faces: {len(self.current_faces)}")
+                    self._on_loading_finished(success=True)
+                    
+            except Exception as e:
+                logger.error(f"Error processing chunk: {str(e)}", exc_info=True)
+                self._on_loading_finished(success=False, error_msg=f"Error processing mesh data: {str(e)}")
                 
         except Exception as e:
-            error_msg = f"Error processing STL chunk: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            self._on_loading_finished(success=False, error_msg=error_msg)
+            logger.error(f"Unexpected error in _on_chunk_loaded: {str(e)}", exc_info=True)
+            self._on_loading_finished(success=False, error_msg=f"Unexpected error: {str(e)}")
     
     def _process_gcode_buffer(self):
         """Process the G-code buffer and update the editor."""
@@ -996,7 +960,7 @@ class STLToGCodeApp(QMainWindow):
             error_msg = f"Error showing settings: {str(e)}"
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
-
+    
     def _apply_settings(self):
         """Apply the current settings to the application."""
         try:
@@ -1459,126 +1423,89 @@ class STLToGCodeApp(QMainWindow):
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
     
-    def simulate_from_editor(self):
-        """
-        Start G-code simulation using the content from the editor.
-        """
+    def _update_visualization(self):
+        """Update the 3D visualization with the current mesh data."""
         try:
-            # Check if we have a G-code editor
-            if not hasattr(self, 'gcode_editor') or not self.gcode_editor:
-                logger.warning("G-code editor not available for simulation")
-                QMessageBox.warning(
-                    self,
-                    "Simulation Error",
-                    "G-code editor is not available.",
-                    QMessageBox.StandardButton.Ok
-                )
+            # Check if we have valid mesh data
+            if not hasattr(self, 'current_vertices') or len(self.current_vertices) == 0:
+                logger.warning("No mesh data available to display")
                 return
                 
-            # Get G-code from the editor
-            gcode = self.gcode_editor.toPlainText().strip()
-            if not gcode:
-                QMessageBox.warning(
-                    self,
-                    "Simulation Error",
-                    "No G-code to simulate. Please load or generate G-code first.",
-                    QMessageBox.StandardButton.Ok
-                )
+            logger.debug(f"Updating visualization with {len(self.current_vertices)} vertices and "
+                       f"{len(self.current_faces) if hasattr(self, 'current_faces') and self.current_faces is not None else 0} faces")
+            
+            # Ensure we have the STL visualizer
+            if not hasattr(self, 'stl_visualizer') or self.stl_visualizer is None:
+                logger.error("STL visualizer not initialized")
+                # Try to initialize the visualizer if it's not available
+                if hasattr(self, '_setup_stl_view'):
+                    logger.debug("Initializing STL visualizer...")
+                    self._setup_stl_view()
+                    if not hasattr(self, 'stl_visualizer') or self.stl_visualizer is None:
+                        logger.error("Failed to initialize STL visualizer")
+                        return
+                else:
+                    logger.error("Cannot initialize STL visualizer - _setup_stl_view method not found")
+                    return
+            
+            # Convert vertices to numpy array if needed
+            vertices = np.asarray(self.current_vertices, dtype=np.float32)
+            
+            # Generate faces if they don't exist (triangle soup)
+            if not hasattr(self, 'current_faces') or self.current_faces is None or len(self.current_faces) == 0:
+                logger.debug("Generating faces for triangle soup")
+                num_vertices = len(vertices)
+                if num_vertices % 3 != 0:
+                    logger.error(f"Number of vertices ({num_vertices}) is not divisible by 3")
+                    return
+                faces = np.arange(num_vertices, dtype=np.uint32).reshape(-1, 3)
+            else:
+                faces = np.asarray(self.current_faces, dtype=np.uint32)
+            
+            # Ensure we have valid data
+            if len(vertices) == 0:
+                logger.warning("No vertices to display")
                 return
                 
-            # Update status
-            self.statusBar().showMessage("Starting G-code simulation...")
+            if len(faces) == 0:
+                logger.warning("No faces to display")
+                return
             
-            # Switch to the visualization tab
-            if hasattr(self, 'tab_widget') and self.tab_widget:
-                self.tab_widget.setCurrentIndex(2)  # Assuming index 2 is the visualization tab
-                
-            # TODO: Add actual simulation logic here
-            # For now, just show a message
-            QMessageBox.information(
-                self,
-                "Simulation Started",
-                "G-code simulation started. This is a placeholder for actual simulation.",
-                QMessageBox.StandardButton.Ok
-            )
+            # Log some debug info
+            logger.debug(f"Vertices shape: {vertices.shape}, dtype: {vertices.dtype}")
+            logger.debug(f"Faces shape: {faces.shape}, dtype: {faces.dtype}")
+            logger.debug(f"First few vertices: {vertices[:2]}")
+            logger.debug(f"First few faces: {faces[:2]}")
             
-            # Update status
-            self.statusBar().showMessage("G-code simulation ready", 3000)
-            
-        except Exception as e:
-            error_msg = f"Error during G-code simulation: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Simulation Error",
-                f"An error occurred during simulation:\n{str(e)}",
-                QMessageBox.StandardButton.Ok
-            )
-    
-    def _update_visualization(self, state=None):
-        """
-        Update the 3D visualization based on current settings.
-        
-        Args:
-            state: The state of the checkbox that triggered the update (if any)
-        """
-        try:
-            # Make sure we have a visualizer
-            if not hasattr(self, 'stl_visualizer') or not self.stl_visualizer:
-                if not hasattr(self, 'visualization_tab') or not hasattr(self, 'ax'):
-                    logger.error("Cannot update visualization: Visualization components not initialized")
-                    return False
-                
-                # Create a new visualizer with the visualization tab's canvas
-                logger.debug("Creating new STLVisualizer instance")
-                self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
-            
-            # Ensure the visualization tab is the active one
-            if hasattr(self, 'tab_widget') and hasattr(self, 'visualization_tab'):
-                current_tab = self.tab_widget.currentWidget()
-                if current_tab != self.visualization_tab:
-                    logger.debug("Switching to visualization tab")
-                    self.tab_widget.setCurrentWidget(self.visualization_tab)
-            
-            # Update the visualization
-            if hasattr(self, 'current_vertices') and hasattr(self, 'current_faces'):
-                success = self.stl_visualizer.update_mesh(
-                    self.current_vertices,
-                    self.current_faces,
-                    getattr(self, 'current_file', None)
-                )
-                
-                if not success:
-                    error_msg = "Failed to update visualization"
-                    logger.warning(error_msg)
-                    self.statusBar().showMessage(error_msg, 5000)
-                    return False
+            try:
+                # Update the mesh in the visualizer
+                logger.debug("Updating mesh in visualizer...")
+                self.stl_visualizer.update_mesh(vertices, faces)
                 
                 # Force a redraw of the canvas
-                try:
-                    if hasattr(self.stl_visualizer, 'canvas'):
-                        self.stl_visualizer.canvas.draw_idle()
-                        logger.debug("Visualization updated successfully")
-                        self.statusBar().showMessage("Visualization updated", 2000)
-                        return True
-                    else:
-                        logger.error("Visualizer canvas not available")
-                        return False
-                        
-                except Exception as e:
-                    error_msg = f"Error drawing visualization: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
-                    self.statusBar().showMessage(error_msg, 5000)
-                    return False
-            else:
-                logger.debug("No mesh data available for visualization")
-                return False
+                if hasattr(self, 'stl_canvas'):
+                    logger.debug("Forcing canvas redraw...")
+                    self.stl_canvas.draw_idle()
+                
+                # Update the window title with the current file name
+                if hasattr(self, 'current_stl_file'):
+                    self.setWindowTitle(f"STL to G-Code - {os.path.basename(self.current_stl_file)}")
+                
+                logger.info("Visualization updated successfully")
+                
+            except Exception as e:
+                logger.error(f"Error updating visualization: {e}", exc_info=True)
+                self._handle_loading_error(
+                    f"Error updating 3D view: {str(e)}",
+                    "Visualization Error"
+                )
                 
         except Exception as e:
-            error_msg = f"Error updating visualization: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            self.statusBar().showMessage(error_msg, 5000)
-            return False
+            logger.error(f"Error in _update_visualization: {e}", exc_info=True)
+            self._handle_loading_error(
+                f"Error updating 3D view: {str(e)}",
+                "Visualization Error"
+            )
     
     def _reset_visualization_view(self):
         """Reset the G-code visualization view to default."""
@@ -1743,49 +1670,83 @@ class STLToGCodeApp(QMainWindow):
 
     def _cancel_loading(self):
         """Cancel the ongoing STL loading process."""
-        logger.info("Cancelling STL loading...")
-        self.is_loading = False
-        
-        # Stop the loading timer
-        if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
-            self.loading_timer.stop()
-        
-        # Stop the worker thread if it's running
-        if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
-            logger.debug("Stopping loading thread...")
-            # First check if the worker still exists and is valid
-            if hasattr(self, 'loading_worker') and self.loading_worker is not None:
-                try:
-                    # Use sip to check if the C++ object is still valid
-                    if not sip.isdeleted(self.loading_worker):
-                        self.loading_worker.stop()
-                except Exception as e:
-                    logger.warning(f"Error stopping loading worker: {e}")
+        try:
+            # Prevent multiple cancellation attempts
+            if not hasattr(self, 'is_loading') or not self.is_loading:
+                logger.debug("No loading in progress to cancel")
+                return
+                
+            logger.info("Cancelling STL loading...")
             
-            # Clean up the thread
-            try:
-                self.loading_thread.quit()
-                if not self.loading_thread.wait(2000):  # Wait up to 2 seconds
-                    self.loading_thread.terminate()
-                    self.loading_thread.wait()
-            except Exception as e:
-                logger.warning(f"Error stopping loading thread: {e}")
-        
-        # Close the progress dialog if it exists
-        if hasattr(self, 'progress_dialog'):
-            try:
-                self.progress_dialog.close()
-            except Exception as e:
-                logger.warning(f"Error closing progress dialog: {e}")
-            finally:
-                # Ensure we remove the reference even if close fails
-                if hasattr(self, 'progress_dialog'):
+            # Mark loading as cancelled
+            self.is_loading = False
+            
+            # Stop the loading timer if it's running
+            if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
+                self.loading_timer.stop()
+            
+            # Cancel the worker if it exists
+            if hasattr(self, 'loading_worker'):
+                try:
+                    if not sip.isdeleted(self.loading_worker):
+                        self.loading_worker.cancel()
+                except Exception as e:
+                    logger.warning(f"Error cancelling worker: {e}")
+            
+            # Clean up the worker thread
+            if hasattr(self, 'loading_thread'):
+                try:
+                    # Disconnect all signals first to prevent any callbacks
+                    if hasattr(self, 'loading_worker') and self.loading_worker is not None:
+                        try:
+                            self.loading_worker.chunk_loaded.disconnect()
+                            self.loading_worker.loading_finished.disconnect()
+                            self.loading_worker.error_occurred.disconnect()
+                        except (RuntimeError, TypeError):
+                            # Disconnect might fail if signals were already disconnected
+                            pass
+                    
+                    # Stop the thread
+                    if not sip.isdeleted(self.loading_thread):
+                        if self.loading_thread.isRunning():
+                            self.loading_thread.quit()
+                            if not self.loading_thread.wait(1000):  # Wait up to 1 second
+                                logger.warning("Thread did not stop gracefully, terminating...")
+                                self.loading_thread.terminate()
+                                self.loading_thread.wait()
+                        self.loading_thread.deleteLater()
+                except Exception as e:
+                    logger.error(f"Error stopping loading thread: {e}", exc_info=True)
+                finally:
+                    # Clean up references
+                    if hasattr(self, 'loading_worker'):
+                        del self.loading_worker
+                    del self.loading_thread
+            
+            # Clean up progress dialog if it exists
+            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                try:
+                    if not sip.isdeleted(self.progress_dialog):
+                        self.progress_dialog.cancel()
+                        self.progress_dialog.close()
+                        self.progress_dialog.deleteLater()
+                except Exception as e:
+                    logger.warning(f"Error closing progress dialog: {e}")
+                finally:
                     del self.progress_dialog
-        
-        # Reset loading state
-        self._reset_loading_state()
-        logger.info("Loading cancelled by user")
-
+            
+            # Reset loading state
+            self._reset_loading_state()
+            
+            logger.info("STL loading cancelled")
+            
+        except Exception as e:
+            logger.error(f"Error in _cancel_loading: {e}", exc_info=True)
+            self._handle_loading_error(
+                f"An error occurred while cancelling the loading process: {str(e)}",
+                "Cancellation Error"
+            )
+    
     def _handle_loading_error(self, error_message, title="Loading Error"):
         """
         Handle errors that occur during STL loading.
@@ -1825,94 +1786,90 @@ class STLToGCodeApp(QMainWindow):
         Handle the completion of the STL loading process.
         
         Args:
-            success (bool): Whether the loading completed successfully
-            error_msg (str, optional): Error message if loading failed
+            success: Whether loading was successful
+            error_msg: Error message if loading failed
         """
-        # Prevent multiple completion signals
+        # Prevent multiple calls to this method
         if not hasattr(self, 'is_loading') or not self.is_loading:
             logger.debug("Ignoring duplicate loading finished signal")
             return
+            
+        logger.debug(f"Loading finished. Success: {success}, Error: {error_msg}")
         
-        loading_thread = None
-        progress_dialog = None
+        # Mark loading as complete
+        self.is_loading = False
         
         try:
-            # Get references to objects we need to clean up
-            loading_thread = getattr(self, 'loading_thread', None)
-            progress_dialog = getattr(self, 'progress_dialog', None)
-            
-            # Stop the loading timer if it's running
+            # Stop the loading timer if it exists
             if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
                 self.loading_timer.stop()
             
-            # Mark loading as complete to prevent duplicate signals
-            self.is_loading = False
-            
-            if success:
-                logger.info("STL loading completed successfully")
-                
-                # Update the UI to show the loaded model
-                if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
-                    try:
-                        self.stl_visualizer._render()
-                        self.stl_visualizer._auto_scale()
-                        
-                        # Update the window title
-                        if hasattr(self, 'current_file'):
-                            self.setWindowTitle(f"STL to GCode - {self.current_file}")
-                        
-                        # Update status bar
-                        if hasattr(self, 'statusBar'):
-                            self.statusBar().showMessage("STL file loaded successfully", 3000)
-                                
-                    except Exception as e:
-                        logger.error(f"Error finalizing STL visualization: {e}", exc_info=True)
-                        self._handle_loading_error(
-                            f"Error displaying STL model: {str(e)}",
-                            "Visualization Error"
-                        )
-            else:
-                # Handle loading error
-                if error_msg:
-                    self._handle_loading_error(error_msg, "STL Loading Error")
-                else:
-                    self._handle_loading_error("Unknown error occurred while loading STL file")
-        
-        except Exception as e:
-            error_msg = f"Error in _on_loading_finished: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            if not success and error_msg:
-                self._handle_loading_error(f"{error_msg}\n\nOriginal error: {error_msg}")
-            else:
-                self._handle_loading_error(error_msg)
-        finally:
-            # Clean up progress dialog if it exists
-            if progress_dialog is not None:
+            # Clean up the worker thread if it exists
+            if hasattr(self, 'loading_thread'):
                 try:
-                    if not sip.isdeleted(progress_dialog):
-                        progress_dialog.close()
-                        progress_dialog.deleteLater()
+                    # Disconnect all signals first
+                    if hasattr(self, 'loading_worker') and self.loading_worker is not None:
+                        try:
+                            self.loading_worker.chunk_loaded.disconnect()
+                            self.loading_worker.loading_finished.disconnect()
+                            self.loading_worker.error_occurred.disconnect()
+                        except (RuntimeError, TypeError) as e:
+                            logger.debug(f"Error disconnecting signals: {e}")
+                    
+                    # Stop the thread
+                    if not sip.isdeleted(self.loading_thread):
+                        if self.loading_thread.isRunning():
+                            self.loading_thread.quit()
+                            if not self.loading_thread.wait(1000):
+                                logger.warning("Thread did not stop gracefully, terminating...")
+                                self.loading_thread.terminate()
+                                self.loading_thread.wait()
+                        self.loading_thread.deleteLater()
+                except Exception as e:
+                    logger.error(f"Error stopping loading thread: {e}", exc_info=True)
+                finally:
+                    # Clean up references
+                    if hasattr(self, 'loading_worker'):
+                        del self.loading_worker
+                    del self.loading_thread
+            
+            # Close progress dialog if it exists
+            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+                try:
+                    if not sip.isdeleted(self.progress_dialog):
+                        self.progress_dialog.setValue(100)
+                        self.progress_dialog.close()
+                        self.progress_dialog.deleteLater()
                 except Exception as e:
                     logger.warning(f"Error closing progress dialog: {e}")
                 finally:
-                    if hasattr(self, 'progress_dialog'):
-                        del self.progress_dialog
+                    del self.progress_dialog
             
-            # Clean up loading thread
-            if loading_thread is not None:
-                try:
-                    if not sip.isdeleted(loading_thread):
-                        if loading_thread.isRunning():
-                            loading_thread.quit()
-                            if not loading_thread.wait(2000):
-                                loading_thread.terminate()
-                                loading_thread.wait()
-                        loading_thread.deleteLater()
-                except Exception as e:
-                    logger.warning(f"Error stopping loading thread: {e}")
-                finally:
-                    if hasattr(self, 'loading_thread'):
-                        del self.loading_thread
+            # Handle success/failure
+            if success:
+                # Only update visualization if we have valid mesh data
+                if hasattr(self, 'current_vertices') and len(self.current_vertices) > 0:
+                    logger.debug(f"Updating visualization with {len(self.current_vertices)} vertices and {len(self.current_faces) if hasattr(self, 'current_faces') else 0} faces")
+                    self._update_visualization()
+                    logger.debug("Visualization update complete")
+                else:
+                    logger.warning("No mesh data available to display")
+                    
+                # Update status bar
+                if hasattr(self, 'statusBar'):
+                    self.statusBar().showMessage("STL file loaded successfully", 5000)
+            else:
+                # Show error message
+                if error_msg:
+                    logger.error(f"STL loading failed: {error_msg}")
+                    self._handle_loading_error(error_msg, "STL Loading Error")
+                
+        except Exception as e:
+            logger.error(f"Error in _on_loading_finished: {e}", exc_info=True)
+            self._handle_loading_error(
+                f"An error occurred while finalizing the loading process: {str(e)}",
+                "Loading Completion Error"
+            )
     
     def _update_loading_progress(self, progress, message=None):
         """

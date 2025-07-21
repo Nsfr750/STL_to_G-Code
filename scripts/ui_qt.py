@@ -519,7 +519,7 @@ class UI:
         if tooltip:
             checkbox.setToolTip(tooltip)
             
-        # Apply styling
+        # Apply styling with checkmark
         checkbox.setStyleSheet("""
             QCheckBox {
                 color: #EEEEEE;
@@ -528,16 +528,29 @@ class UI:
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
-                border: 1px solid #555;
+                border: 1px solid #555555;
                 border-radius: 3px;
-                background: #333;
+                background: #333333;
+            }
+            QCheckBox::indicator:unchecked {
+                border: 1px solid #999999;
+                background: #FFFFFF;
+                border-radius: 3px;
             }
             QCheckBox::indicator:checked {
-                background: #1976D2;
                 border: 1px solid #1976D2;
+                background: #FFFFFF;
+                border-radius: 3px;
+                image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="%231976D2" d="M13.5 3.5L6 11 2.5 7.5l-1 1L6 13l8.5-8.5z"/></svg>');
+            }
+            QCheckBox::indicator:indeterminate {
+                border: 1px solid #999999;
+                background: #FFFFFF;
+                border-radius: 3px;
+                image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="2" fill="%23999999"/></svg>');
             }
             QCheckBox::indicator:unchecked:hover {
-                border: 1px solid #777;
+                border: 1px solid #777777;
             }
         """)
         return checkbox
