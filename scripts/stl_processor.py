@@ -11,10 +11,11 @@ import os
 import mmap
 import struct
 import logging
+from scripts.logger import get_logger
 from dataclasses import dataclass
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @dataclass
 class STLHeader:
@@ -394,51 +395,47 @@ class MemoryEfficientSTLProcessor:
         }
         
         # Process the file in chunks
-        chunk_vertices = []
-        chunk_faces = []
+        all_vertices = []
+        all_faces = []
+        vertex_offset = 0
         
         for chunk in self.iter_chunks(chunk_size):
-            chunk_vertex_count = 0
-            chunk_face_count = 0
-            
-            # Process each triangle in the chunk
-            for triangle in chunk:
-                # Add vertices for this triangle
-                start_idx = len(chunk_vertices)
-                chunk_vertices.extend(triangle.vertices)
-                
-                # Add face indices (relative to current chunk's vertices)
-                chunk_faces.append([start_idx, start_idx+1, start_idx+2])
-                
-                processed_triangles += 1
-                chunk_vertex_count += 3
-                chunk_face_count += 1
-            
-            # Yield the current chunk
-            chunk_result = {
-                'vertices': np.array(chunk_vertices, dtype=np.float32),
-                'faces': np.array(chunk_faces, dtype=np.uint32),
-                'progress': int((processed_triangles / total_triangles) * 100) if total_triangles > 0 else 0,
-                'total_triangles': total_triangles
-            }
-            
-            logger.debug(f"Yielding chunk with {len(chunk_vertices)} vertices and {len(chunk_faces)} faces")
-            logger.debug(f"First face indices: {chunk_faces[0] if chunk_faces else 'None'}")
-            
-            yield chunk_result
-            
-            # Clear the chunk data for the next iteration
             chunk_vertices = []
             chunk_faces = []
             
-            # Update progress
-            if progress_callback:
-                progress = int((processed_triangles / total_triangles) * 100)
-                progress_callback(progress, total_triangles)
-        
-        # Final progress update
-        if progress_callback:
-            progress_callback(100, total_triangles)
+            for triangle in chunk:
+                # Add vertices for this triangle
+                chunk_vertices.extend(triangle.vertices)
+                
+                # Create face indices for this triangle (3 consecutive vertices)
+                face = np.array([
+                    vertex_offset,
+                    vertex_offset + 1,
+                    vertex_offset + 2
+                ], dtype=np.uint32)
+                chunk_faces.append(face)
+                vertex_offset += 3
+                
+                processed_triangles += 1
+            
+            if chunk_vertices:
+                # Convert to numpy arrays
+                chunk_vertices = np.array(chunk_vertices, dtype=np.float32)
+                chunk_faces = np.vstack(chunk_faces) if chunk_faces else np.zeros((0, 3), dtype=np.uint32)
+                
+                # Update progress
+                progress = int((processed_triangles / total_triangles) * 100) if total_triangles > 0 else 0
+                
+                if progress_callback:
+                    progress_callback(processed_triangles, total_triangles)
+                
+                # Yield the chunk data
+                yield {
+                    'vertices': chunk_vertices,
+                    'faces': chunk_faces,
+                    'progress': progress,
+                    'total_triangles': total_triangles
+                }
     
     def get_mesh_info(self) -> Dict[str, Any]:
         """

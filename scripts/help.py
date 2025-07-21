@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 import webbrowser
 import os
+from scripts.logger import get_logger
 
 # Import the markdown viewer
 from .markdown_viewer import show_documentation

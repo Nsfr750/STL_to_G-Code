@@ -39,7 +39,6 @@ All notable changes to this project will be documented in this file. This projec
   - Background processing for large files
   - Incremental loading of STL and G-code files
   - Memory-efficient processing
-  - GPU-accelerated rendering with OpenGL
   - Progressive loading for better responsiveness
 
 - **Advanced Features**
@@ -101,7 +100,6 @@ All notable changes to this project will be documented in this file. This projec
 - Fixed menu bar visibility issues
 - Addressed various UI layout problems
 - Fixed G-code viewer line number rendering
-- Resolved OpenGL context issues with WebEngine
 
 ### Removed
 - Tkinter-based UI components

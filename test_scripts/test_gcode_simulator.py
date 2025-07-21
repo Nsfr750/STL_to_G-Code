@@ -2,7 +2,8 @@
 Tests for the G-code simulator and validator.
 """
 import unittest
-import numpy as np
+import 
+from scripts.logger import get_loggernumpy as np
 
 try:
     from scripts.gcode_simulator import GCodeSimulator, PrinterState, GCodeErrorType

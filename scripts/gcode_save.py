@@ -6,13 +6,14 @@ and user feedback. It's designed to work with the main application's UI and logg
 """
 import os
 import logging
+from scripts.logger import get_logger
 from pathlib import Path
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
 from PyQt6.QtCore import QFileInfo
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def save_gcode_file(parent: QWidget = None, content: str = "", 
                    default_filename: str = "") -> dict:

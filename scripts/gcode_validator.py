@@ -6,10 +6,11 @@ safety, and printer compatibility.
 """
 
 import re
+import math
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import List, Dict, Optional, Tuple, Set, Pattern
-import math
+from scripts.logger import get_logger
 
 class ValidationSeverity(Enum):
     """Severity levels for validation issues."""

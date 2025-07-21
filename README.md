@@ -87,7 +87,6 @@ A powerful Python application for converting STL files to G-code, designed for 3
 - Background processing for large files
 - Incremental loading of large STL and G-code files
 - Memory-efficient processing
-- GPU-accelerated rendering (OpenGL)
 - Progressive loading for better responsiveness
 
 

@@ -2,6 +2,7 @@
 Update checking functionality for the STL to G-Code application.
 """
 import logging
+from scripts.logger import get_logger
 from typing import Optional, Tuple, Dict, Any
 import requests
 import json
@@ -19,7 +20,7 @@ APP_DIR = Path(__file__).parent.parent  # Now points to the project root
 UPDATES_FILE = APP_DIR / 'updates.json'  # Keep updates.json in the project root
 
 # Configure logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class UpdateChecker(QObject):
     """Handles checking for application updates."""
@@ -40,7 +41,7 @@ class UpdateChecker(QObject):
         self.config_path = config_path or APP_DIR
         
         # Create updates directory if it doesn't exist
-        self.updates_dir = self.config_path / 'updates'
+        self.updates_dir = self.config_path / 'config'
         self.updates_dir.mkdir(exist_ok=True, parents=True)  # Add parents=True to create parent dirs
         
         # Path to store last update check time

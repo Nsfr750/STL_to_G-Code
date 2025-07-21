@@ -1,452 +1,245 @@
+#!/usr/bin/env python3
 """
-Test script for STL file loading and OpenGL fallback functionality.
+Test script for loading and visualizing STL files using matplotlib.
+
+Usage:
+    python -m test_scripts.test_stl_loading [path_to_stl_file]
 """
 import sys
 import os
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, 
-                           QPushButton, QFileDialog, QMessageBox, QLabel, QHBoxLayout,
-                           QStatusBar, QToolBar, QSizePolicy, QStyle, QProgressBar,
-                           QDockWidget, QFormLayout, QDoubleSpinBox, QSpinBox, QCheckBox, QGroupBox)
-from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QIcon, QAction, QKeySequence
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib.widgets import Button, Slider
 import logging
+from scripts.logger import get_logger
 from pathlib import Path
 
-# Import the error handling utilities
-try:
-    from scripts.error_handling import (
-        handle_error, handle_file_error, check_file_path,
-        show_warning, show_info, confirm
-    )
-except ImportError:
-    # Fall back to relative import if running as a module
-    from ..scripts.error_handling import (
-        handle_error, handle_file_error, check_file_path,
-        show_warning, show_info, confirm
-    )
-
 # Set up logging
-log_file = 'stl_to_gcode.log'
-try:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename=log_file,
-        filemode='w'  # Overwrite previous log
-    )
-    # Also log to console
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(levelname)s: %(message)s')
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
-    
-    logger = logging.getLogger(__name__)
-    logger.info(f"Logging initialized. Log file: {os.path.abspath(log_file)}")
-    
-except Exception as e:
-    print(f"Failed to initialize logging: {e}")
-    raise
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = get_logger(__name__)
 
-# Import matplotlib with Qt5 backend
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
-# Import the STL visualizer
-try:
-    from scripts.STL_view import STLVisualizer
-except ImportError:
-    # Fall back to relative import if running as a module
-    from ..scripts.STL_view import STLVisualizer
-
-class MeshInfoPanel(QDockWidget):
-    """Panel to display mesh information and controls."""
+class STLViewer:
+    """Simple STL file viewer using matplotlib."""
     
-    def __init__(self, parent=None):
-        super().__init__("Mesh Information", parent)
-        self.setObjectName("MeshInfoPanel")
-        self.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | 
-                        QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+    def __init__(self, stl_file=None):
+        """Initialize the STL viewer."""
+        self.stl_file = stl_file
+        self.vertices = None
+        self.faces = None
+        self.mesh = None
         
-        # Create main widget and layout
-        self.widget = QWidget()
-        self.layout = QVBoxLayout(self.widget)
+        # Set up the figure and 3D axis
+        self.fig = plt.figure(figsize=(10, 8))
+        self.ax = self.fig.add_subplot(111, projection='3d')
         
-        # Mesh info group
-        self.info_group = QGroupBox("Mesh Statistics")
-        self.info_layout = QFormLayout()
+        # Add some space for controls
+        plt.subplots_adjust(bottom=0.2)
         
-        # Info labels
-        self.vertex_count = QLabel("0")
-        self.face_count = QLabel("0")
-        self.file_name = QLabel("No file loaded")
-        self.file_size = QLabel("0 KB")
+        # Initialize the viewer
+        self._init_ui()
         
-        # Add to layout
-        self.info_layout.addRow("File:", self.file_name)
-        self.info_layout.addRow("Vertices:", self.vertex_count)
-        self.info_layout.addRow("Faces:", self.face_count)
-        self.info_layout.addRow("File size:", self.file_size)
-        
-        self.info_group.setLayout(self.info_layout)
-        
-        # View controls group
-        self.view_group = QGroupBox("View Controls")
-        self.view_layout = QVBoxLayout()
-        
-        # View angle controls
-        self.azimuth = QSpinBox()
-        self.azimuth.setRange(-180, 180)
-        self.azimuth.setValue(45)
-        self.azimuth.setSuffix("°")
-        
-        self.elevation = QSpinBox()
-        self.elevation.setRange(-90, 90)
-        self.elevation.setValue(30)
-        self.elevation.setSuffix("°")
-        
-        # Add to layout
-        view_form = QFormLayout()
-        view_form.addRow("Azimuth:", self.azimuth)
-        view_form.addRow("Elevation:", self.elevation)
-        
-        # Toggle wireframe
-        self.wireframe = QCheckBox("Show wireframe")
-        self.wireframe.setChecked(True)
-        
-        self.view_layout.addLayout(view_form)
-        self.view_layout.addWidget(self.wireframe)
-        self.view_group.setLayout(self.view_layout)
-        
-        # Add groups to main layout
-        self.layout.addWidget(self.info_group)
-        self.layout.addWidget(self.view_group)
-        self.layout.addStretch()
-        
-        self.setWidget(self.widget)
+        # Load the STL file if provided
+        if self.stl_file and os.path.exists(self.stl_file):
+            self.load_stl(self.stl_file)
     
-    def update_mesh_info(self, vertices, faces, file_path):
-        """Update the mesh information display."""
-        self.vertex_count.setText(f"{len(vertices):,}")
-        self.face_count.setText(f"{len(faces):,}")
+    def _init_ui(self):
+        """Initialize the user interface controls."""
+        # Add buttons
+        ax_load = plt.axes([0.1, 0.05, 0.15, 0.075])
+        btn_load = Button(ax_load, 'Load STL')
+        btn_load.on_clicked(self._on_load_clicked)
         
-        if file_path and os.path.isfile(file_path):
-            self.file_name.setText(os.path.basename(file_path))
-            size = os.path.getsize(file_path)
-            self.file_size.setText(f"{size/1024:.1f} KB")
-        else:
-            self.file_name.setText("No file loaded")
-            self.file_size.setText("0 KB")
-
-class STLLoadingTest(QMainWindow):
-    """Main window for testing STL loading and OpenGL fallback."""
+        # Add rotation sliders
+        ax_rot_x = plt.axes([0.3, 0.1, 0.5, 0.03])
+        ax_rot_y = plt.axes([0.3, 0.06, 0.5, 0.03])
+        ax_rot_z = plt.axes([0.3, 0.02, 0.5, 0.03])
+        
+        self.slider_rot_x = Slider(ax_rot_x, 'Rot X', -180, 180, valinit=0)
+        self.slider_rot_y = Slider(ax_rot_y, 'Rot Y', -180, 180, valinit=0)
+        self.slider_rot_z = Slider(ax_rot_z, 'Rot Z', -180, 180, valinit=0)
+        
+        # Connect sliders to update function
+        self.slider_rot_x.on_changed(self._update_rotation)
+        self.slider_rot_y.on_changed(self._update_rotation)
+        self.slider_rot_z.on_changed(self._update_rotation)
+        
+        # Set up the 3D axes
+        self.ax.set_xlabel('X (mm)')
+        self.ax.set_ylabel('Y (mm)')
+        self.ax.set_zlabel('Z (mm)')
+        self.ax.grid(True)
     
-    def __init__(self):
-        super().__init__()
-        self.setup_ui()
-        self.setup_connections()
-        self.show()
-    
-    def setup_ui(self):
-        """Initialize the user interface."""
-        self.setWindowTitle("STL to G-Code - Test Viewer")
-        self.setGeometry(100, 100, 1200, 800)
+    def _on_load_clicked(self, event):
+        """Handle load button click."""
+        from tkinter import Tk, filedialog
         
-        # Main widget and layout
-        self.main_widget = QWidget()
-        self.setCentralWidget(self.main_widget)
-        self.layout = QHBoxLayout()
-        self.layout.setSpacing(10)  # Set spacing on the layout, not the widget
-        self.main_widget.setLayout(self.layout)
+        # Create a root window and hide it
+        root = Tk()
+        root.withdraw()
         
-        # Create UI components
-        self.create_toolbar()
-        self.create_status_bar()
-        self.create_viewer()
-        self.create_dock_widgets()
-        
-        # Add some padding
-        self.layout.setContentsMargins(10, 10, 10, 10)
-    
-    def setup_connections(self):
-        """Set up signal-slot connections."""
-        self.open_action.triggered.connect(self.load_stl)
-        self.opengl_action.toggled.connect(self.toggle_opengl)
-    
-    def create_toolbar(self):
-        """Create the application toolbar."""
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setIconSize(QSize(24, 24))
-        self.addToolBar(toolbar)
-        
-        # Open STL action
-        self.open_action = QAction(
-            QIcon.fromTheme("document-open"),
-            "&Open STL",
-            self,
-            shortcut=QKeySequence.StandardKey.Open,
-            statusTip="Open an STL file (Ctrl+O)",
-            toolTip="Open STL File\nCtrl+O"
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select STL file",
+            filetypes=[("STL files", "*.stl"), ("All files", "*.*")]
         )
-        toolbar.addAction(self.open_action)
         
-        # Add separator
-        toolbar.addSeparator()
-        
-        # OpenGL toggle
-        self.opengl_action = QAction(
-            QIcon.fromTheme("video-display"),
-            "OpenGL",
-            self,
-            checkable=True,
-            statusTip="Toggle OpenGL rendering (Ctrl+G)",
-            toolTip="Toggle OpenGL Rendering\nCtrl+G"
-        )
-        self.opengl_action.setChecked(True)
-        self.opengl_action.setShortcut(QKeySequence("Ctrl+G"))
-        toolbar.addAction(self.opengl_action)
+        if file_path:
+            self.load_stl(file_path)
     
-    def create_status_bar(self):
-        """Create and configure the status bar."""
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        
-        # Status label
-        self.status_label = QLabel("Ready")
-        self.statusBar.addPermanentWidget(self.status_label, 1)
-        
-        # Progress bar
-        self.progress = QProgressBar()
-        self.progress.setMaximumWidth(200)
-        self.progress.setMinimum(0)
-        self.progress.setMaximum(100)
-        self.progress.hide()
-        self.statusBar.addPermanentWidget(self.progress)
-    
-    def create_viewer(self):
-        """Set up the 3D viewer."""
-        # Create matplotlib figure and canvas
-        self.figure = Figure(figsize=(8, 6), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.ax = self.figure.add_subplot(111, projection='3d')
-        
-        # Initialize STL visualizer
-        self.visualizer = STLVisualizer(self.ax, self.canvas)
-        
-        # Add to layout
-        self.layout.addWidget(self.canvas)
-    
-    def create_dock_widgets(self):
-        """Create dockable widgets."""
-        # Create and add mesh info panel
-        self.mesh_panel = MeshInfoPanel(self)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.mesh_panel)
-        
-        # Connect signals
-        self.mesh_panel.azimuth.valueChanged.connect(self.update_view_angle)
-        self.mesh_panel.elevation.valueChanged.connect(self.update_view_angle)
-        self.mesh_panel.wireframe.toggled.connect(self.toggle_wireframe)
-    
-    def show_progress(self, message, value=None, maximum=None):
-        """Show progress in the status bar."""
-        if value is not None:
-            self.progress.setValue(value)
-        if maximum is not None:
-            self.progress.setMaximum(maximum)
-        if message:
-            self.status_label.setText(message)
-        self.progress.setVisible(value is not None)
-        QApplication.processEvents()
-    
-    def toggle_opengl(self, enabled):
-        """Toggle OpenGL rendering."""
+    def load_stl(self, file_path):
+        """Load an STL file and update the visualization."""
         try:
-            self.visualizer.use_opengl = enabled
-            render_success = self.visualizer.render()
-            if render_success:
-                self.canvas.draw()
-            status = "enabled" if enabled else "disabled"
-            self.statusBar.showMessage(f"OpenGL {status}", 3000)
-        except Exception as e:
-            handle_error(e, "Error toggling OpenGL", self)
-            self.opengl_action.setChecked(not enabled)
-    
-    def load_stl(self, file_path=None):
-        """Open a file dialog to select and load an STL file."""
-        try:
-            # If file_path is None, False, or not a string, show file dialog
-            if not isinstance(file_path, str):
-                file_path, _ = QFileDialog.getOpenFileName(
-                    self,
-                    "Open STL File",
-                    os.path.expanduser("~"),
-                    "STL Files (*.stl *.STL);;All Files (*)"
-                )
-                
-                if not file_path:  # User cancelled
-                    self.statusBar.showMessage("File selection cancelled", 3000)
-                    return
+            logger.info(f"Loading STL file: {file_path}")
             
-            # Convert to absolute path and normalize
-            file_path = os.path.abspath(file_path)
-            
-            # Validate file
-            if not os.path.isfile(file_path):
-                show_warning(f"File not found: {file_path}", "File Error", self)
-                return
-                
-            if not os.access(file_path, os.R_OK):
-                show_warning(f"Cannot read file (permission denied): {file_path}", 
-                           "File Error", self)
-                return
-            
-            # Disable UI during loading
-            self.setEnabled(False)
-            self.show_progress("Loading STL file...", 0, 100)
-            
-            # Use a timer to ensure UI updates
-            QTimer.singleShot(100, lambda: self._load_stl_async(file_path))
-            
-        except Exception as e:
-            handle_error(e, "Error in file selection", self)
-            self.setEnabled(True)
-    
-    def _load_stl_async(self, file_path):
-        """Load STL file asynchronously."""
-        try:
-            # Show loading progress
-            self.show_progress("Reading STL data...", 30)
-            
-            # Import required modules
+            # Try to use numpy-stl if available
             try:
                 from stl import mesh as stl_mesh
-                import numpy as np
+                stl_mesh = stl_mesh.Mesh.from_file(file_path)
+                self.vertices = stl_mesh.vectors.reshape(-1, 3)
+                self.faces = np.arange(len(self.vertices)).reshape(-1, 3)
+                logger.info(f"Loaded {len(self.faces)} faces using numpy-stl")
             except ImportError:
-                show_warning(
-                    "numpy-stl package is required to load STL files\n"
-                    "Install it with: pip install numpy-stl",
-                    "Dependency Error",
-                    self
-                )
-                return
+                logger.warning("numpy-stl not found, using simple STL parser")
+                self.vertices, self.faces = self._parse_stl_ascii(file_path)
             
-            # Read the STL file
-            self.show_progress("Processing mesh...", 60)
-            stl_data = stl_mesh.Mesh.from_file(file_path)
-            
-            # Process vertices and faces
-            vertices = stl_data.vectors.reshape(-1, 3)
-            num_triangles = len(stl_data.vectors)
-            faces = np.arange(num_triangles * 3, dtype=np.int32).reshape(-1, 3)
-            
-            # Update the mesh
-            self.show_progress("Updating visualization...", 90)
-            success = self.visualizer.update_mesh(vertices, faces, file_path)
-            
-            if success:
-                # Store the mesh plot for later reference
-                self.mesh_plot = self.visualizer.mesh_plot
-                
-                # Update mesh info panel
-                self.mesh_panel.update_mesh_info(vertices, faces, file_path)
-                
-                # Set initial view angles
-                self.mesh_panel.azimuth.setValue(45)
-                self.mesh_panel.elevation.setValue(30)
-                
-                render_success = self.visualizer.render()
-                if render_success:
-                    self.canvas.draw()
-                
-                # Show success message
-                self.statusBar.showMessage(
-                    f"Loaded {os.path.basename(file_path)} - "
-                    f"Vertices: {len(vertices):,}, Faces: {len(faces):,}",
-                    5000
-                )
-            else:
-                show_warning(
-                    "Failed to update mesh. The file may be corrupted or in an unsupported format.",
-                    "Load Error",
-                    self
-                )
+            self._update_plot()
             
         except Exception as e:
-            handle_error(e, f"Error loading STL file: {file_path}", self)
+            logger.error(f"Error loading STL file: {e}")
+            self._show_error(f"Error loading STL file: {e}")
+    
+    def _parse_stl_ascii(self, file_path):
+        """Simple ASCII STL parser as a fallback."""
+        vertices = []
+        faces = []
         
-        finally:
-            # Clean up
-            self.show_progress("", 100)
-            self.setEnabled(True)
-            QTimer.singleShot(1000, self.progress.hide)
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith('vertex'):
+                # Read 3 vertices to form a triangle face
+                v1 = list(map(float, line.split()[1:4]))
+                v2 = list(map(float, lines[i+1].strip().split()[1:4]))
+                v3 = list(map(float, lines[i+2].strip().split()[1:4]))
+                
+                # Add vertices and face
+                start_idx = len(vertices)
+                vertices.extend([v1, v2, v3])
+                faces.append([start_idx, start_idx+1, start_idx+2])
+                i += 3
+            else:
+                i += 1
+        
+        return np.array(vertices, dtype=np.float32), np.array(faces, dtype=np.uint32)
     
-    def update_view_angle(self):
-        """Update the 3D view angle."""
-        try:
-            self.ax.view_init(
-                elev=self.mesh_panel.elevation.value(),
-                azim=self.mesh_panel.azimuth.value()
-            )
-            self.canvas.draw()
-        except Exception as e:
-            handle_error(e, "Error updating view angle", self)
+    def _update_plot(self):
+        """Update the 3D plot with the current mesh."""
+        if self.vertices is None or self.faces is None:
+            return
+        
+        # Clear previous plot
+        self.ax.clear()
+        
+        # Create a collection of polygons from the faces
+        verts = self.vertices[self.faces]
+        
+        # Create the 3D polygon collection
+        self.mesh = Poly3DCollection(
+            verts,
+            alpha=0.8,
+            linewidths=0.5,
+            edgecolor='k',
+            facecolor='lightblue'
+        )
+        
+        # Add the collection to the plot
+        self.ax.add_collection3d(self.mesh)
+        
+        # Auto-scale the plot
+        self.ax.auto_scale_xyz(
+            [self.vertices[:, 0].min(), self.vertices[:, 0].max()],
+            [self.vertices[:, 1].min(), self.vertices[:, 1].max()],
+            [self.vertices[:, 2].min(), self.vertices[:, 2].max()]
+        )
+        
+        # Update the plot
+        self.fig.canvas.draw_idle()
     
-    def toggle_wireframe(self, show):
-        """Toggle wireframe display."""
-        try:
-            if hasattr(self, 'visualizer') and self.visualizer is not None:
-                success = self.visualizer.toggle_wireframe(show)
-                if success:
-                    self.canvas.draw()
-                else:
-                    logger.warning("Failed to toggle wireframe: visualizer returned False")
-        except Exception as e:
-            handle_error(e, "Error toggling wireframe", self)
+    def _update_rotation(self, val):
+        """Update the mesh rotation based on slider values."""
+        if self.vertices is None:
+            return
+        
+        # Get rotation angles in radians
+        rx = np.radians(self.slider_rot_x.val)
+        ry = np.radians(self.slider_rot_y.val)
+        rz = np.radians(self.slider_rot_z.val)
+        
+        # Create rotation matrices
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)]
+        ])
+        
+        Ry = np.array([
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)]
+        ])
+        
+        Rz = np.array([
+            [np.cos(rz), -np.sin(rz), 0],
+            [np.sin(rz), np.cos(rz), 0],
+            [0, 0, 1]
+        ])
+        
+        # Combine rotations
+        R = Rz @ Ry @ Rx
+        
+        # Rotate vertices
+        rotated_vertices = (R @ self.vertices.T).T
+        
+        # Update the plot
+        self.mesh.set_verts(rotated_vertices[self.faces])
+        self.fig.canvas.draw_idle()
+    
+    def _show_error(self, message):
+        """Display an error message on the plot."""
+        self.ax.clear()
+        self.ax.text(
+            0.5, 0.5, message,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=self.ax.transAxes,
+            color='red',
+            fontsize=12
+        )
+        self.fig.canvas.draw_idle()
+    
+    def show(self):
+        """Show the plot."""
+        plt.show()
 
 def main():
-    """Main entry point for the application."""
-    try:
-        logger.info("Starting STL to G-Code Test Viewer")
-        
-        app = QApplication(sys.argv)
-        
-        # Set application style
-        app.setStyle('Fusion')
-        
-        # Set application metadata
-        app.setApplicationName("STL to G-Code")
-        app.setApplicationVersion("1.0.0")
-        app.setOrganizationName("YourOrganization")
-        
-        # Create and show the main window
-        try:
-            logger.info("Creating main window")
-            window = STLLoadingTest()
-            
-            # Load file from command line if provided
-            if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
-                logger.info(f"Loading file from command line: {sys.argv[1]}")
-                window.load_stl(sys.argv[1])
-            
-            logger.info("Application started successfully")
-            return app.exec()
-            
-        except Exception as e:
-            logger.critical("Failed to create main window", exc_info=True)
-            QMessageBox.critical(
-                None,
-                "Fatal Error",
-                f"Failed to start application: {str(e)}\n\n"
-                "Check the log file for more details.\n"
-                f"Log file: {os.path.abspath(log_file)}"
-            )
-            return 1
-            
-    except Exception as e:
-        print(f"Fatal error: {e}", file=sys.stderr)
-        return 1
+    """Main function to run the STL viewer."""
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='STL File Viewer with Matplotlib')
+    parser.add_argument('stl_file', nargs='?', help='Path to STL file (optional)')
+    args = parser.parse_args()
+    
+    # Create and show the viewer
+    viewer = STLViewer(args.stl_file)
+    viewer.show()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

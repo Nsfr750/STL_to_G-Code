@@ -2,98 +2,123 @@
 Logging configuration for the STL to GCode Converter application.
 
 This module provides a centralized way to configure logging for the application,
-including file and console handlers with appropriate formatting.
+including file and console handlers with appropriate formatting and daily log rotation.
+All log files are stored in the logs directory at the project root.
 """
 import logging
 import os
 import sys
 from pathlib import Path
-import datetime
+from logging.handlers import TimedRotatingFileHandler
 
 # Flag to track if logging has been configured
 _logging_configured = False
 
+# Define log directory name (relative to the project root)
+LOG_DIR = Path("logs")
+
+class DailyRotatingFileHandler(TimedRotatingFileHandler):
+    """Custom handler that rotates logs at midnight and keeps logs for 30 days."""
+    def __init__(self, filename, **kwargs):
+        # Ensure the logs directory exists
+        LOG_DIR.mkdir(exist_ok=True, parents=True)
+        
+        # Create the full log file path
+        log_file = LOG_DIR / f"{filename}.log"
+        
+        # Initialize the parent class with daily rotation at midnight
+        super().__init__(
+            filename=str(log_file.absolute()),
+            when='midnight',
+            interval=1,
+            backupCount=30,  # Keep logs for 30 days
+            encoding='utf-8',
+            **kwargs
+        )
+
 def setup_logging():
     """
-    Set up logging configuration for the application.
+    Set up logging configuration for the application with daily rotation.
     
     Returns:
-        Path: Path to the log file that was created
+        str: Absolute path to the current log file or None if not applicable
     """
     global _logging_configured
     
     # Only configure logging once
     if _logging_configured:
-        return logging.getLogger().handlers[0].baseFilename
+        for handler in get_logger().handlers:
+            if hasattr(handler, 'baseFilename'):
+                return handler.baseFilename
+        return None
     
-    # Create logs directory if it doesn't exist
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    
-    # Create a timestamped log file
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"stl_to_gcode_{timestamp}.log"
+    # Create a logger with the application name
+    logger = logging.getLogger("STLtoGCode")
+    logger.setLevel(logging.DEBUG)
     
     # Clear any existing handlers
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
     
-    # Configure root logger
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    console_handler = logging.StreamHandler()
-    
+    # Create formatter
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    file_handler.setFormatter(formatter)
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
+    # Create daily rotating file handler
+    file_handler = DailyRotatingFileHandler("stl_to_gcode")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
     
-    # Log the absolute path of the log file
-    log_file_path = Path(log_file).absolute()
+    # Add handlers to the logger
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
     
-    # Set up specific loggers with higher levels
-    loggers = [
-        logging.getLogger('matplotlib'),
-        logging.getLogger('PyQt6'),
-        logging.getLogger('OpenGL'),
-        logging.getLogger('PIL')
-    ]
-    
-    for logger in loggers:
-        logger.setLevel(logging.WARNING)  # Reduce verbosity for these loggers
+    # Configure specific loggers with higher levels to reduce noise
+    for logger_name in ['matplotlib', 'PyQt6', 'PIL', 'numpy']:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
     
     # Log startup information
-    root_logger.info("=" * 80)
-    root_logger.info(f"STL to GCode Converter - Logging initialized")
-    root_logger.info(f"Log file: {log_file_path}")
-    root_logger.info("=" * 80)
+    logger.info("=" * 80)
+    logger.info("STL to GCode Converter - Logging initialized")
+    logger.info(f"Log directory: {LOG_DIR.absolute()}")
+    logger.info(f"Log file: {file_handler.baseFilename}")
+    logger.info(f"Log level: {logging.getLevelName(logger.getEffectiveLevel())}")
+    logger.info("=" * 80)
     
     _logging_configured = True
-    return log_file
+    return str(Path(file_handler.baseFilename).absolute())
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str = None) -> logging.Logger:
     """
     Get a logger instance with the specified name.
     
     Args:
-        name: Name of the logger (usually __name__ of the module)
-        
+        name: Name of the logger (usually __name__ of the module).
+              If None, returns the root logger.
+              
     Returns:
-        Configured logger instance
+        Configured logger instance with the specified name
     """
     # Ensure logging is configured
     if not _logging_configured:
         setup_logging()
+    
+    if name is None:
+        return logging.getLogger()
+        
+    # Create a child logger that inherits the parent's handlers
+    if not name.startswith("STLtoGCode"):
+        name = f"STLtoGCode.{name}"
+        
     return logging.getLogger(name)
 
 # Initialize logging when this module is imported
-# This ensures that if someone imports this module directly, logging is still configured
 if not _logging_configured:
     setup_logging()

@@ -1,68 +1,85 @@
 """
-View settings and configuration for the STL to GCode Converter.
-Handles OpenGL and other view-related settings.
+View Settings Module
+
+Handles view-related settings.
 """
-import os
-import json
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Dict, Any
+from scripts.logger import get_logger
 
-# Default settings
-DEFAULT_SETTINGS = {
-    'use_opengl': True,  # Whether to use OpenGL for rendering
-}
-
+@dataclass
 class ViewSettings:
-    _instance = None
-    _settings_file = Path.home() / '.stl_to_gcode' / 'view_settings.json'
+    """Class to manage view settings."""
+    # Default view settings
+    _settings: Dict[str, Any] = None
     
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ViewSettings, cls).__new__(cls)
-            cls._instance._settings = DEFAULT_SETTINGS.copy()
-            cls._instance._load_settings()
-        return cls._instance
+    def __post_init__(self):
+        """Initialize default settings."""
+        self._settings = {
+            'show_axis': True,  # Whether to show axis in the 3D view
+            'show_grid': True,  # Whether to show grid in the 3D view
+            'background_color': (0.2, 0.2, 0.2, 1.0),  # Background color (R,G,B,A)
+            'mesh_color': (0.8, 0.8, 1.0, 0.8),  # Mesh color (R,G,B,A)
+            'edge_color': (0.3, 0.3, 0.3, 1.0),  # Edge color (R,G,B,A)
+            'point_size': 2.0,  # Size of points in the point cloud
+            'line_width': 1.0,  # Width of lines in the wireframe
+            'antialiasing': True,  # Whether to enable antialiasing
+            'lighting': True,  # Whether to enable lighting
+            'light_color': (1.0, 1.0, 1.0, 1.0),  # Light color (R,G,B,A)
+            'light_position': (1.0, 1.0, 1.0),  # Light position (X,Y,Z)
+            'ambient_light': 0.2,  # Ambient light intensity (0.0 to 1.0)
+            'diffuse_light': 0.8,  # Diffuse light intensity (0.0 to 1.0)
+            'specular_light': 0.5,  # Specular light intensity (0.0 to 1.0)
+            'specular_power': 20.0,  # Specular power (shininess)
+            'auto_rotate': False,  # Whether to auto-rotate the view
+            'rotation_speed': 1.0,  # Auto-rotation speed (degrees per frame)
+            'show_normals': False,  # Whether to show surface normals
+            'normal_length': 0.1,  # Length of normal vectors
+            'show_wireframe': False,  # Whether to show wireframe overlay
+            'show_points': False,  # Whether to show points
+            'point_size': 2.0,  # Size of points in point cloud
+            'point_color': (1.0, 1.0, 1.0, 1.0),  # Point color (R,G,B,A)
+        }
     
-    def _load_settings(self):
-        """Load settings from file if it exists."""
-        try:
-            if self._settings_file.exists():
-                with open(self._settings_file, 'r') as f:
-                    loaded_settings = json.load(f)
-                    self._settings.update(loaded_settings)
-        except Exception as e:
-            print(f"Warning: Could not load view settings: {e}")
-    
-    def _save_settings(self):
-        """Save current settings to file."""
-        try:
-            os.makedirs(self._settings_file.parent, exist_ok=True)
-            with open(self._settings_file, 'w') as f:
-                json.dump(self._settings, f, indent=4)
-        except Exception as e:
-            print(f"Warning: Could not save view settings: {e}")
-    
-    def get_setting(self, key, default=None):
-        """Get a setting value by key."""
+    def get(self, key: str, default=None) -> Any:
+        """Get a setting value by key.
+        
+        Args:
+            key: The setting key
+            default: Default value if key doesn't exist
+            
+        Returns:
+            The setting value or default if not found
+        """
         return self._settings.get(key, default)
     
-    def set_setting(self, key, value):
-        """Set a setting value and save to file."""
-        if key in self._settings and self._settings[key] != value:
+    def set(self, key: str, value: Any) -> None:
+        """Set a setting value.
+        
+        Args:
+            key: The setting key
+            value: The value to set
+        """
+        if key in self._settings:
             self._settings[key] = value
-            self._save_settings()
-            return True
-        return False
     
-    def toggle_opengl(self):
-        """Toggle OpenGL usage and return the new state."""
-        new_state = not self._settings['use_opengl']
-        self.set_setting('use_opengl', new_state)
-        return new_state
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert settings to a dictionary.
+        
+        Returns:
+            Dictionary containing all settings
+        """
+        return self._settings.copy()
     
-    @property
-    def use_opengl(self):
-        """Get the current OpenGL usage setting."""
-        return self._settings['use_opengl']
+    def update(self, settings: Dict[str, Any]) -> None:
+        """Update multiple settings at once.
+        
+        Args:
+            settings: Dictionary of settings to update
+        """
+        for key, value in settings.items():
+            if key in self._settings:
+                self._settings[key] = value
 
 # Create a singleton instance
 view_settings = ViewSettings()

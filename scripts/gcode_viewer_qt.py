@@ -7,6 +7,7 @@ and search functionality.
 import os
 import re
 import logging
+from scripts.logger import get_logger
 from pathlib import Path
 from typing import Optional
 
@@ -212,7 +213,7 @@ class GCodeViewer(QDialog):
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%H:%M:%S'
         )
-        self.logger = logging.getLogger("GCodeViewer")
+        self.logger = get_logger("GCodeViewer")
     
     def open_file(self):
         """Open a G-code file."""

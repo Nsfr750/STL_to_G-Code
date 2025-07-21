@@ -1,10 +1,11 @@
 import logging
+from scripts.logger import get_logger
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
 from typing import Dict, Any, Optional, Tuple
 import numpy as np
 from stl import mesh
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class GCodeGenerationWorker(QObject):
     """Worker class for generating G-code in a background thread."""
@@ -285,7 +286,6 @@ class STLLoadingWorker(QObject):
             # Initialize chunk buffers
             chunk_vertices = []
             chunk_faces = []
-            face_offset = 0
             processed_triangles = 0
             
             logging.debug("Starting triangle iteration...")
@@ -296,10 +296,12 @@ class STLLoadingWorker(QObject):
                     logging.info("Loading cancelled by user")
                     break
                 
-                # Add triangle vertices and face
+                # Add triangle vertices and face indices
+                vertex_offset = len(chunk_vertices)
                 chunk_vertices.extend(triangle.vertices)
-                chunk_faces.append([face_offset, face_offset + 1, face_offset + 2])
-                face_offset += 3
+                
+                # Add face indices relative to the current chunk
+                chunk_faces.append([vertex_offset, vertex_offset + 1, vertex_offset + 2])
                 processed_triangles += 1
                 
                 # Emit progress update every 100 triangles
@@ -308,25 +310,13 @@ class STLLoadingWorker(QObject):
                 
                 # Process chunk if we've reached the chunk size
                 if len(chunk_vertices) >= self.chunk_size * 3:  # 3 vertices per triangle
-                    logging.debug(f"Emitting chunk with {len(chunk_vertices)//3} triangles")
-                    self.chunk_loaded.emit({
-                        'vertices': np.array(chunk_vertices, dtype=np.float32),
-                        'faces': np.array(chunk_faces, dtype=np.uint32),
-                        'progress': (processed_triangles / total_triangles) * 100
-                    })
-                    
-                    # Reset chunk buffers
+                    self._emit_chunk(chunk_vertices, chunk_faces, processed_triangles, total_triangles)
                     chunk_vertices = []
                     chunk_faces = []
             
             # Process any remaining triangles in the last chunk
             if chunk_vertices and not self._is_cancelled:
-                logging.debug(f"Emitting final chunk with {len(chunk_vertices)//3} triangles")
-                self.chunk_loaded.emit({
-                    'vertices': np.array(chunk_vertices, dtype=np.float32),
-                    'faces': np.array(chunk_faces, dtype=np.uint32),
-                    'progress': 100.0
-                })
+                self._emit_chunk(chunk_vertices, chunk_faces, processed_triangles, total_triangles, is_final=True)
             
             if not self._is_cancelled:
                 logging.info("STL loading completed successfully")
@@ -334,7 +324,7 @@ class STLLoadingWorker(QObject):
                 
         except Exception as e:
             error_msg = f"Error in STL loading worker: {str(e)}"
-            logging.error(error_msg, exc_info=True)
+            logging.error(error_msg, exc_info=True) 
             self.error_occurred.emit(error_msg)
         finally:
             # Clean up
@@ -344,7 +334,18 @@ class STLLoadingWorker(QObject):
             except Exception as e:
                 logging.error(f"Error closing STL processor: {str(e)}", exc_info=True)
     
+    def _emit_chunk(self, vertices, faces, processed_triangles, total_triangles, is_final=False):
+        """Eit a chunk of STL data with proper progress information."""
+        progress = 100.0 if is_final else (processed_triangles / total_triangles) * 100
+        logging.debug(f"Emitting chunk with {len(vertices)//3} triangles, progress: {progress:.1f}%")
+        
+        self.chunk_loaded.emit({
+            'vertices': np.array(vertices, dtype=np.float32),
+            'faces': np.array(faces, dtype=np.int32),  # Use int32 for better compatibility
+            'progress': progress,
+            'status': f"Loading STL... {processed_triangles}/{total_triangles} triangles"
+        })
+    
     def cancel(self):
         """Cancel the loading process."""
-        logging.info("Cancellation requested for STL loading")
         self._is_cancelled = True

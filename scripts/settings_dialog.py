@@ -4,6 +4,8 @@ Settings dialog for STL to GCode Converter.
 This module provides a settings dialog for configuring optimization parameters.
 """
 
+from scripts.logger import get_logger
+
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
                             QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit, QWidget, QComboBox)

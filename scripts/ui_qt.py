@@ -2,6 +2,8 @@
 UI styling and layout management for STL to GCode Converter using PyQt6.
 """
 
+from scripts.logger import get_logger
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStatusBar,
     QProgressBar, QListWidget, QFrame, QSizePolicy, QApplication, QCheckBox, QDoubleSpinBox,

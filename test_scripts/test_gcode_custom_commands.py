@@ -3,7 +3,8 @@ Tests for custom start/end G-code functionality.
 """
 import unittest
 import numpy as np
-from stl import mesh
+from stl import 
+from scripts.logger import get_loggermesh
 
 try:
     from scripts.gcode_optimizer import GCodeOptimizer

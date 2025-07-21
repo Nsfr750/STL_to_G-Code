@@ -4,6 +4,7 @@ Main application class for the STL to GCode Converter using PyQt6.
 import sys
 import os
 import logging
+from scripts.logger import get_logger
 from pathlib import Path
 import datetime
 from PyQt6.QtGui import QIcon, QAction
@@ -12,7 +13,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
     QProgressBar, QCheckBox, QDoubleSpinBox, QSplitter,
     QProgressDialog, QLineEdit, QDialog, QDialogButtonBox, QGroupBox, 
-    QStyle, QFrame, QStatusBar, QToolBar, QPlainTextEdit, QSizePolicy
+    QStyle, QFrame, QStatusBar, QToolBar, QPlainTextEdit, QSizePolicy, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QSettings, QSize, QObject
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -65,21 +66,6 @@ except ImportError:
 # Get logger for this module
 logger = get_logger(__name__)
 
-# Check for OpenGL availability at module level
-OPENGL_AVAILABLE = False
-OPENGL_ERROR = "OpenGL not available"
-
-try:
-    from PyQt6.QtOpenGL import QOpenGLWidget, QOpenGLContext
-    from OpenGL import GL
-    OPENGL_AVAILABLE = True
-except ImportError as e:
-    OPENGL_ERROR = str(e)
-    logger.warning(f"OpenGL not available: {OPENGL_ERROR}")
-
-# Import view settings after OPENGL_AVAILABLE is set
-from scripts.view_settings import view_settings
-
 class SimulationWorker(QObject):
     """Worker for running G-code simulation in a separate thread."""
     
@@ -122,39 +108,50 @@ class SimulationWorker(QObject):
 
 class STLToGCodeApp(QMainWindow):
     """
-    Main application window for STL to GCode Converter.
+    Main application window for the STL to GCode Converter.
     """
     def __init__(self):
         super().__init__()
-        self.file_path = None
+        
+        # Initialize settings
+        self.settings = QSettings("STLtoGCode", "STLtoGCode")
+        self.recent_files = []
+        
+        # Initialize UI helper
+        from scripts.ui_qt import UI
+        self.ui = UI(self)  # Pass self as parent
+        
+        # Set up the UI
+        self._setup_ui()
+        
+        # Load recent files
+        self._load_recent_files()
+        
+        # Initialize other attributes
+        self.current_file = None
         self.stl_mesh = None
-        self.gcode = ""
-        self.current_file = ""
-        self.settings = {}
+        self.gcode = []
+        self.file_path = None
         self.worker_thread = None
         self.worker = None
         
-        # Initialize OpenGL setting
-        self.use_opengl = view_settings.use_opengl and OPENGL_AVAILABLE
-        if not OPENGL_AVAILABLE:
-            logger.warning(f"OpenGL visualization disabled: {OPENGL_ERROR}")
-            if view_settings.use_opengl:
-                # If OpenGL was enabled in settings but not available, update settings
-                view_settings.toggle_opengl()
+        # Set up the logger
+        self.logger = get_logger(__name__)
+        self.logger.info("Starting STL to GCode Converter")
+        
+        # Set window properties
+        self.setWindowTitle("STL to GCode Converter")
         
         # Set application icon
-        try:
-            icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'icon.png')
-            if os.path.exists(icon_path):
-                self.setWindowIcon(QIcon(icon_path))
-                logger.info(f"Application icon set from: {icon_path}")
-            else:
-                logger.warning(f"Icon file not found at: {icon_path}")
-        except Exception as e:
-            logger.error(f"Error setting application icon: {str(e)}")
+        icon_path = Path("assets/icon.png")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+            self.logger.info(f"Loaded application icon from {icon_path}")
+        else:
+            self.logger.warning(f"Icon not found at {icon_path}")
         
         # Initialize the UI manager
-        self.ui = UI()
+        # self.ui = UI()
         
         # Initialize the log viewer
         self.log_viewer = None
@@ -174,13 +171,6 @@ class STLToGCodeApp(QMainWindow):
         
         # Log application start
         logger.info("Application started")
-        
-        # Add this to the __init__ method where other UI elements are created
-        self.opengl_visualizer = None
-        
-        # Log OpenGL status
-        if not OPENGL_AVAILABLE:
-            logger.info(f"OpenGL visualization not available: {OPENGL_ERROR}")
         
         # Add progressive loading attributes
         self.progressive_loading = True  # Enable progressive loading
@@ -217,15 +207,6 @@ class STLToGCodeApp(QMainWindow):
         
         # Initialize STL processor
         self.current_stl_processor = None
-        
-        # Initialize UI components
-        self._setup_ui()
-        
-        # Show the window
-        self.show()
-        
-        # Load recent files
-        self._load_recent_files()
         
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
@@ -405,6 +386,7 @@ class STLToGCodeApp(QMainWindow):
         self._setup_stl_view()
         self._setup_gcode_view()
         self._setup_visualization_view()
+        self._setup_editor_tab()
         
         # Add tab widget to right layout
         right_layout.addWidget(self.tab_widget)
@@ -426,9 +408,6 @@ class STLToGCodeApp(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_bar.addPermanentWidget(self.progress_bar)
         
-        # Set up the editor tab
-        self._setup_editor_tab()
-        
         # Set initial tab
         self.tab_widget.setCurrentIndex(0)  # Show 3D View by default
     
@@ -436,16 +415,43 @@ class STLToGCodeApp(QMainWindow):
         """Set up the STL view tab."""
         layout = QVBoxLayout(self.stl_view_tab)
         
-        # Matplotlib Figure
-        self.figure = Figure(figsize=(5, 4))
-        self.canvas = FigureCanvas(self.figure)
-        self.ax = self.figure.add_subplot(111, projection='3d')
+        # Add controls
+        controls_layout = QHBoxLayout()
+        
+        # Add a reset view button
+        reset_view_btn = QPushButton("Reset View")
+        reset_view_btn.clicked.connect(self._reset_stl_view)
+        controls_layout.addWidget(reset_view_btn)
+        
+        # Add stretch to push controls to the left
+        controls_layout.addStretch()
+        
+        # Add controls to layout
+        layout.addLayout(controls_layout)
+        
+        # Create matplotlib figure and canvas
+        self.stl_figure = Figure(figsize=(5, 4), dpi=100)
+        self.stl_canvas = FigureCanvas(self.stl_figure)
+        self.stl_ax = self.stl_figure.add_subplot(111, projection='3d')
+        
+        # Initialize STL visualizer for the STL view tab
+        self.stl_visualizer = STLVisualizer(self.stl_ax, self.stl_canvas)
+        
+        # Set up the 3D axes
+        self.stl_ax.set_xlabel('X')
+        self.stl_ax.set_ylabel('Y')
+        self.stl_ax.set_zlabel('Z')
         
         # Add navigation toolbar with custom styling
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        self._style_matplotlib_toolbar()
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
+        self.stl_toolbar = NavigationToolbar(self.stl_canvas, self.stl_view_tab)
+        self._style_matplotlib_toolbar(self.stl_toolbar)
+        
+        # Add widgets to layout
+        layout.addWidget(self.stl_toolbar)
+        layout.addWidget(self.stl_canvas)
+        
+        # Initialize with empty plot
+        self.stl_visualizer.clear()
     
     def _setup_gcode_view(self):
         """Set up the G-code view tab."""
@@ -457,73 +463,82 @@ class STLToGCodeApp(QMainWindow):
     
     def _setup_visualization_view(self):
         """Set up the G-code visualization tab."""
-        layout = QVBoxLayout(self.visualization_tab)
-        
-        # Create visualization controls
-        controls_layout = QHBoxLayout()
-        
-        self.show_travel_moves = QCheckBox("Show Travel Moves")
-        self.show_travel_moves.setChecked(True)
-        self.show_travel_moves.stateChanged.connect(self._update_visualization)
-        controls_layout.addWidget(self.show_travel_moves)
-        
-        reset_view_btn = QPushButton("Reset View")
-        reset_view_btn.clicked.connect(self._reset_visualization_view)
-        controls_layout.addWidget(reset_view_btn)
-        
-        controls_layout.addStretch()
-        
-        # Add controls to layout
-        layout.addLayout(controls_layout)
-        
-        # Create matplotlib figure and canvas
-        self.figure = Figure(figsize=(5, 4), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.ax = self.figure.add_subplot(111, projection='3d')
-        
-        # Initialize STL visualizer
-        self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
-        
-        # Set up the 3D axes
-        self.ax.set_xlabel('X')
-        self.ax.set_ylabel('Y')
-        self.ax.set_zlabel('Z')
-        
-        # Add navigation toolbar with custom styling
-        self.toolbar = NavigationToolbar(self.canvas, self.visualization_tab)
-        self._style_matplotlib_toolbar()
-        
-        # Add widgets to layout
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
-        
-        # Initialize with empty plot
-        self._update_visualization()
+        try:
+            from scripts.gcode_visualizer import GCodeVisualizer
+            
+            # Create a container widget for the visualization
+            container = QWidget()
+            layout = QVBoxLayout(container)
+            
+            # Initialize the GCodeVisualizer
+            self.gcode_visualizer = GCodeVisualizer(container)
+            
+            # Add the visualizer to the layout
+            layout.addWidget(self.gcode_visualizer)
+            
+            # Set the container as the widget for the visualization tab
+            self.visualization_tab.setLayout(layout)
+            
+            # Initialize with empty visualization
+            self._update_visualization()
+            
+        except ImportError as e:
+            logger.error(f"Failed to import GCodeVisualizer: {e}", exc_info=True)
+            error_label = QLabel("Failed to initialize G-code visualization. Please check the logs for details.")
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.visualization_tab.setLayout(QVBoxLayout())
+            self.visualization_tab.layout().addWidget(error_label)
+        except Exception as e:
+            logger.error(f"Error setting up G-code visualization: {e}", exc_info=True)
+            error_label = QLabel("An error occurred while setting up G-code visualization.")
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.visualization_tab.setLayout(QVBoxLayout())
+            self.visualization_tab.layout().addWidget(error_label)
     
-    def _style_matplotlib_toolbar(self):
-        """Apply custom styling to the matplotlib toolbar."""
-        # Style the matplotlib toolbar to match our dark theme
-        self.toolbar.setStyleSheet("""
-            QToolBar {
-                background-color: #2b2b2b;
-                border: 1px solid #444;
-                border-radius: 4px;
-                spacing: 2px;
-                padding: 2px;
-            }
-            QToolButton {
-                background-color: #424242;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 3px;
-            }
-            QToolButton:hover {
-                background-color: #555;
-            }
-            QToolButton:pressed {
-                background-color: #666;
-            }
-        """)
+    def _style_matplotlib_toolbar(self, toolbar=None):
+        """Apply custom styling to the matplotlib toolbar.
+        
+        Args:
+            toolbar: The toolbar to style. If None, styles all toolbars.
+        """
+        try:
+            # Get the toolbar(s) to style
+            toolbars = []
+            if toolbar is not None:
+                toolbars.append(toolbar)
+            else:
+                # Add all toolbars if none specified
+                if hasattr(self, 'stl_toolbar') and self.stl_toolbar is not None:
+                    toolbars.append(self.stl_toolbar)
+                if hasattr(self, 'vis_toolbar') and self.vis_toolbar is not None:
+                    toolbars.append(self.vis_toolbar)
+            
+            # Style each toolbar
+            for tb in toolbars:
+                tb.setStyleSheet("""
+                    QToolBar {
+                        background-color: #2b2b2b;
+                        border: 1px solid #444;
+                        border-radius: 4px;
+                        spacing: 2px;
+                        padding: 2px;
+                    }
+                    QToolButton {
+                        background-color: #424242;
+                        border: 1px solid #555;
+                        border-radius: 3px;
+                        padding: 3px;
+                    }
+                    QToolButton:hover {
+                        background-color: #555;
+                    }
+                    QToolButton:pressed {
+                        background-color: #666;
+                    }
+                """)
+                
+        except Exception as e:
+            logger.error(f"Error styling matplotlib toolbar: {str(e)}", exc_info=True)
     
     def _setup_menus(self):
         """Set up the menu bar and menus."""
@@ -581,20 +596,6 @@ class STLToGCodeApp(QMainWindow):
         self.toggle_log_viewer_action.setStatusTip("Show or hide the log viewer")
         self.toggle_log_viewer_action.triggered.connect(self.toggle_log_viewer)
         view_menu.addAction(self.toggle_log_viewer_action)
-        
-        # Add OpenGL toggle action if OpenGL is available
-        if OPENGL_AVAILABLE:
-            self.opengl_action = QAction("Use OpenGL Rendering", self)
-            self.opengl_action.setCheckable(True)
-            self.opengl_action.setChecked(self.use_opengl)
-            self.opengl_action.triggered.connect(self.toggle_opengl)
-            view_menu.addAction(self.opengl_action)
-        else:
-            # Add a disabled menu item to inform the user why OpenGL is not available
-            opengl_info = QAction("OpenGL Not Available", self)
-            opengl_info.setStatusTip(f"OpenGL is not available: {OPENGL_ERROR}")
-            opengl_info.setEnabled(False)
-            view_menu.addAction(opengl_info)
         
         # Help menu
         help_menu = menubar.addMenu("&Help")
@@ -656,7 +657,7 @@ class STLToGCodeApp(QMainWindow):
             self.setWindowTitle(f"STL to GCode - {self.current_file}")
             
             # Add to recent files
-            self.add_to_recent_files(self.file_path)
+            self._add_to_recent_files(self.file_path)
             
             # Initialize STL processor
             try:
@@ -878,46 +879,31 @@ class STLToGCodeApp(QMainWindow):
         Args:
             chunk_data: Dictionary containing 'vertices', 'faces', and 'progress' keys
         """
-        if not chunk_data or 'progress' not in chunk_data:
-            return
-            
         try:
-            # Update the progress bar
-            progress = int(chunk_data['progress'])
-            self.loading_progress = progress
+            if not chunk_data or 'vertices' not in chunk_data or 'faces' not in chunk_data:
+                logger.error("Invalid chunk data received")
+                return
+                
+            # Update progress if available
+            if 'progress' in chunk_data:
+                self._update_loading_progress(chunk_data['progress'], f"Loading STL... {chunk_data['progress']}%")
             
-            # Update the mesh data if vertices are provided
-            if 'vertices' in chunk_data and 'faces' in chunk_data:
-                # Update the STL visualizer with the new mesh data
-                if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
-                    self.stl_visualizer.update_mesh(
-                        chunk_data['vertices'],
-                        chunk_data['faces'],
-                        self.file_path
-                    )
-                
-                # Also update the local references (for backward compatibility)
-                self.current_vertices = chunk_data['vertices']
-                self.current_faces = chunk_data['faces']
-                
-                # Update the visualization
-                self._update_visualization()
+            # Update the visualization with the new chunk
+            if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
+                self.stl_visualizer.update_mesh(
+                    chunk_data['vertices'],
+                    chunk_data['faces'],
+                    is_chunk=True
+                )
             
-            # Update the progress dialog
-            if hasattr(self, 'progress_dialog') and self.progress_dialog:
-                self.progress_dialog.setValue(progress)
-                
-                # Update the progress message
-                if 'status' in chunk_data:
-                    self.progress_dialog.setLabelText(chunk_data['status'])
-                
-                # Process events to keep the UI responsive
-                QApplication.processEvents()
+            # If this is the last chunk, finalize the loading process
+            if 'progress' in chunk_data and chunk_data['progress'] >= 100:
+                self._on_loading_finished(success=True)
                 
         except Exception as e:
-            error_msg = f"Error processing chunk: {str(e)}"
+            error_msg = f"Error processing STL chunk: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            self._handle_loading_error(error_msg)
+            self._on_loading_finished(success=False, error_msg=error_msg)
     
     def _process_gcode_buffer(self):
         """Process the G-code buffer and update the editor."""
@@ -970,7 +956,7 @@ class STLToGCodeApp(QMainWindow):
             self.setWindowTitle(f"STL to GCode - {result['file_name']}")
             
             # Add to recent files
-            self.add_to_recent_files(self.gcode_file_path)
+            self._add_to_recent_files(self.gcode_file_path)
             
             # Update status bar
             self.statusBar().showMessage(f"G-code saved to {result['file_name']}", 3000)
@@ -1095,7 +1081,7 @@ class STLToGCodeApp(QMainWindow):
             error_msg = f"Error toggling log viewer: {str(e)}"
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
-
+    
     def show_documentation(self):
         """Open the application's documentation in the markdown viewer."""
         try:
@@ -1537,24 +1523,56 @@ class STLToGCodeApp(QMainWindow):
             state: The state of the checkbox that triggered the update (if any)
         """
         try:
-            # Initialize visualizer if it doesn't exist
+            # Make sure we have a visualizer
             if not hasattr(self, 'stl_visualizer') or not self.stl_visualizer:
-                if not hasattr(self, 'ax') or not self.ax:
-                    logger.error("Cannot update visualization: Matplotlib axes not initialized")
+                if not hasattr(self, 'visualization_tab') or not hasattr(self, 'ax'):
+                    logger.error("Cannot update visualization: Visualization components not initialized")
                     return False
+                
+                # Create a new visualizer with the visualization tab's canvas
+                logger.debug("Creating new STLVisualizer instance")
                 self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
-                
-            # Update the visualization using the STL visualizer
-            success = self.stl_visualizer.render()
             
-            if not success:
-                error_msg = "Failed to update visualization"
-                logger.warning(error_msg)
-                self.statusBar().showMessage(error_msg, 5000)
-            else:
-                self.statusBar().showMessage("Visualization updated", 2000)
+            # Ensure the visualization tab is the active one
+            if hasattr(self, 'tab_widget') and hasattr(self, 'visualization_tab'):
+                current_tab = self.tab_widget.currentWidget()
+                if current_tab != self.visualization_tab:
+                    logger.debug("Switching to visualization tab")
+                    self.tab_widget.setCurrentWidget(self.visualization_tab)
+            
+            # Update the visualization
+            if hasattr(self, 'current_vertices') and hasattr(self, 'current_faces'):
+                success = self.stl_visualizer.update_mesh(
+                    self.current_vertices,
+                    self.current_faces,
+                    getattr(self, 'current_file', None)
+                )
                 
-            return success
+                if not success:
+                    error_msg = "Failed to update visualization"
+                    logger.warning(error_msg)
+                    self.statusBar().showMessage(error_msg, 5000)
+                    return False
+                
+                # Force a redraw of the canvas
+                try:
+                    if hasattr(self.stl_visualizer, 'canvas'):
+                        self.stl_visualizer.canvas.draw_idle()
+                        logger.debug("Visualization updated successfully")
+                        self.statusBar().showMessage("Visualization updated", 2000)
+                        return True
+                    else:
+                        logger.error("Visualizer canvas not available")
+                        return False
+                        
+                except Exception as e:
+                    error_msg = f"Error drawing visualization: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    self.statusBar().showMessage(error_msg, 5000)
+                    return False
+            else:
+                logger.debug("No mesh data available for visualization")
+                return False
                 
         except Exception as e:
             error_msg = f"Error updating visualization: {str(e)}"
@@ -1563,566 +1581,339 @@ class STLToGCodeApp(QMainWindow):
             return False
     
     def _reset_visualization_view(self):
-        """Reset the 3D visualization view to default."""
+        """Reset the G-code visualization view to default."""
         try:
-            if hasattr(self, 'ax') and self.ax:
-                # Reset the view to default
-                self.ax.set_xlim(0, self.printer_limits['x_max'])
-                self.ax.set_ylim(0, self.printer_limits['y_max'])
-                self.ax.set_zlim(0, self.printer_limits['z_max'])
-                
-                # Redraw the canvas
-                self.canvas.draw()
-                
-                # Update status bar
+            if hasattr(self, 'gcode_visualizer') and self.gcode_visualizer:
+                self.gcode_visualizer.reset_view()
+                logger.debug("G-code visualization view reset")
                 self.statusBar().showMessage("View reset", 2000)
-                
+            else:
+                logger.warning("Cannot reset view: G-code visualizer not initialized")
         except Exception as e:
-            error_msg = f"Error resetting view: {str(e)}"
+            error_msg = f"Error resetting G-code visualization view: {str(e)}"
             logger.error(error_msg, exc_info=True)
             self.statusBar().showMessage(error_msg, 5000)
     
+    def _reset_stl_view(self):
+        """Reset the STL view to its default state."""
+        try:
+            if hasattr(self, 'stl_visualizer') and self.stl_visualizer is not None:
+                # Clear the current visualization
+                self.stl_visualizer.clear()
+                
+                # Reset the view to show all content
+                if hasattr(self, 'current_vertices') and len(self.current_vertices) > 0:
+                    # If we have mesh data, update the visualizer with it
+                    self.stl_visualizer.update_mesh(
+                        vertices=self.current_vertices,
+                        faces=self.current_faces,
+                        file_path=self.file_path
+                    )
+                
+                # Update the canvas
+                self.stl_canvas.draw_idle()
+                
+        except Exception as e:
+            error_msg = f"Error resetting STL view: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            self._handle_loading_error(error_msg)
+
     def _setup_editor_tab(self):
         """Set up the G-code editor tab."""
-        try:
-            # Create a new tab for the G-code editor
-            self.editor_tab = QWidget()
-            self.tab_widget.addTab(self.editor_tab, "G-code Editor")
-            
-            # Create layout for the editor tab
-            layout = QVBoxLayout(self.editor_tab)
-            
-            # Create toolbar for editor actions
-            editor_toolbar = QToolBar("Editor Tools")
-            
-            # Add action to open G-code file
-            open_action = QAction(QIcon.fromTheme("document-open"), "Open G-code", self)
-            open_action.triggered.connect(self.open_gcode_in_editor)
-            open_action.setStatusTip("Open a G-code file in the editor")
-            editor_toolbar.addAction(open_action)
-            
-            # Add action to save G-code
-            save_action = QAction(QIcon.fromTheme("document-save"), "Save", self)
-            save_action.triggered.connect(lambda: self.save_gcode())
-            save_action.setShortcut("Ctrl+S")
-            save_action.setStatusTip("Save the current G-code")
-            editor_toolbar.addAction(save_action)
-            
-            # Add separator
-            editor_toolbar.addSeparator()
-            
-            # Add action to simulate G-code
-            self.simulate_action = QAction(QIcon.fromTheme("media-playback-start"), "Simulate", self)
-            self.simulate_action.triggered.connect(self.simulate_from_editor)
-            self.simulate_action.setStatusTip("Simulate the current G-code")
-            self.simulate_action.setEnabled(False)  # Disable by default
-            editor_toolbar.addAction(self.simulate_action)
-            
-            # Add the toolbar to the layout
-            layout.addWidget(editor_toolbar)
-            
-            # Create the G-code text editor
-            self.gcode_editor = QPlainTextEdit()
-            self.gcode_editor.setStyleSheet("""
-                QPlainTextEdit {
-                    font-family: 'Consolas', 'Courier New', monospace;
-                    font-size: 12px;
-                    background-color: #2b2b2b;
-                    color: #f8f8f2;
-                    selection-background-color: #49483e;
-                }
-                QScrollBar:vertical {
-                    border: none;
-                    background: #2b2b2b;
-                    width: 10px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:vertical {
-                    background: #3e3d32;
-                    min-height: 20px;
-                    border-radius: 5px;
-                }
-                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                    height: 0px;
-                }
-            """)
-            
-            # Connect textChanged signal to update button state
-            self.gcode_editor.textChanged.connect(self._update_simulate_button_state)
-            
-            # Set up line numbers
-            self.gcode_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-            
-            # Add the editor to the layout
-            layout.addWidget(self.gcode_editor)
-            
-            # Status bar for editor information
-            self.editor_status = QStatusBar()
-            self.editor_status.setSizeGripEnabled(False)
-            layout.addWidget(self.editor_status)
-            
-            # Update status when cursor position changes
-            self.gcode_editor.cursorPositionChanged.connect(self._update_editor_status)
-            
-            logger.info("G-code editor tab initialized")
-            
-        except Exception as e:
-            error_msg = f"Error setting up editor tab: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
-    
-    def _update_simulate_button_state(self):
-        """Update the simulate button state based on editor content."""
-        has_content = bool(self.gcode_editor.toPlainText().strip())
-        self.simulate_action.setEnabled(has_content)
-    
-    def _update_editor_status(self):
-        """Update the editor status bar with cursor position and document info."""
-        try:
-            cursor = self.gcode_editor.textCursor()
-            line = cursor.blockNumber() + 1
-            col = cursor.columnNumber() + 1
-            char_count = len(self.gcode_editor.toPlainText())
-            line_count = self.gcode_editor.document().blockCount()
-            
-            self.editor_status.showMessage(
-                f"Line: {line}, Col: {col} | "
-                f"Length: {char_count} chars | "
-                f"Lines: {line_count}"
-            )
-        except Exception as e:
-            logger.error(f"Error updating editor status: {str(e)}", exc_info=True)
-    
-    def add_to_recent_files(self, file_path):
-        """
-        Add a file to the list of recently opened files.
+        # Create a new tab for the G-code editor
+        self.editor_tab = QWidget()
+        self.tab_widget.addTab(self.editor_tab, "G-code Editor")
         
-        Args:
-            file_path: Path to the file to add to recent files
-        """
-        try:
-            # Initialize recent files list if it doesn't exist
-            if not hasattr(self, 'recent_files'):
-                self.recent_files = []
+        # Create layout for the editor tab
+        layout = QVBoxLayout(self.editor_tab)
+        
+        # Add a toolbar for editor actions
+        editor_toolbar = QToolBar("Editor")
+        layout.addWidget(editor_toolbar)
+        
+        # Add actions to the toolbar
+        save_action = QAction("Save", self)
+        save_action.triggered.connect(lambda: self.save_gcode())
+        editor_toolbar.addAction(save_action)
+        
+        # Add the G-code editor
+        self.gcode_editor = QTextEdit()
+        self.gcode_editor.setFont(QFont("Courier", 10))
+        self.gcode_editor.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        layout.addWidget(self.gcode_editor)
+        
+        # Add status bar for editor information
+        editor_status = QStatusBar()
+        self.editor_status_label = QLabel("Ready")
+        editor_status.addWidget(self.editor_status_label)
+        layout.addWidget(editor_status)
+        
+        # Connect text changed signal
+        self.gcode_editor.textChanged.connect(self._on_editor_text_changed)
+    
+    def _on_editor_text_changed(self):
+        """Handle text changes in the G-code editor."""
+        # Update status with line count
+        line_count = self.gcode_editor.document().lineCount()
+        self.editor_status_label.setText(f"Lines: {line_count}")
+
+    def _load_recent_files(self):
+        """Load the list of recently opened files from settings."""
+        # Get recent files from settings, defaulting to an empty list
+        recent_files = self.settings.value('recent_files')
+        
+        # Handle different possible return types from QSettings
+        if recent_files is None:
+            self.recent_files = []
+        elif isinstance(recent_files, str):
+            # If it's a single string, convert to a list
+            self.recent_files = [recent_files] if recent_files else []
+        elif isinstance(recent_files, list):
+            # If it's already a list, use it directly
+            self.recent_files = recent_files
+        else:
+            # For any other type, convert to string and wrap in a list
+            self.recent_files = [str(recent_files)]
             
-            # Remove the file if it already exists in the list
+        # Ensure all paths are strings and exist
+        self.recent_files = [str(path) for path in self.recent_files if path and os.path.exists(str(path))]
+        
+        # Update the menu
+        self._update_recent_files_menu()
+    
+    def _update_recent_files_menu(self):
+        """Update the recent files menu with the current list of recent files."""
+        if not hasattr(self, 'recent_menu'):
+            return
+            
+        # Clear the current menu
+        self.recent_menu.clear()
+        
+        # Add recent files
+        for i, file_path in enumerate(self.recent_files[:10]):  # Show max 10 recent files
+            action = self.recent_menu.addAction(f'&{i+1} {os.path.basename(file_path)}',
+                                             lambda checked, path=file_path: self._open_recent_file(path))
+            action.setToolTip(file_path)
+        
+        # Add a separator and clear action if there are recent files
+        if self.recent_files:
+            self.recent_menu.addSeparator()
+            clear_action = self.recent_menu.addAction('Clear Recent Files', self._clear_recent_files)
+            clear_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+        
+        # Disable the menu if no recent files
+        self.recent_menu.setEnabled(bool(self.recent_files))
+
+    def _open_recent_file(self, file_path):
+        """Open a file from the recent files list."""
+        if os.path.exists(file_path):
+            self.load_stl_file(file_path)
+        else:
+            # Remove non-existent file from recent files
             if file_path in self.recent_files:
                 self.recent_files.remove(file_path)
-            
-            # Add the file to the beginning of the list
-            self.recent_files.insert(0, file_path)
-            
-            # Keep only the most recent 10 files
-            max_recent = 10
-            self.recent_files = self.recent_files[:max_recent]
-            
-            # Update the recent files menu
-            self._setup_recent_files_menu()
-            
-            # Save the recent files to settings
-            self._save_recent_files()
-            
-        except Exception as e:
-            logger.error(f"Error adding to recent files: {str(e)}", exc_info=True)
-    
-    def _setup_recent_files_menu(self):
-        """Set up the recent files menu."""
-        try:
-            # Create recent files menu if it doesn't exist
-            if not hasattr(self, 'recent_files_menu'):
-                if not hasattr(self, 'file_menu'):
-                    logger.warning("File menu not found, cannot create recent files menu")
-                    return
-                self.recent_files_menu = self.file_menu.addMenu("Recent Files")
-            
-            # Clear existing items
-            self.recent_files_menu.clear()
-            
-            # Get recent files from settings
-            settings = QSettings("STLtoGCode", "RecentFiles")
-            recent_files = settings.value("recentFiles", [], type=list)
-            
-            if not recent_files:
-                no_files = self.recent_files_menu.addAction("No recent files")
-                no_files.setEnabled(False)
-                return
-                
-            # Add recent files to menu
-            for i, file_path in enumerate(recent_files[:10]):  # Show max 10 recent files
-                if os.path.exists(file_path):
-                    action = self.recent_files_menu.addAction(
-                        f"&{i+1} {os.path.basename(file_path)}",
-                        lambda checked, path=file_path: self._open_recent_file(path)
-                    )
-                    action.setToolTip(file_path)
-            
-            # Add a separator and clear action if there are recent files
-            self.recent_files_menu.addSeparator()
-            clear_action = self.recent_files_menu.addAction("Clear Recent Files")
-            clear_action.triggered.connect(self._clear_recent_files)
-            
-        except Exception as e:
-            logger.error(f"Error setting up recent files menu: {str(e)}")
-    
-    def _open_recent_file(self, file_path):
-        """Open a file from the recent files menu."""
-        try:
-            if os.path.exists(file_path):
-                self.open_file(file_path)
-            else:
-                # Remove non-existent file from recent files
-                self._remove_recent_file(file_path)
-                QMessageBox.warning(
-                    self,
-                    "File Not Found",
-                    f"The file was not found:\n{file_path}"
-                )
-        except Exception as e:
-            logger.error(f"Error opening recent file: {str(e)}")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Could not open file:\n{file_path}\n\nError: {str(e)}"
-            )
-    
+                self.settings.setValue('recent_files', self.recent_files)
+                self._update_recent_files_menu()
+            QMessageBox.warning(self, 'File Not Found',
+                             f'The file was not found:\n{file_path}')
+
     def _clear_recent_files(self):
         """Clear the list of recent files."""
-        try:
-            settings = QSettings("STLtoGCode", "RecentFiles")
-            settings.setValue("recentFiles", [])
-            self._setup_recent_files_menu()
-        except Exception as e:
-            logger.error(f"Error clearing recent files: {str(e)}")
-    
-    def _remove_recent_file(self, file_path):
-        """Remove a file from the recent files list."""
-        try:
-            settings = QSettings("STLtoGCode", "RecentFiles")
-            recent_files = settings.value("recentFiles", [], type=list)
-            if file_path in recent_files:
-                recent_files.remove(file_path)
-                settings.setValue("recentFiles", recent_files)
-                self._setup_recent_files_menu()
-        except Exception as e:
-            logger.error(f"Error removing recent file: {str(e)}")
-    
-    def _save_recent_files(self):
-        """Save the recent files list to application settings."""
-        try:
-            if hasattr(self, 'recent_files'):
-                settings = QSettings("STLtoGCode", "RecentFiles")
-                settings.setValue("recentFiles", self.recent_files)
-        except Exception as e:
-            logger.error(f"Error saving recent files: {str(e)}", exc_info=True)
-    
-    def _load_recent_files(self):
-        """Load the recent files list from application settings."""
-        try:
-            settings = QSettings("STLtoGCode", "RecentFiles")
-            self.recent_files = settings.value("recentFiles", [])
-            if not isinstance(self.recent_files, list):
-                self.recent_files = []
-            
-            # Filter out files that no longer exist
-            self.recent_files = [f for f in self.recent_files if os.path.exists(f)]
-            
-            # Save the filtered list back
-            if len(self.recent_files) != settings.value("recentFiles", [], type=list):
-                self._save_recent_files()
-                
-        except Exception as e:
-            logger.error(f"Error loading recent files: {str(e)}", exc_info=True)
-            self.recent_files = []
-    
-    def _cancel_loading(self):
-        """Cancel the current loading operation."""
-        if hasattr(self, 'loading_worker') and self.loading_worker:
-            self.loading_worker.cancel()
-        if hasattr(self, 'progress_dialog') and self.progress_dialog:
-            self.progress_dialog.close()
-        self.is_loading = False
-        self.loading_queue = []
-        self.loading_timer.stop()
+        reply = QMessageBox.question(
+            self, 'Clear Recent Files',
+            'Are you sure you want to clear the list of recently opened files?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
         
-    def _handle_loading_error(self, error_msg, title="Loading Error"):
-        """Display an error message for loading failures."""
-        logger.error(f"{title}: {error_msg}")
-        QMessageBox.critical(self, title, str(error_msg))
-        self._cancel_loading()
+        if reply == QMessageBox.StandardButton.Yes:
+            self.recent_files = []
+            self.settings.setValue('recent_files', self.recent_files)
+            self._update_recent_files_menu()
+            
+    def _add_to_recent_files(self, file_path):
+        """Add a file to the recent files list."""
+        if file_path in self.recent_files:
+            self.recent_files.remove(file_path)
+        self.recent_files.insert(0, file_path)
+        # Keep only unique paths and limit the number of recent files
+        self.recent_files = list(dict.fromkeys(self.recent_files))[:10]
+        self.settings.setValue('recent_files', self.recent_files)
+        self._update_recent_files_menu()
 
-    def _on_loading_finished(self, success=True, error_msg=None):
-        """Handle completion of the STL file loading process.
+    def _cancel_loading(self):
+        """Cancel the ongoing STL loading process."""
+        logger.info("Cancelling STL loading...")
+        self.is_loading = False
+        
+        # Stop the loading timer
+        if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
+            self.loading_timer.stop()
+        
+        # Stop the worker thread if it's running
+        if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
+            logger.debug("Stopping loading thread...")
+            if hasattr(self, 'loading_worker'):
+                self.loading_worker.stop()
+            self.loading_thread.quit()
+            self.loading_thread.wait()
+        
+        # Close the progress dialog if it exists
+        if hasattr(self, 'progress_dialog'):
+            try:
+                self.progress_dialog.close()
+                del self.progress_dialog
+            except Exception as e:
+                logger.warning(f"Error closing progress dialog: {e}")
+        
+        # Reset loading state
+        self._reset_loading_state()
+        logger.info("Loading cancelled by user")
+
+    def _handle_loading_error(self, error_message, title="Loading Error"):
+        """
+        Handle errors that occur during STL loading.
         
         Args:
-            success (bool): Whether the loading was successful
-            error_msg (str, optional): Error message if loading failed
+            error_message (str): The error message to display
+            title (str): The title for the error dialog
         """
-        logger.debug(f"Loading finished. Success: {success}, Error: {error_msg}")
+        logger.error(f"{title}: {error_message}", exc_info=True)
         
-        # Make local copies of resources we need to clean up
-        worker = getattr(self, 'loading_worker', None)
-        thread = getattr(self, 'loading_thread', None)
-        progress_dialog = getattr(self, 'progress_dialog', None)
-        
-        # Clear references first to prevent re-entry
-        self.loading_worker = None
-        self.loading_thread = None
-        self.loading_timer.stop()
-        
-        try:
-            # Close the progress dialog if it exists
-            if progress_dialog is not None:
-                try:
-                    progress_dialog.close()
-                    progress_dialog.deleteLater()
-                except Exception as e:
-                    logger.error(f"Error closing progress dialog: {str(e)}")
-                finally:
-                    if hasattr(self, 'progress_dialog'):
-                        self.progress_dialog = None
-            
-            # Handle error case
-            if not success or error_msg:
-                logger.error(f"STL loading failed: {error_msg}")
-                self._handle_loading_error(error_msg or "Unknown error occurred during STL loading")
-                return
-                
-            # Update UI state
-            logger.debug("Updating UI after successful load")
-            self._update_ui_after_loading()
-            
-            # Update status bar
-            if hasattr(self, 'statusBar'):
-                self.statusBar().showMessage("STL file loaded successfully", 5000)
-                
-        except Exception as e:
-            logger.error(f"Error in _on_loading_finished: {str(e)}", exc_info=True)
-            self._handle_loading_error(f"Error finalizing load: {str(e)}")
-        finally:
-            # Clean up worker and thread in the correct order
-            if worker is not None:
-                try:
-                    # Disconnect signals safely
-                    signals = [
-                        ('chunk_loaded', self._on_chunk_loaded),
-                        ('loading_finished', self._on_loading_finished),
-                        ('error_occurred', self._handle_loading_error),
-                        ('progress_updated', self._update_loading_progress)
-                    ]
-                    
-                    for signal, slot in signals:
-                        try:
-                            getattr(worker, signal).disconnect(slot)
-                        except (TypeError, RuntimeError):
-                            # Signal was not connected or already disconnected
-                            pass
-                    
-                    # Schedule the worker for deletion
-                    worker.deleteLater()
-                except Exception as e:
-                    if 'wrapped C/C++ object' not in str(e):
-                        logger.error(f"Error during worker cleanup: {str(e)}")
-            
-            # Clean up thread
-            if thread is not None:
-                try:
-                    if thread.isRunning():
-                        thread.quit()
-                        if not thread.wait(1000):  # Wait up to 1 second
-                            logger.warning("Thread didn't stop gracefully, terminating")
-                            thread.terminate()
-                            thread.wait(500)  # Give it a moment to terminate
-                    
-                    thread.deleteLater()
-                except Exception as e:
-                    logger.error(f"Error during thread cleanup: {str(e)}")
+        # Ensure we're in the main thread for UI operations
+        if not sip.isdeleted(self):
+            # Show error message to user
+            QMessageBox.critical(
+                self,
+                title,
+                f"An error occurred while loading the STL file:\n\n{error_message}\n\nPlease check the logs for more details.",
+                QMessageBox.StandardButton.Ok
+            )
             
             # Reset loading state
-            self.is_loading = False
+            self._reset_loading_state()
             
-            # Force UI update
-            QApplication.processEvents()
-    
-    def _cleanup_loading_resources(self):
-        """Safely clean up loading resources."""
+            # Close progress dialog if it exists
+            if hasattr(self, 'progress_dialog'):
+                try:
+                    self.progress_dialog.close()
+                    del self.progress_dialog
+                except Exception as e:
+                    logger.warning(f"Error closing progress dialog: {e}")
+        
+        # Log the error
+        logger.error(f"STL loading failed: {error_message}")
+
+    def _on_loading_finished(self, success=True, error_msg=None):
+        """
+        Handle the completion of the STL loading process.
+        
+        Args:
+            success (bool): Whether the loading completed successfully
+            error_msg (str, optional): Error message if loading failed
+        """
         try:
-            # Clean up worker if it exists
-            if hasattr(self, 'loading_worker') and self.loading_worker is not None:
-                try:
-                    # Check if the worker still exists before trying to disconnect
-                    if not sip.isdeleted(self.loading_worker) if hasattr(sip, 'isdeleted') else True:
-                        try:
-                            # Disconnect signals safely
-                            signals = [
-                                ('chunk_loaded', self._on_chunk_loaded),
-                                ('loading_finished', self._on_loading_finished),
-                                ('error_occurred', self._handle_loading_error),
-                                ('progress_updated', self._update_loading_progress)
-                            ]
-                            
-                            for signal, slot in signals:
-                                try:
-                                    getattr(self.loading_worker, signal).disconnect(slot)
-                                except (TypeError, RuntimeError):
-                                    # Signal was not connected or already disconnected
-                                    pass
-                            
-                            # Schedule the worker for deletion
-                            self.loading_worker.deleteLater()
-                        except RuntimeError as e:
-                            if "wrapped C/C++ object" not in str(e):
-                                logger.error(f"Error disconnecting worker signals: {str(e)}")
-                except Exception as e:
-                    logger.error(f"Error during worker cleanup: {str(e)}")
-                finally:
-                    self.loading_worker = None
+            # Stop the loading timer if it's running
+            if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
+                self.loading_timer.stop()
             
-            # Clean up thread
-            if hasattr(self, 'loading_thread') and self.loading_thread is not None:
-                try:
-                    if self.loading_thread.isRunning():
-                        self.loading_thread.quit()
-                        if not self.loading_thread.wait(1000):  # Wait up to 1 second
-                            logger.warning("Thread didn't stop gracefully, terminating")
-                            self.loading_thread.terminate()
-                            self.loading_thread.wait(500)  # Give it a moment to terminate
-                    
-                    self.loading_thread.deleteLater()
-                except Exception as e:
-                    logger.error(f"Error during thread cleanup: {str(e)}")
-                finally:
-                    self.loading_thread = None
-            
-            # Clean up progress dialog if it exists
-            if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
+            # Close and clean up the progress dialog
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
                 try:
                     self.progress_dialog.close()
                     self.progress_dialog.deleteLater()
                 except Exception as e:
-                    logger.error(f"Error during progress dialog cleanup: {str(e)}")
+                    logger.warning(f"Error closing progress dialog: {e}")
                 finally:
-                    self.progress_dialog = None
-                    
+                    if hasattr(self, 'progress_dialog'):
+                        del self.progress_dialog
+            
+            if success:
+                logger.info("STL loading completed successfully")
+                
+                # Update the UI to show the loaded model
+                if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
+                    try:
+                        # Finalize the visualization
+                        self.stl_visualizer.finalize_loading()
+                        
+                        # Fit the view to the model
+                        self.stl_visualizer.fit_view()
+                        
+                        # Update the window title
+                        if hasattr(self, 'current_file'):
+                            self.setWindowTitle(f"STL to GCode - {self.current_file}")
+                        
+                        # Update status bar
+                        if hasattr(self, 'statusBar'):
+                            self.statusBar().showMessage("STL file loaded successfully", 3000)
+                            
+                    except Exception as e:
+                        logger.error(f"Error finalizing STL visualization: {e}", exc_info=True)
+                        self._handle_loading_error(
+                            f"Error displaying STL model: {str(e)}",
+                            "Visualization Error"
+                        )
+            else:
+                # Handle loading error
+                if error_msg:
+                    self._handle_loading_error(error_msg, "STL Loading Error")
+                else:
+                    self._handle_loading_error("Unknown error occurred while loading STL file")
+        
         except Exception as e:
-            logger.error(f"Unexpected error during resource cleanup: {str(e)}", exc_info=True)
-    
-    def _update_loading_progress(self, progress_value, status_message):
-        """Update the loading progress dialog with current progress.
+            error_msg = f"Error in _on_loading_finished: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            if not success and error_msg:
+                self._handle_loading_error(f"{error_msg}\n\nOriginal error: {error_msg}")
+            else:
+                self._handle_loading_error(error_msg)
+        finally:
+            # Reset loading state
+            self.is_loading = False
+            
+            # Clean up any remaining loading resources
+            if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
+                try:
+                    self.loading_thread.quit()
+                    self.loading_thread.wait(2000)  # Wait up to 2 seconds
+                except Exception as e:
+                    logger.warning(f"Error stopping loading thread: {e}")
+
+    def _update_loading_progress(self, progress, message=None):
+        """
+        Update the progress dialog with the current loading status.
         
         Args:
-            progress_value (int): Current progress value (0-100)
-            status_message (str or int): Status message to display
+            progress (int): The current progress percentage (0-100)
+            message (str, optional): Status message to display
         """
         try:
-            # Ensure we're in the main thread and the application is still running
-            if not QApplication.instance() or not hasattr(self, 'progress_dialog'):
-                return
-                
-            # Get a local reference to the dialog to prevent race conditions
-            progress_dialog = self.progress_dialog
-            if progress_dialog is None:
-                return
-                
-            # Ensure status_message is a string
-            status_str = str(status_message) if status_message is not None else ""
+            # Ensure progress is within valid range
+            progress = max(0, min(100, int(progress)))
             
-            # Update progress dialog if it still exists
-            try:
-                # Check if the dialog was deleted
-                if sip and hasattr(sip, 'isdeleted') and sip.isdeleted(progress_dialog):
-                    return
+            # Update progress dialog if it exists
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                try:
+                    self.progress_dialog.setValue(progress)
+                    if message:
+                        self.progress_dialog.setLabelText(message)
                     
-                # Update the dialog
-                progress_dialog.setValue(progress_value)
-                progress_dialog.setLabelText(status_str)
-                
-                # Process events to keep the UI responsive
-                QApplication.processEvents()
-                
-            except RuntimeError as e:
-                # Dialog was likely deleted
-                if 'wrapped C/C++ object' in str(e):
-                    self.progress_dialog = None
-                return
-                
-            # Update status bar if available
-            try:
-                status_bar = self.statusBar()
-                if status_bar:
-                    status_bar.showMessage(status_str, 3000)  # Show for 3 seconds
-            except RuntimeError:
-                pass  # Status bar might be destroyed
+                    # Process events to update the UI
+                    QApplication.processEvents()
+                    
+                except Exception as e:
+                    logger.warning(f"Error updating progress dialog: {e}")
+            
+            # Log progress at appropriate intervals
+            if progress % 10 == 0:  # Log every 10%
+                log_msg = f"Loading progress: {progress}%"
+                if message:
+                    log_msg += f" - {message}"
+                logger.debug(log_msg)
                 
         except Exception as e:
-            # Use logger if available, otherwise fall back to stderr
-            try:
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error updating loading progress: {str(e)}", exc_info=True)
-            except:
-                import traceback
-                print(f"Error updating loading progress: {str(e)}\n{traceback.format_exc()}")
-                
-        finally:
-            # Ensure we don't hold references to deleted objects
-            if 'progress_dialog' in locals():
-                del progress_dialog
-                
-    def _update_ui_after_loading(self):
-        """Update the UI after an STL file has been successfully loaded."""
-        # Enable/disable toolbar actions based on loaded state
-        if hasattr(self, 'convert_action'):
-            self.convert_action.setEnabled(True)
-        if hasattr(self, 'view_gcode_action'):
-            self.view_gcode_action.setEnabled(False)  # Disable until G-code is generated
-            
-        # Update window title with the current file
-        if self.current_file:
-            self.setWindowTitle(f"STL to GCode Converter v{__version__} - {os.path.basename(self.current_file)}")
-        
-        # Update the status bar
-        self.statusBar().showMessage(f"Loaded {os.path.basename(self.current_file)}", 3000)
-        
-        # Update the recent files list in the menu
-        self._update_recent_files_menu()
-        
-    def _update_file_list(self):
-        """Update the recent files list in the UI."""
-        # This method is kept for backward compatibility
-        # The actual implementation is in _update_recent_files_menu
-        self._update_recent_files_menu()
-        
-    def _update_recent_files_menu(self):
-        """Update the recent files list in the File menu."""
-        try:
-            # Clear the recent files menu
-            if hasattr(self, 'recent_files_menu'):
-                self.recent_files_menu.clear()
-            else:
-                # Create the recent files menu if it doesn't exist
-                self.recent_files_menu = self.file_menu.addMenu("Recent Files")
-            
-            # Add recent files to the menu
-            if hasattr(self, 'recent_files') and self.recent_files:
-                for i, file_path in enumerate(self.recent_files[:10]):  # Show max 10 recent files
-                    if os.path.exists(file_path):
-                        action = QAction(f"{i+1}. {os.path.basename(file_path)}", self)
-                        action.setData(file_path)
-                        action.triggered.connect(lambda checked, path=file_path: self._open_recent_file(path))
-                        self.recent_files_menu.addAction(action)
-                
-                # Add a separator and clear action if there are recent files
-                self.recent_files_menu.addSeparator()
-                clear_action = QAction("Clear Recent Files", self)
-                clear_action.triggered.connect(self._clear_recent_files)
-                self.recent_files_menu.addAction(clear_action)
-            else:
-                # Add a disabled action if no recent files
-                no_files = QAction("No recent files", self)
-                no_files.setEnabled(False)
-                self.recent_files_menu.addAction(no_files)
-                
-        except Exception as e:
-            logger.error(f"Error updating recent files menu: {str(e)}", exc_info=True)
+            logger.error(f"Error in _update_loading_progress: {e}", exc_info=True)
     
 def main():
     """Main entry point for the application."""

@@ -13,7 +13,6 @@ Before running the STL to GCode Converter, ensure that you have the following in
 
 - **CPU**: Dual-core processor (2.0 GHz or faster)
 - **RAM**: 4 GB
-- **GPU**: Integrated graphics with OpenGL 3.3+ support
 - **Storage**: 1 GB free space
 - **Display**: 1280x720 resolution
 
@@ -22,7 +21,6 @@ Before running the STL to GCode Converter, ensure that you have the following in
 
 - **CPU**: Quad-core processor (3.0 GHz or faster)
 - **RAM**: 8 GB or more
-- **GPU**: Dedicated graphics card with OpenGL 4.5+ support (NVIDIA/AMD)
 - **Storage**: 2 GB free space (SSD recommended)
 - **Display**: 1920x1080 resolution or higher with 100% scaling
 
@@ -35,7 +33,6 @@ Before running the STL to GCode Converter, ensure that you have the following in
 - **Windows**: 10 or later (64-bit)
 - **macOS**: 11.0 (Big Sur) or later (Apple Silicon or Intel)
 - **Linux**: Ubuntu 22.04 LTS or later, Fedora 36+, or other modern distributions
-  - Requires X11 or Wayland with OpenGL 3.3+ support
   - May require additional system packages (see below)
 
 
@@ -66,7 +63,6 @@ pip install -r requirements.txt
 - **Pillow**: Image processing
 - **requests**: HTTP requests
 - **QScintilla**: Advanced text editor component
-- **PyOpenGL**: 3D rendering acceleration
 - **pyqt6-tools**: Additional Qt tools (development only)
 
 
@@ -155,10 +151,9 @@ python -c "import matplotlib; print(f'matplotlib version: {matplotlib.__version_
 
 ### Common Issues
 
-1. **OpenGL Errors**: Ensure your GPU drivers are up to date
-2. **Missing Dependencies**: Check error messages and install any missing system packages
-3. **Performance Issues**: Try disabling GPU acceleration in settings if experiencing performance problems
-4. **Display Issues**: If UI elements appear incorrectly, try running with the `-style=Fusion` flag
+1. **Missing Dependencies**: Check error messages and install any missing system packages
+2. **Performance Issues**: Try disabling GPU acceleration in settings if experiencing performance problems
+3. **Display Issues**: If UI elements appear incorrectly, try running with the `-style=Fusion` flag
 
 
 ### Getting Help

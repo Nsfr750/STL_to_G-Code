@@ -9,6 +9,7 @@ from typing import List, Tuple, Dict, Optional
 import numpy as np
 from scipy.spatial import distance
 import logging
+from scripts.logger import get_logger
 
 class GCodeOptimizer:
     """

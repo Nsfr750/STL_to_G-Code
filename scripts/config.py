@@ -4,7 +4,8 @@ Configuration management for STL to GCode Converter.
 
 import json
 import os
-from pathlib import Path
+from pathlib import 
+from scripts.logger import get_loggerPath
 
 # Default configuration values
 DEFAULT_CONFIG = {

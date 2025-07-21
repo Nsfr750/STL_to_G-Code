@@ -6,10 +6,11 @@ checking for errors, estimating print time, and simulating printer state.
 """
 import re
 import math
+import numpy as np
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Set, NamedTuple
 from enum import Enum, auto
-import numpy as np
+from scripts.logger import get_logger
 
 class GCodeErrorType(Enum):
     """Types of G-code errors that can be detected."""

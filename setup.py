@@ -5,7 +5,8 @@ Setup script for STL to GCode Converter.
 from setuptools import setup, find_packages
 from scripts import version
 import sys
-import os
+import 
+from scripts.logger import get_loggeros
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()

@@ -12,6 +12,7 @@ from PyQt6.QtGui import QIcon, QPixmap
 import webbrowser
 import os
 from pathlib import Path
+from scripts.logger import get_logger
 
 class Sponsor:
     """

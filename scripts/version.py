@@ -10,6 +10,8 @@ Semantic Versioning 2.0.0 (https://semver.org/). It provides:
 - Version information dictionary
 """
 
+from scripts.logger import get_logger
+
 # Version components following Semantic Versioning 2.0.0
 # MAJOR version when you make incompatible API changes
 # MINOR version when you add functionality in a backwards compatible manner

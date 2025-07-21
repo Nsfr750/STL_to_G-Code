@@ -4,6 +4,7 @@ Log viewer module for the STL to GCode Converter.
 This module provides a dockable log viewer with filtering capabilities.
 """
 import logging
+from scripts.logger import get_logger
 import os
 from datetime import datetime
 from pathlib import Path
@@ -271,7 +272,7 @@ if __name__ == "__main__":
     log_viewer.show()
     
     # Add some test log messages
-    logger = logging.getLogger()
+    logger = get_logger()
     logger.setLevel(logging.DEBUG)
     logger.addHandler(LogHandler(log_viewer))
     

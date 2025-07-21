@@ -4,7 +4,8 @@ Run this script from the root directory of the project.
 """
 import os
 import shutil
-from pathlib import Path
+from pathlib import 
+from scripts.logger import get_loggerPath
 
 def create_directory(directory):
     """Create a directory if it doesn't exist."""

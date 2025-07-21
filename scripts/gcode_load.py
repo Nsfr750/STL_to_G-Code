@@ -6,12 +6,13 @@ and logging. It's designed to work with the main application's UI and logging sy
 """
 import os
 import logging
+from scripts.logger import get_logger
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def open_gcode_file(parent: Optional[QWidget] = None, file_path: Optional[str] = None) -> Tuple[Optional[str], Dict[str, Any]]:
     """

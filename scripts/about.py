@@ -14,7 +14,8 @@ import platform
 from pathlib import Path
 from .version import get_version  # Updated import to use relative import
 import logging
-logger = logging.getLogger(__name__)
+from scripts.logger import get_logger
+logger = get_logger(__name__)
 
 # Check if OpenGL is available
 OPENGL_AVAILABLE = False
@@ -58,7 +59,7 @@ class About:
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Copyright information
-        copyright = QLabel(" 2025 Nsfr750. All rights reserved.")
+        copyright = QLabel("© 2025 Nsfr750. All rights reserved.")
         copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Description
@@ -85,10 +86,6 @@ class About:
         sys_info.setMaximumHeight(250)
         layout.addWidget(QLabel("<b>System Information:</b>"))
         layout.addWidget(sys_info)
-        
-        # Open-GL
-        open_gl = QLabel("OpenGL: " + ("Available" if OPENGL_AVAILABLE else "Not available"))
-        open_gl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 
         # GitHub button
         github_btn = QPushButton("GitHub")
@@ -198,7 +195,6 @@ class About:
             <tr><td><b>Screen Resolution:</b></td><td>{resolution}</td></tr>
             <tr><td><b>CPU:</b></td><td>{cpu_info}</td></tr>
             <tr><td><b>CPU Cores:</b></td><td>{cpu_cores}</td></tr>
-            <tr><td><b>OpenGL:</b></td><td>{"Available" if OPENGL_AVAILABLE else "Not available"}</td></tr>
             <tr><td><b>Memory:</b></td><td>{memory_info}</td></tr>
             </table>
             </body>

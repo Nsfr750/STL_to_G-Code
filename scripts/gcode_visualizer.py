@@ -7,10 +7,11 @@ from matplotlib import collections as mcoll
 import matplotlib.pyplot as plt
 import re
 import logging
+from scripts.logger import get_logger
 from typing import List, Dict, Any, Tuple, Optional
 import time
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class GCodeVisualizer(QWidget):
     """Widget for 3D visualization of G-code toolpaths with performance optimizations and incremental loading support."""

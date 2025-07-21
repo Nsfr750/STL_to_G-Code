@@ -10,9 +10,10 @@ from typing import Optional, Callable, TypeVar, Type, Any
 from PyQt6.QtWidgets import QMessageBox, QApplication
 from PyQt6.QtCore import Qt
 import logging
+from scripts.logger import get_logger
 
 # Set up logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar('T')
 

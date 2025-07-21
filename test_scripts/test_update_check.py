@@ -2,7 +2,8 @@
 Test script for verifying update check functionality.
 Run this script to test different update scenarios.
 """
-import sys
+import 
+from scripts.logger import get_loggersys
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 try:

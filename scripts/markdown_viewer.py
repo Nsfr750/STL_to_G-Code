@@ -5,10 +5,13 @@ This module provides a simple markdown viewer with syntax highlighting.
 """
 import os
 import markdown
+from scripts.logger import get_logger
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextBrowser, QPushButton, 
                             QFileDialog, QHBoxLayout, QLabel, QComboBox, QFrame)
 from PyQt6.QtCore import Qt, QSize, QUrl
-from PyQt6.QtGui import QTextDocument, QTextCharFormat, QTextCursor, QTextFormat, QTextBlockFormat, QTextFrameFormat, QTextLength
+from PyQt6.QtGui import (QTextDocument, QTextCharFormat, QTextCursor, 
+                         QTextFormat, QTextBlockFormat, QTextFrameFormat, 
+                         QTextLength)
 
 class MarkdownViewer(QDialog):
     """A simple markdown viewer dialog."""

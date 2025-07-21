@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from typing import List, Dict, Optional
 import re
 import logging
+from scripts.logger import get_logger
 
 from .gcode_validator import GCodeValidator, ValidationIssue, ValidationSeverity, PrinterLimits
 
