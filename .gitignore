@@ -94,3 +94,4 @@ coverage.xml
 *.sqlite3
 *.stl
 *.gcode
+STL.txt
