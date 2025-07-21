@@ -3,6 +3,7 @@ Main application class for the STL to GCode Converter using PyQt6.
 """
 import sys
 import os
+import time  # Added for time-based progress tracking
 import logging
 from scripts.logger import get_logger
 from pathlib import Path
@@ -43,6 +44,7 @@ from scripts.gcode_validator import PrinterLimits
 from scripts.view_settings import view_settings  # Add this import
 from scripts.logger import setup_logging, get_logger
 from PyQt6.QtCore import QSettings
+from scripts.progress import ProgressReporter  # Add import at the top of the file with other imports
 try:
     from PyQt6 import sip
 except ImportError:
@@ -156,6 +158,9 @@ class STLToGCodeApp(QMainWindow):
         
         # Initialize STL processor
         self.current_stl_processor = None
+        
+        # Add progress reporter
+        self.progress_reporter = ProgressReporter()
         
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
@@ -1827,74 +1832,30 @@ class STLToGCodeApp(QMainWindow):
             progress (int/float): Progress percentage (0-100)
             message (str, optional): Optional status message
         """
-        # Don't process if we're not loading or if loading was cancelled
-        if not hasattr(self, 'is_loading') or not self.is_loading:
-            return
+        # Initialize progress reporter if needed
+        if not hasattr(self, 'progress_reporter'):
+            self.progress_reporter = ProgressReporter()
             
-        try:
-            # Ensure progress is within valid range and convert to int for the progress bar
-            progress = max(0, min(100, float(progress)))
-            progress_int = int(progress)  # For the progress bar which needs an int
+        # Set the current progress dialog if not set
+        if not hasattr(self.progress_reporter, 'progress_dialog') or self.progress_reporter.progress_dialog is None:
+            self.progress_reporter.progress_dialog = getattr(self, 'progress_dialog', None)
             
-            # Only update if we have a valid progress dialog
-            if hasattr(self, 'progress_dialog') and self.progress_dialog and not sip.isdeleted(self.progress_dialog):
-                try:
-                    # Skip if this is a duplicate of the last update
-                    if hasattr(self, '_last_progress') and abs(progress - self._last_progress) < 1.0:
-                        return
-                        
-                    # Format the progress text with optional message
-                    progress_text = f"{progress:.1f}%"
-                    if message:
-                        progress_text = f"{message} {progress_text}"
-                    
-                    # Update the dialog
-                    self.progress_dialog.setLabelText(progress_text)
-                    self.progress_dialog.setValue(progress_int)
-                    
-                    # Process events to update the UI
-                    QApplication.processEvents()
-                    
-                    # Log progress at certain intervals or on significant changes
-                    if progress % 10 < 0.1 or progress == 100 or not hasattr(self, '_last_progress'):
-                        log_msg = f"Loading progress: {progress:.1f}%"
-                        if message:
-                            log_msg += f" - {message}"
-                        logger.debug(log_msg)
-                        
-                    # Store the last progress to detect duplicates
-                    self._last_progress = progress
-                        
-                except Exception as e:
-                    # Don't log if the dialog was already closed
-                    if not sip.isdeleted(self.progress_dialog):
-                        logger.warning(f"Error updating progress dialog: {e}")
-            
-        except Exception as e:
-            logger.error(f"Error in _update_loading_progress: {e}", exc_info=True)
-        finally:
-            # Clean up the progress tracking if we're done
-            if progress >= 100 and hasattr(self, '_last_progress'):
-                del self._last_progress
-    
-def main():
-    """Main entry point for the application."""
-    # Set up logging first
-    try:
-        log_file = setup_logging()
-        logger = get_logger(__name__)
-        logger.info("=" * 80)
-        logger.info(f"Starting STL to GCode Converter v{__version__}")
-        logger.info(f"Log file: {log_file}")
-        logger.info("=" * 80)
-    except Exception as e:
-        print(f"Failed to set up logging: {e}")
-        sys.exit(1)
+        # Set loading state
+        self.progress_reporter.is_loading = getattr(self, 'is_loading', False)
+        
+        # Update progress
+        self.progress_reporter.update_progress(progress, message)
 
+# Run the application
+if __name__ == "__main__":
     app = QApplication(sys.argv)
+    
+    # Set application style
+    app.setStyle('Fusion')
+    
+    # Create and show the main window
     window = STLToGCodeApp()
     window.show()
+    
+    # Start the event loop
     sys.exit(app.exec())
-
-if __name__ == "__main__":
-    main()

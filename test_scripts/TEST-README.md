@@ -10,6 +10,7 @@
 
 ```python -m test_scripts.test_update_check.py --version 99.99.99 --force```
 
+### Test Progress Reporting
+```python -m test_scripts.test_progress_reporting```
 ## Run All Tests
 ```python -m unittest discover -s test_scripts -p "test_*.py"```
-
