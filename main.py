@@ -30,7 +30,6 @@ from scripts.ui_qt import UI  # Import the new UI module
 from scripts.log_viewer import LogViewer  # Import the LogViewer
 from scripts.gcode_optimizer import GCodeOptimizer
 from scripts.workers import GCodeGenerationWorker, STLLoadingWorker
-from scripts.gcode_visualizer import GCodeVisualizer
 from scripts.stl_processor import MemoryEfficientSTLProcessor, STLHeader, STLTriangle
 from scripts.STL_load import open_stl_file, show_file_open_error  # Add this import
 from scripts.gcode_load import open_gcode_file, show_file_open_error
@@ -309,17 +308,14 @@ class STLToGCodeApp(QMainWindow):
         # Add tabs
         self.stl_view_tab = QWidget()
         self.gcode_view_tab = QWidget()
-        self.visualization_tab = QWidget()
         
         # Add tabs with proper names
         self.tab_widget.addTab(self.stl_view_tab, "3D View")
         self.tab_widget.addTab(self.gcode_view_tab, "G-code Editor")
-        self.tab_widget.addTab(self.visualization_tab, "G-code Visualization")
         
         # Set up each tab's content
         self._setup_stl_view()
         self._setup_gcode_view()
-        self._setup_visualization_view()
         self._setup_editor_tab()
         
         # Add tab widget to right layout
@@ -394,40 +390,6 @@ class STLToGCodeApp(QMainWindow):
         # G-code text editor
         self.gcode_editor = self.ui.create_text_editor(self.gcode_view_tab)
         layout.addWidget(self.gcode_editor)
-    
-    def _setup_visualization_view(self):
-        """Set up the G-code visualization tab."""
-        try:
-            from scripts.gcode_visualizer import GCodeVisualizer
-            
-            # Create a container widget for the visualization
-            container = QWidget()
-            layout = QVBoxLayout(container)
-            
-            # Initialize the GCodeVisualizer
-            self.gcode_visualizer = GCodeVisualizer(container)
-            
-            # Add the visualizer to the layout
-            layout.addWidget(self.gcode_visualizer)
-            
-            # Set the container as the widget for the visualization tab
-            self.visualization_tab.setLayout(layout)
-            
-            # Initialize with empty visualization
-            self._update_visualization()
-            
-        except ImportError as e:
-            logger.error(f"Failed to import GCodeVisualizer: {e}", exc_info=True)
-            error_label = QLabel("Failed to initialize G-code visualization. Please check the logs for details.")
-            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.visualization_tab.setLayout(QVBoxLayout())
-            self.visualization_tab.layout().addWidget(error_label)
-        except Exception as e:
-            logger.error(f"Error setting up G-code visualization: {e}", exc_info=True)
-            error_label = QLabel("An error occurred while setting up G-code visualization.")
-            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.visualization_tab.setLayout(QVBoxLayout())
-            self.visualization_tab.layout().addWidget(error_label)
     
     def _style_matplotlib_toolbar(self, toolbar=None):
         """Apply custom styling to the matplotlib toolbar.
@@ -1432,7 +1394,7 @@ class STLToGCodeApp(QMainWindow):
                 return
                 
             logger.debug(f"Updating visualization with {len(self.current_vertices)} vertices and "
-                       f"{len(self.current_faces) if hasattr(self, 'current_faces') and self.current_faces is not None else 0} faces")
+                       f"{len(self.current_faces) if hasattr(self, 'current_faces') else 0} faces")
             
             # Ensure we have the STL visualizer
             if not hasattr(self, 'stl_visualizer') or self.stl_visualizer is None:
@@ -1506,20 +1468,6 @@ class STLToGCodeApp(QMainWindow):
                 f"Error updating 3D view: {str(e)}",
                 "Visualization Error"
             )
-    
-    def _reset_visualization_view(self):
-        """Reset the G-code visualization view to default."""
-        try:
-            if hasattr(self, 'gcode_visualizer') and self.gcode_visualizer:
-                self.gcode_visualizer.reset_view()
-                logger.debug("G-code visualization view reset")
-                self.statusBar().showMessage("View reset", 2000)
-            else:
-                logger.warning("Cannot reset view: G-code visualizer not initialized")
-        except Exception as e:
-            error_msg = f"Error resetting G-code visualization view: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            self.statusBar().showMessage(error_msg, 5000)
     
     def _reset_stl_view(self):
         """Reset the STL view to its default state."""
