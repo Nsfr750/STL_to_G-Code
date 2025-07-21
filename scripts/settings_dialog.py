@@ -174,26 +174,33 @@ class SettingsDialog(QDialog):
     def _set_checkbox_style(self):
         """Set the style for checkboxes to use a checkmark."""
         style = """
+        QCheckBox {
+            spacing: 5px;
+        }
         QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
+            border: 1px solid #999999;
+            border-radius: 3px;
+            background: #ffffff;
         }
         QCheckBox::indicator:unchecked {
             border: 1px solid #999999;
             background: #ffffff;
-            border-radius: 3px;
         }
         QCheckBox::indicator:checked {
             border: 1px solid #0078d7;
-            background: #ffffff;
-            border-radius: 3px;
-            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="%230078d7" d="M13.5 3.5L6 11 2.5 7.5l-1 1L6 13l8.5-8.5z"/></svg>');
+            background: #0078d7;
+            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline fill="none" stroke="white" stroke-width="2" points="1.5,8 6,12 14.5,3.5"/></svg>');
         }
         QCheckBox::indicator:indeterminate {
             border: 1px solid #999999;
-            background: #ffffff;
-            border-radius: 3px;
-            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="2" fill="%23999999"/></svg>');
+            background: #f0f0f0;
+            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><line x1="3" y1="8" x2="13" y2="8" stroke="%23999999" stroke-width="2"/></svg>');
+        }
+        QCheckBox::indicator:disabled {
+            border: 1px solid #cccccc;
+            background: #f0f0f0;
         }
         """
         

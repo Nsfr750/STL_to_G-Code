@@ -56,9 +56,33 @@ class GCodeGenerationWorker(QObject):
             z_max = float(z_coords.max())
             total_layers = int((z_max - z_min) / self.settings['layer_height']) + 1
             
-            # Initialize G-code optimizer
+            # Initialize G-code optimizer with individual parameters
             from scripts.gcode_optimizer import GCodeOptimizer
-            optimizer = GCodeOptimizer(self.settings)
+            optimizer = GCodeOptimizer(
+                layer_height=self.settings['layer_height'],
+                nozzle_diameter=self.settings['extrusion_width'],
+                filament_diameter=self.settings['filament_diameter'],
+                print_speed=self.settings['print_speed'],
+                travel_speed=self.settings['travel_speed'],
+                infill_speed=self.settings['infill_speed'],
+                first_layer_speed=self.settings['first_layer_speed'],
+                retraction_length=self.settings['retraction_length'],
+                retraction_speed=self.settings['retraction_speed'],
+                z_hop=self.settings['z_hop'],
+                infill_density=self.settings['infill_density'],
+                infill_pattern=self.settings['infill_pattern'],
+                infill_angle=self.settings['infill_angle']
+            )
+            
+            # Prepare context for G-code generation
+            context = {
+                'z_min': z_min,
+                'z_max': z_max,
+                'bed_temp': self.settings.get('bed_temp', 60),
+                'extruder_temp': self.settings.get('extruder_temp', 200),
+                'fan_speed': self.settings.get('fan_speed', 0),
+                'material': self.settings.get('material', 'PLA')
+            }
             
             # Prepare start and end G-code
             start_gcode = self.settings.get('start_gcode', '')
@@ -69,7 +93,7 @@ class GCodeGenerationWorker(QObject):
                 self.stl_mesh,
                 start_gcode=start_gcode,
                 end_gcode=end_gcode,
-                context={'z_min': z_min, 'z_max': z_max}
+                context=context
             )
             
             for i, chunk in enumerate(gcode_generator):
