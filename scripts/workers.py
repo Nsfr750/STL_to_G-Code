@@ -335,16 +335,24 @@ class STLLoadingWorker(QObject):
                 logging.error(f"Error closing STL processor: {str(e)}", exc_info=True)
     
     def _emit_chunk(self, vertices, faces, processed_triangles, total_triangles, is_final=False):
-        """Eit a chunk of STL data with proper progress information."""
+        """Emit a chunk of STL data with proper progress information."""
         progress = 100.0 if is_final else (processed_triangles / total_triangles) * 100
-        logging.debug(f"Emitting chunk with {len(vertices)//3} triangles, progress: {progress:.1f}%")
         
-        self.chunk_loaded.emit({
-            'vertices': np.array(vertices, dtype=np.float32),
-            'faces': np.array(faces, dtype=np.int32),  # Use int32 for better compatibility
-            'progress': progress,
-            'status': f"Loading STL... {processed_triangles}/{total_triangles} triangles"
-        })
+        # Only log progress at certain intervals or for significant changes
+        if is_final or processed_triangles % 100 == 0 or not hasattr(self, '_last_progress') or \
+           abs(progress - getattr(self, '_last_progress', 0)) >= 1.0:  # At least 1% change
+            
+            logging.debug(f"Emitting chunk with {len(vertices)//3} triangles, progress: {progress:.1f}%")
+            
+            self.chunk_loaded.emit({
+                'vertices': np.array(vertices, dtype=np.float32),
+                'faces': np.array(faces, dtype=np.int32),
+                'progress': progress,
+                'status': f"Loading STL... {progress:.1f}%"
+            })
+            
+            # Update the last progress value
+            self._last_progress = progress
     
     def cancel(self):
         """Cancel the loading process."""

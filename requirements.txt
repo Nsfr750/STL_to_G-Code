@@ -39,5 +39,3 @@ sphinx-rtd-theme>=1.2.0
 
 # Optional Dependencies (for advanced features)
 opencv-python-headless>=4.7.0  # For advanced image processing
-pyopengl>=3.1.6  # For hardware-accelerated 3D rendering
-pyopengl-accelerate>=3.1.6  # For hardware-accelerated 3D rendering

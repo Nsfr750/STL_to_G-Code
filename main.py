@@ -1753,18 +1753,34 @@ class STLToGCodeApp(QMainWindow):
         # Stop the worker thread if it's running
         if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
             logger.debug("Stopping loading thread...")
-            if hasattr(self, 'loading_worker'):
-                self.loading_worker.stop()
-            self.loading_thread.quit()
-            self.loading_thread.wait()
+            # First check if the worker still exists and is valid
+            if hasattr(self, 'loading_worker') and self.loading_worker is not None:
+                try:
+                    # Use sip to check if the C++ object is still valid
+                    if not sip.isdeleted(self.loading_worker):
+                        self.loading_worker.stop()
+                except Exception as e:
+                    logger.warning(f"Error stopping loading worker: {e}")
+            
+            # Clean up the thread
+            try:
+                self.loading_thread.quit()
+                if not self.loading_thread.wait(2000):  # Wait up to 2 seconds
+                    self.loading_thread.terminate()
+                    self.loading_thread.wait()
+            except Exception as e:
+                logger.warning(f"Error stopping loading thread: {e}")
         
         # Close the progress dialog if it exists
         if hasattr(self, 'progress_dialog'):
             try:
                 self.progress_dialog.close()
-                del self.progress_dialog
             except Exception as e:
                 logger.warning(f"Error closing progress dialog: {e}")
+            finally:
+                # Ensure we remove the reference even if close fails
+                if hasattr(self, 'progress_dialog'):
+                    del self.progress_dialog
         
         # Reset loading state
         self._reset_loading_state()
@@ -1812,21 +1828,25 @@ class STLToGCodeApp(QMainWindow):
             success (bool): Whether the loading completed successfully
             error_msg (str, optional): Error message if loading failed
         """
+        # Prevent multiple completion signals
+        if not hasattr(self, 'is_loading') or not self.is_loading:
+            logger.debug("Ignoring duplicate loading finished signal")
+            return
+        
+        loading_thread = None
+        progress_dialog = None
+        
         try:
+            # Get references to objects we need to clean up
+            loading_thread = getattr(self, 'loading_thread', None)
+            progress_dialog = getattr(self, 'progress_dialog', None)
+            
             # Stop the loading timer if it's running
             if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
                 self.loading_timer.stop()
             
-            # Close and clean up the progress dialog
-            if hasattr(self, 'progress_dialog') and self.progress_dialog:
-                try:
-                    self.progress_dialog.close()
-                    self.progress_dialog.deleteLater()
-                except Exception as e:
-                    logger.warning(f"Error closing progress dialog: {e}")
-                finally:
-                    if hasattr(self, 'progress_dialog'):
-                        del self.progress_dialog
+            # Mark loading as complete to prevent duplicate signals
+            self.is_loading = False
             
             if success:
                 logger.info("STL loading completed successfully")
@@ -1834,11 +1854,8 @@ class STLToGCodeApp(QMainWindow):
                 # Update the UI to show the loaded model
                 if hasattr(self, 'stl_visualizer') and self.stl_visualizer:
                     try:
-                        # Finalize the visualization
-                        self.stl_visualizer.finalize_loading()
-                        
-                        # Fit the view to the model
-                        self.stl_visualizer.fit_view()
+                        self.stl_visualizer._render()
+                        self.stl_visualizer._auto_scale()
                         
                         # Update the window title
                         if hasattr(self, 'current_file'):
@@ -1847,7 +1864,7 @@ class STLToGCodeApp(QMainWindow):
                         # Update status bar
                         if hasattr(self, 'statusBar'):
                             self.statusBar().showMessage("STL file loaded successfully", 3000)
-                            
+                                
                     except Exception as e:
                         logger.error(f"Error finalizing STL visualization: {e}", exc_info=True)
                         self._handle_loading_error(
@@ -1869,51 +1886,91 @@ class STLToGCodeApp(QMainWindow):
             else:
                 self._handle_loading_error(error_msg)
         finally:
-            # Reset loading state
-            self.is_loading = False
-            
-            # Clean up any remaining loading resources
-            if hasattr(self, 'loading_thread') and self.loading_thread.isRunning():
+            # Clean up progress dialog if it exists
+            if progress_dialog is not None:
                 try:
-                    self.loading_thread.quit()
-                    self.loading_thread.wait(2000)  # Wait up to 2 seconds
+                    if not sip.isdeleted(progress_dialog):
+                        progress_dialog.close()
+                        progress_dialog.deleteLater()
+                except Exception as e:
+                    logger.warning(f"Error closing progress dialog: {e}")
+                finally:
+                    if hasattr(self, 'progress_dialog'):
+                        del self.progress_dialog
+            
+            # Clean up loading thread
+            if loading_thread is not None:
+                try:
+                    if not sip.isdeleted(loading_thread):
+                        if loading_thread.isRunning():
+                            loading_thread.quit()
+                            if not loading_thread.wait(2000):
+                                loading_thread.terminate()
+                                loading_thread.wait()
+                        loading_thread.deleteLater()
                 except Exception as e:
                     logger.warning(f"Error stopping loading thread: {e}")
-
+                finally:
+                    if hasattr(self, 'loading_thread'):
+                        del self.loading_thread
+    
     def _update_loading_progress(self, progress, message=None):
         """
         Update the progress dialog with the current loading status.
         
         Args:
-            progress (int): The current progress percentage (0-100)
-            message (str, optional): Status message to display
+            progress (int/float): Progress percentage (0-100)
+            message (str, optional): Optional status message
         """
-        try:
-            # Ensure progress is within valid range
-            progress = max(0, min(100, int(progress)))
+        # Don't process if we're not loading or if loading was cancelled
+        if not hasattr(self, 'is_loading') or not self.is_loading:
+            return
             
-            # Update progress dialog if it exists
-            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+        try:
+            # Ensure progress is within valid range and convert to int for the progress bar
+            progress = max(0, min(100, float(progress)))
+            progress_int = int(progress)  # For the progress bar which needs an int
+            
+            # Only update if we have a valid progress dialog
+            if hasattr(self, 'progress_dialog') and self.progress_dialog and not sip.isdeleted(self.progress_dialog):
                 try:
-                    self.progress_dialog.setValue(progress)
+                    # Skip if this is a duplicate of the last update
+                    if hasattr(self, '_last_progress') and abs(progress - self._last_progress) < 1.0:
+                        return
+                        
+                    # Format the progress text with optional message
+                    progress_text = f"{progress:.1f}%"
                     if message:
-                        self.progress_dialog.setLabelText(message)
+                        progress_text = f"{message} {progress_text}"
+                    
+                    # Update the dialog
+                    self.progress_dialog.setLabelText(progress_text)
+                    self.progress_dialog.setValue(progress_int)
                     
                     # Process events to update the UI
                     QApplication.processEvents()
                     
+                    # Log progress at certain intervals or on significant changes
+                    if progress % 10 < 0.1 or progress == 100 or not hasattr(self, '_last_progress'):
+                        log_msg = f"Loading progress: {progress:.1f}%"
+                        if message:
+                            log_msg += f" - {message}"
+                        logger.debug(log_msg)
+                        
+                    # Store the last progress to detect duplicates
+                    self._last_progress = progress
+                        
                 except Exception as e:
-                    logger.warning(f"Error updating progress dialog: {e}")
+                    # Don't log if the dialog was already closed
+                    if not sip.isdeleted(self.progress_dialog):
+                        logger.warning(f"Error updating progress dialog: {e}")
             
-            # Log progress at appropriate intervals
-            if progress % 10 == 0:  # Log every 10%
-                log_msg = f"Loading progress: {progress}%"
-                if message:
-                    log_msg += f" - {message}"
-                logger.debug(log_msg)
-                
         except Exception as e:
             logger.error(f"Error in _update_loading_progress: {e}", exc_info=True)
+        finally:
+            # Clean up the progress tracking if we're done
+            if progress >= 100 and hasattr(self, '_last_progress'):
+                del self._last_progress
     
 def main():
     """Main entry point for the application."""
