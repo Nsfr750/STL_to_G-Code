@@ -1403,76 +1403,89 @@ class STLToGCodeApp(QMainWindow):
             
             # Ensure we have the STL visualizer
             if not hasattr(self, 'stl_visualizer') or self.stl_visualizer is None:
-                logger.error("STL visualizer not initialized")
-                # Try to initialize the visualizer if it's not available
-                if hasattr(self, '_setup_stl_view'):
-                    logger.debug("Initializing STL visualizer...")
+                logger.debug("STL visualizer not found, attempting to initialize...")
+                try:
                     self._setup_stl_view()
                     if not hasattr(self, 'stl_visualizer') or self.stl_visualizer is None:
                         logger.error("Failed to initialize STL visualizer")
                         return
-                else:
-                    logger.error("Cannot initialize STL visualizer - _setup_stl_view method not found")
+                except Exception as e:
+                    logger.error(f"Error initializing STL visualizer: {e}", exc_info=True)
                     return
-            
-            # Convert vertices to numpy array if needed
-            vertices = np.asarray(self.current_vertices, dtype=np.float32)
-            
-            # Generate faces if they don't exist (triangle soup)
-            if not hasattr(self, 'current_faces') or self.current_faces is None or len(self.current_faces) == 0:
-                logger.debug("Generating faces for triangle soup")
-                num_vertices = len(vertices)
-                if num_vertices % 3 != 0:
-                    logger.error(f"Number of vertices ({num_vertices}) is not divisible by 3")
-                    return
-                faces = np.arange(num_vertices, dtype=np.uint32).reshape(-1, 3)
-            else:
-                faces = np.asarray(self.current_faces, dtype=np.uint32)
-            
-            # Ensure we have valid data
-            if len(vertices) == 0:
-                logger.warning("No vertices to display")
-                return
-                
-            if len(faces) == 0:
-                logger.warning("No faces to display")
-                return
-            
-            # Log some debug info
-            logger.debug(f"Vertices shape: {vertices.shape}, dtype: {vertices.dtype}")
-            logger.debug(f"Faces shape: {faces.shape}, dtype: {faces.dtype}")
-            logger.debug(f"First few vertices: {vertices[:2]}")
-            logger.debug(f"First few faces: {faces[:2]}")
             
             try:
+                # Convert vertices to numpy array if needed
+                vertices = np.asarray(self.current_vertices, dtype=np.float32)
+                
+                # Generate faces if they don't exist (triangle soup)
+                if not hasattr(self, 'current_faces') or self.current_faces is None or len(self.current_faces) == 0:
+                    logger.debug("Generating faces for triangle soup")
+                    num_vertices = len(vertices)
+                    if num_vertices % 3 != 0:
+                        logger.error(f"Number of vertices ({num_vertices}) is not divisible by 3")
+                        return
+                    faces = np.arange(num_vertices, dtype=np.uint32).reshape(-1, 3)
+                else:
+                    faces = np.asarray(self.current_faces, dtype=np.uint32)
+                
+                # Ensure we have valid data
+                if len(vertices) == 0:
+                    logger.warning("No vertices to display")
+                    return
+                    
+                if len(faces) == 0:
+                    logger.warning("No faces to display")
+                    return
+                
+                # Log some debug info
+                logger.debug(f"Vertices shape: {vertices.shape}, dtype: {vertices.dtype}")
+                logger.debug(f"Faces shape: {faces.shape}, dtype: {faces.dtype}")
+                logger.debug(f"First few vertices: {vertices[:2]}")
+                logger.debug(f"First few faces: {faces[:2]}")
+                
                 # Update the mesh in the visualizer
                 logger.debug("Updating mesh in visualizer...")
                 self.stl_visualizer.update_mesh(vertices, faces)
                 
-                # Force a redraw of the canvas
-                if hasattr(self, 'stl_canvas'):
-                    logger.debug("Forcing canvas redraw...")
-                    self.stl_canvas.draw_idle()
+                # Force a redraw of the canvas if it exists
+                if hasattr(self, 'stl_canvas') and self.stl_canvas is not None:
+                    try:
+                        logger.debug("Forcing canvas redraw...")
+                        self.stl_canvas.draw_idle()
+                    except Exception as e:
+                        logger.error(f"Error redrawing canvas: {e}", exc_info=True)
                 
-                # Update the window title with the current file name
-                if hasattr(self, 'current_stl_file'):
-                    self.setWindowTitle(f"STL to G-Code - {os.path.basename(self.current_stl_file)}")
+                # Update the window title with the current file name if available
+                current_file = getattr(self, 'current_stl_file', None) or getattr(self, 'file_path', None)
+                if current_file:
+                    try:
+                        self.setWindowTitle(f"STL to G-Code - {os.path.basename(str(current_file))}")
+                    except Exception as e:
+                        logger.warning(f"Error updating window title: {e}")
                 
                 logger.info("Visualization updated successfully")
                 
             except Exception as e:
-                logger.error(f"Error updating visualization: {e}", exc_info=True)
+                logger.error(f"Error in mesh processing: {e}", exc_info=True)
                 self._handle_loading_error(
-                    f"Error updating 3D view: {str(e)}",
+                    f"Error processing 3D mesh: {str(e)}",
                     "Visualization Error"
                 )
                 
         except Exception as e:
-            logger.error(f"Error in _update_visualization: {e}", exc_info=True)
-            self._handle_loading_error(
-                f"Error updating 3D view: {str(e)}",
-                "Visualization Error"
-            )
+            logger.error(f"Unexpected error in _update_visualization: {e}", exc_info=True)
+            try:
+                # Try to show a user-friendly error message
+                QMessageBox.critical(
+                    self,
+                    "Visualization Error",
+                    f"An error occurred while updating the 3D view.\n\n{str(e)}\n\nPlease check the logs for more details.",
+                    QMessageBox.StandardButton.Ok
+                )
+            except Exception as dialog_error:
+                logger.error(f"Error showing error dialog: {dialog_error}")
+                # If we can't show a dialog, at least print to stderr
+                print(f"Error updating visualization: {e}", file=sys.stderr)
     
     def _reset_stl_view(self):
         """Reset the STL view to its default state."""
@@ -1803,8 +1816,30 @@ class STLToGCodeApp(QMainWindow):
                 # Only update visualization if we have valid mesh data
                 if hasattr(self, 'current_vertices') and len(self.current_vertices) > 0:
                     logger.debug(f"Updating visualization with {len(self.current_vertices)} vertices and {len(self.current_faces) if hasattr(self, 'current_faces') else 0} faces")
+                    
+                    # Create a mesh object to store the loaded data
+                    try:
+                        # Try to create a mesh using trimesh if available
+                        import trimesh
+                        self.stl_mesh = trimesh.Trimesh(vertices=self.current_vertices, faces=self.current_faces)
+                        logger.debug("Created trimesh object from loaded data")
+                    except ImportError:
+                        # Fall back to a simple dictionary if trimesh is not available
+                        self.stl_mesh = {
+                            'vertices': self.current_vertices,
+                            'faces': self.current_faces,
+                            'z': self.current_vertices[:, 2]  # Add z-coordinates for layer calculations
+                        }
+                        logger.debug("Created simple mesh dictionary from loaded data")
+                    
+                    # Update the visualization with the loaded mesh
                     self._update_visualization()
                     logger.debug("Visualization update complete")
+                    
+                    # Enable the Convert to G-code button
+                    if hasattr(self, 'convert_action'):
+                        self.convert_action.setEnabled(True)
+                        logger.debug("Enabled Convert to G-code button")
                 else:
                     logger.warning("No mesh data available to display")
                     

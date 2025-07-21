@@ -35,6 +35,7 @@ class ProgressReporter:
         self._last_progress = -1
         self._last_progress_time = 0
         self._last_message = None
+        self._logged_100_percent = False
     
     def update_progress(self, progress, message=None):
         """
@@ -112,10 +113,25 @@ class ProgressReporter:
     
     def _log_progress(self, progress, message):
         """Log the progress at appropriate intervals."""
-        # Log at 10% intervals or when message changes
-        if (progress % 10 < 0.1 or progress == 100 or 
-                (hasattr(self, '_last_message') and message != self._last_message)):
-            log_msg = f"Loading progress: {progress:.1f}%"
+        # Only log if:
+        # 1. We're at a 10% interval (0%, 10%, 20%, etc.)
+        # 2. We're at 100% completion (but only once)
+        # 3. The message has changed
+        should_log = False
+        
+        # Check for 10% intervals (but not 100% yet)
+        if progress < 100 and progress % 10 < 0.1:
+            should_log = True
+        # Check for 100% completion (only log once)
+        elif progress >= 100 and (not hasattr(self, '_logged_100_percent') or not self._logged_100_percent):
+            should_log = True
+            self._logged_100_percent = True
+        # Check if message has changed
+        elif hasattr(self, '_last_message') and message != self._last_message:
+            should_log = True
+        
+        if should_log:
+            log_msg = f"Loading progress: {min(100.0, progress):.1f}%"
             if message:
                 log_msg = f"{log_msg} - {message}"
             logger.debug(log_msg)
@@ -125,6 +141,7 @@ class ProgressReporter:
         self._last_progress = -1
         self._last_progress_time = 0
         self._last_message = None
+        self._logged_100_percent = False  # Reset the 100% flag
         
         # Reset the progress dialog if it exists
         if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:

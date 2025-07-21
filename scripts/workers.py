@@ -36,57 +36,41 @@ class GCodeGenerationWorker(QObject):
     
     @pyqtSlot()
     def generate(self):
-        """Perform the G-code generation in the background."""
+        """Generate G-code from the STL mesh."""
         try:
-            # Import here to avoid circular imports
+            # Initialize progress
+            self.progress.emit(0, 100)
+            
+            # Get z-coordinates from the mesh (handling both trimesh and dict)
+            if hasattr(self.stl_mesh, 'vertices') and hasattr(self.stl_mesh.vertices, '__array__'):
+                # Handle trimesh object
+                z_coords = self.stl_mesh.vertices[:, 2]
+            elif isinstance(self.stl_mesh, dict) and 'vertices' in self.stl_mesh:
+                # Handle dictionary mesh
+                z_coords = self.stl_mesh['vertices'][:, 2]
+            else:
+                raise ValueError("Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' key.")
+            
+            # Calculate total layers
+            z_min = float(z_coords.min())
+            z_max = float(z_coords.max())
+            total_layers = int((z_max - z_min) / self.settings['layer_height']) + 1
+            
+            # Initialize G-code optimizer
             from scripts.gcode_optimizer import GCodeOptimizer
+            optimizer = GCodeOptimizer(self.settings)
             
-            # Initialize the optimizer with settings
-            optimizer = GCodeOptimizer(
-                layer_height=self.settings['layer_height'],
-                nozzle_diameter=self.settings['extrusion_width'],
-                filament_diameter=self.settings['filament_diameter'],
-                print_speed=self.settings['print_speed'],
-                travel_speed=self.settings['travel_speed'],
-                infill_speed=self.settings['infill_speed'],
-                first_layer_speed=self.settings['first_layer_speed'],
-                retraction_length=self.settings['retraction_length'],
-                retraction_speed=self.settings['retraction_speed'],
-                z_hop=self.settings['z_hop'],
-                infill_density=self.settings['infill_density'],
-                infill_pattern=self.settings['infill_pattern'],
-                infill_angle=self.settings['infill_angle'],
-                enable_arc_detection=self.settings.get('enable_arc_detection', False),
-                arc_tolerance=self.settings.get('arc_tolerance', 0.05),
-                min_arc_segments=self.settings.get('min_arc_segments', 5),
-                enable_optimized_infill=self.settings.get('enable_optimized_infill', False),
-                infill_resolution=self.settings.get('infill_resolution', 1.0)
-            )
-            
-            # Get custom start/end G-code from settings
+            # Prepare start and end G-code
             start_gcode = self.settings.get('start_gcode', '')
             end_gcode = self.settings.get('end_gcode', '')
-            
-            # Prepare context for variable substitution
-            context = {
-                'bed_temp': self.settings.get('bed_temp', 60),
-                'extruder_temp': self.settings.get('extruder_temp', 200),
-                'fan_speed': self.settings.get('fan_speed', 0),
-                'material': self.settings.get('material', 'PLA'),
-                'layer_height': self.settings['layer_height'],
-                'filament_diameter': self.settings['filament_diameter'],
-                'nozzle_diameter': self.settings['extrusion_width']
-            }
             
             # Generate G-code in chunks to keep the UI responsive
             gcode_generator = optimizer.generate_gcode(
                 self.stl_mesh,
                 start_gcode=start_gcode,
                 end_gcode=end_gcode,
-                context=context
+                context={'z_min': z_min, 'z_max': z_max}
             )
-            
-            total_layers = int((self.stl_mesh.z.max() - self.stl_mesh.z.min()) / self.settings['layer_height']) + 1
             
             for i, chunk in enumerate(gcode_generator):
                 if self._is_cancelled:
@@ -99,20 +83,27 @@ class GCodeGenerationWorker(QObject):
                 # Emit the G-code chunk
                 if chunk:
                     self.gcode_chunk.emit(chunk)
-            
-            # Emit preview data if available
-            if hasattr(optimizer, 'last_preview_data'):
-                self.preview_ready.emit(optimizer.last_preview_data)
-            
-            if not self._is_cancelled:
-                self.finished.emit()
+                    
+                    # Generate preview data for the first few layers
+                    if i < 10:  # Only send preview for first 10 layers for performance
+                        preview_data = {
+                            'layer': i + 1,
+                            'total_layers': total_layers,
+                            'gcode': chunk
+                        }
+                        self.preview_ready.emit(preview_data)
                 
+                # Process events to keep the UI responsive
+                QThread.yieldCurrentThread()
+            
+            logger.info("G-code generation completed successfully")
+            
         except Exception as e:
-            logger.exception("Error in G-code generation")
-            self.error.emit(str(e))
+            error_msg = f"Error in G-code generation: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            self.error.emit(error_msg)
         finally:
-            # Clean up
-            self._is_cancelled = True
+            self.finished.emit()
 
 
 class STLLoadingWorker(QObject):
