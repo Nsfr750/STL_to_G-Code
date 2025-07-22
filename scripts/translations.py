@@ -155,6 +155,95 @@ TRANSLATIONS = {
         "download": "Download",
         "view_changes": "View Changes",
         "update_available_title": "Update Available",
+        
+        # Worker-related translations
+        "worker.error.unsupported_mesh_format": "Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' key.",
+        "worker.info.calculated_layers": "Calculated {layers} layers (z: {z_min:.2f}mm to {z_max:.2f}mm, height: {height:.2f}mm)",
+        "worker.info.generation_cancelled": "G-code generation cancelled by user",
+        "worker.info.generation_complete": "G-code generation completed successfully",
+        "worker.error.generation_failed": "Error in G-code generation: {error}",
+        
+        "worker.error.missing_header_info": "STL processor is missing required header information",
+        "worker.error.invalid_triangle_count": "Invalid number of triangles in STL file: {count}",
+        "worker.error.loading_failed": "Error in STL loading worker: {error}",
+        "worker.error.cleanup_failed": "Error closing STL processor: {error}",
+        "worker.info.stl_loading_started": "STL loading worker started",
+        "worker.info.total_triangles": "Total triangles to process: {count}",
+        "worker.info.loading_cancelled": "Loading cancelled by user",
+        "worker.info.loading_complete": "STL loading completed successfully",
+        "worker.status.loading_stl": "Loading STL... {progress:.1f}%",
+        
+        "worker.debug.stl_header": "STL header: {header}",
+        "worker.debug.starting_triangle_iteration": "Starting triangle iteration...",
+        "worker.debug.emitting_chunk": "Emitting chunk with {triangles} triangles, progress: {progress:.1f}%",
+        "worker.debug.loading_cancellation_requested": "STL loading cancellation requested",
+        "worker.warning.no_stl_header": "STL processor has no _header attribute",
+        
+        # Settings Dialog Translations
+        "settings_dialog.title": "Settings",
+        
+        # Tab names
+        "settings_dialog.tabs.general": "General",
+        "settings_dialog.tabs.path_optimization": "Path Optimization",
+        "settings_dialog.tabs.infill": "Infill",
+        "settings_dialog.tabs.advanced": "Advanced",
+        
+        # Group box titles
+        "settings_dialog.general.title": "General Settings",
+        "settings_dialog.path_optimization.title": "Path Optimization Settings",
+        "settings_dialog.infill.title": "Infill Settings",
+        "settings_dialog.advanced.title": "Advanced Settings",
+        "settings_dialog.gcode.title": "G-code",
+        
+        # General settings
+        "settings_dialog.general.layer_height": "Layer Height (mm):",
+        "settings_dialog.general.print_speed": "Print Speed (mm/s):",
+        "settings_dialog.general.travel_speed": "Travel Speed (mm/s):",
+        "settings_dialog.general.retraction_length": "Retraction Length (mm):",
+        
+        # Path optimization settings
+        "settings_dialog.path_optimization.enable": "Enable Path Optimization:",
+        "settings_dialog.path_optimization.enable_arcs": "Enable Arc Detection:",
+        "settings_dialog.path_optimization.arc_tolerance": "Arc Tolerance (mm):",
+        "settings_dialog.path_optimization.min_arc_segments": "Min Arc Segments:",
+        "settings_dialog.path_optimization.remove_redundant": "Remove Redundant Moves:",
+        "settings_dialog.path_optimization.combine_coincident": "Combine Coincident Moves:",
+        "settings_dialog.path_optimization.optimize_travel": "Optimize Travel Moves:",
+        
+        # Infill settings
+        "settings_dialog.infill.density": "Density (%):",
+        "settings_dialog.infill.pattern": "Pattern:",
+        "settings_dialog.infill.patterns.grid": "Grid",
+        "settings_dialog.infill.patterns.lines": "Lines",
+        "settings_dialog.infill.patterns.triangles": "Triangles",
+        "settings_dialog.infill.patterns.trihexagon": "Tri-Hexagon",
+        "settings_dialog.infill.patterns.cubic": "Cubic",
+        "settings_dialog.infill.angle": "Angle (degrees):",
+        "settings_dialog.infill.enable_optimized": "Enable Optimized Infill:",
+        "settings_dialog.infill.resolution": "Resolution (mm):",
+        
+        # Advanced settings
+        "settings_dialog.advanced.extrusion_width": "Extrusion Width (mm):",
+        "settings_dialog.advanced.filament_diameter": "Filament Diameter (mm):",
+        "settings_dialog.advanced.first_layer_height": "First Layer Height (mm):",
+        "settings_dialog.advanced.first_layer_speed": "First Layer Speed (mm/s):",
+        "settings_dialog.advanced.z_hop": "Z Hop (mm):",
+        "settings_dialog.advanced.skirt_line_count": "Skirt Line Count:",
+        "settings_dialog.advanced.skirt_distance": "Skirt Distance (mm):",
+        "settings_dialog.advanced.temperature": "Nozzle Temperature (°C):",
+        "settings_dialog.advanced.bed_temperature": "Bed Temperature (°C):",
+        "settings_dialog.advanced.fan_speed": "Fan Speed (%):",
+        "settings_dialog.advanced.fan_layer": "Fan Start Layer:",
+        
+        # G-code settings
+        "settings_dialog.gcode.start": "Start G-code:",
+        "settings_dialog.gcode.end": "End G-code:",
+        "settings_dialog.gcode.start_placeholder": "; Start G-code (inserted at the beginning of the file)\nG28 ; Home all axes\nG1 Z5 F5000 ; Lift nozzle\nM104 S{material_print_temperature} ; Set nozzle temperature\nM190 S{material_bed_temperature} ; Wait for bed temperature\nM109 S{material_print_temperature} ; Wait for nozzle temperature\nG92 E0 ; Reset extruder\nG1 E-1 F300 ; Retract a little\nG1 Z0.4 F3000 ; Move nozzle up\nG1 X3.2 F5000 ; Move to start position\nG1 Y100.0 Z0.3 F1500.0 E15 ; Draw first line\nG1 X3.2 Y20.2 Z0.3 F1500.0 E30 ; Draw second line\nG92 E0 ; Reset extruder\nG1 Z2.0 F3000 ; Move Z up a bit",
+        "settings_dialog.gcode.end_placeholder": "; End G-code\nM104 S0 ; Turn off hotend\nM140 S0 ; Turn off bed\nG91 ; Use relative positioning\nG1 E-1 F300 ; Retract filament\nG1 Z+5 E-5 F3000 ; Lift and retract\nG90 ; Use absolute positioning\nG28 X0 ; Home X axis\nM84 ; Disable steppers",
+        
+        # Reset confirmation
+        "settings_dialog.reset_title": "Reset to Defaults",
+        "settings_dialog.reset_confirm": "Are you sure you want to reset all settings to their default values?"
     },
     "it": {
         # Application
@@ -304,6 +393,95 @@ TRANSLATIONS = {
         "download": "Scarica",
         "view_changes": "Visualizza Modifiche",
         "update_available_title": "Aggiornamento Disponibile",
+        
+        # Worker-related translations
+        "worker.error.unsupported_mesh_format": "Formato mesh non supportato. Atteso oggetto trimesh o dizionario con chiave 'vertices'.",
+        "worker.info.calculated_layers": "Calcolati {layers} layer (z: da {z_min:.2f}mm a {z_max:.2f}mm, altezza: {height:.2f}mm)",
+        "worker.info.generation_cancelled": "Generazione G-code annullata dall'utente",
+        "worker.info.generation_complete": "Generazione G-code completata con successo",
+        "worker.error.generation_failed": "Errore nella generazione del G-code: {error}",
+        
+        "worker.error.missing_header_info": "Mancano le informazioni di intestazione richieste nel processore STL",
+        "worker.error.invalid_triangle_count": "Numero di triangoli non valido nel file STL: {count}",
+        "worker.error.loading_failed": "Errore nel worker di caricamento STL: {error}",
+        "worker.error.cleanup_failed": "Errore durante la chiusura del processore STL: {error}",
+        "worker.info.stl_loading_started": "Avvio del worker di caricamento STL",
+        "worker.info.total_triangles": "Triangoli totali da elaborare: {count}",
+        "worker.info.loading_cancelled": "Caricamento annullato dall'utente",
+        "worker.info.loading_complete": "Caricamento STL completato con successo",
+        "worker.status.loading_stl": "Caricamento STL... {progress:.1f}%",
+        
+        "worker.debug.stl_header": "Intestazione STL: {header}",
+        "worker.debug.starting_triangle_iteration": "Avvio iterazione triangoli...",
+        "worker.debug.emitting_chunk": "Invio blocco con {triangles} triangoli, avanzamento: {progress:.1f}%",
+        "worker.debug.loading_cancellation_requested": "Annullamento del caricamento STL richiesto",
+        "worker.warning.no_stl_header": "Il processore STL non ha l'attributo _header",
+        
+        # Settings Dialog Translations
+        "settings_dialog.title": "Impostazioni",
+        
+        # Tab names
+        "settings_dialog.tabs.general": "Generale",
+        "settings_dialog.tabs.path_optimization": "Ottimizzazione Percorso",
+        "settings_dialog.tabs.infill": "Riempimento",
+        "settings_dialog.tabs.advanced": "Avanzate",
+        
+        # Group box titles
+        "settings_dialog.general.title": "Impostazioni Generali",
+        "settings_dialog.path_optimization.title": "Impostazioni Ottimizzazione Percorso",
+        "settings_dialog.infill.title": "Impostazioni Riempimento",
+        "settings_dialog.advanced.title": "Impostazioni Avanzate",
+        "settings_dialog.gcode.title": "G-code",
+        
+        # General settings
+        "settings_dialog.general.layer_height": "Altezza Strato (mm):",
+        "settings_dialog.general.print_speed": "Velocità Stampa (mm/s):",
+        "settings_dialog.general.travel_speed": "Velocità Spostamento (mm/s):",
+        "settings_dialog.general.retraction_length": "Lunghezza Ritrazione (mm):",
+        
+        # Path optimization settings
+        "settings_dialog.path_optimization.enable": "Abilita Ottimizzazione Percorso:",
+        "settings_dialog.path_optimization.enable_arcs": "Rilevamento Archi:",
+        "settings_dialog.path_optimization.arc_tolerance": "Tolleranza Archi (mm):",
+        "settings_dialog.path_optimization.min_arc_segments": "Segmenti Minimi Arco:",
+        "settings_dialog.path_optimization.remove_redundant": "Rimuovi Movimenti Ridondanti:",
+        "settings_dialog.path_optimization.combine_coincident": "Combina Movimenti Sovrapposti:",
+        "settings_dialog.path_optimization.optimize_travel": "Ottimizza Spostamenti a Vuoto:",
+        
+        # Infill settings
+        "settings_dialog.infill.density": "Densità (%):",
+        "settings_dialog.infill.pattern": "Modello:",
+        "settings_dialog.infill.patterns.grid": "Griglia",
+        "settings_dialog.infill.patterns.lines": "Linee",
+        "settings_dialog.infill.patterns.triangles": "Triangoli",
+        "settings_dialog.infill.patterns.trihexagon": "Tri-esagonale",
+        "settings_dialog.infill.patterns.cubic": "Cubico",
+        "settings_dialog.infill.angle": "Angolo (gradi):",
+        "settings_dialog.infill.enable_optimized": "Abilita Riempimento Ottimizzato:",
+        "settings_dialog.infill.resolution": "Risoluzione (mm):",
+        
+        # Advanced settings
+        "settings_dialog.advanced.extrusion_width": "Larghezza Estrusione (mm):",
+        "settings_dialog.advanced.filament_diameter": "Diametro Filamento (mm):",
+        "settings_dialog.advanced.first_layer_height": "Altezza Primo Strato (mm):",
+        "settings_dialog.advanced.first_layer_speed": "Velocità Primo Strato (mm/s):",
+        "settings_dialog.advanced.z_hop": "Sollevamento Z (mm):",
+        "settings_dialog.advanced.skirt_line_count": "Numero Linee Gonna:",
+        "settings_dialog.advanced.skirt_distance": "Distanza Gonna (mm):",
+        "settings_dialog.advanced.temperature": "Temperatura Ugello (°C):",
+        "settings_dialog.advanced.bed_temperature": "Temperatura Piatto (°C):",
+        "settings_dialog.advanced.fan_speed": "Velocità Ventola (\u0025):",
+        "settings_dialog.advanced.fan_layer": "Strato Inizio Ventola:",
+        
+        # G-code settings
+        "settings_dialog.gcode.start": "G-code Iniziale:",
+        "settings_dialog.gcode.end": "G-code Finale:",
+        "settings_dialog.gcode.start_placeholder": "; G-code iniziale (inserito all'inizio del file)\nG28 ; Home assi\nG1 Z5 F5000 ; Solleva ugello\nM104 S{material_print_temperature} ; Imposta temperatura ugello\nM190 S{material_bed_temperature} ; Attendi temperatura piatto\nM109 S{material_print_temperature} ; Attendi temperatura ugello\nG92 E0 ; Azzera estrusore\nG1 E-1 F300 ; Ritrai leggermente\nG1 Z0.4 F3000 ; Solleva ugello\nG1 X3.2 F5000 ; Posizione iniziale\nG1 Y100.0 Z0.3 F1500.0 E15 ; Primo movimento\nG1 X3.2 Y20.2 Z0.3 F1500.0 E30 ; Secondo movimento\nG92 E0 ; Azzera estrusore\nG1 Z2.0 F3000 ; Solleva Z",
+        "settings_dialog.gcode.end_placeholder": "; G-code finale\nM104 S0 ; Spegni ugello\nM140 S0 ; Spegni piatto\nG91 ; Posizionamento relativo\nG1 E-1 F300 ; Ritrai filamento\nG1 Z+5 E-5 F3000 ; Solleva e ritrai\nG90 ; Posizionamento assoluto\nG28 X0 ; Home asse X\nM84 ; Disabilita motori",
+        
+        # Reset confirmation
+        "settings_dialog.reset_title": "Ripristina Impostazioni",
+        "settings_dialog.reset_confirm": "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?"
     },
 }
 
