@@ -463,7 +463,7 @@ class UI:
     def create_file_list(self, parent):
         """
         Create a styled list widget for displaying loaded files.
-        
+        (not working)
         Args:
             parent: Parent widget
             

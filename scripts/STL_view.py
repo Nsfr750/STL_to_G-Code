@@ -8,6 +8,7 @@ import os
 import logging
 from scripts.logger import get_logger
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
+from scripts.language_manager import get_language_manager
 
 # Set up logging
 logger = get_logger(__name__)
@@ -17,16 +18,20 @@ class STLVisualizer:
     A class to handle visualization of STL files and infill patterns using matplotlib.
     """
     
-    def __init__(self, ax, canvas):
+    def __init__(self, ax, canvas, language_manager=None):
         """
         Initialize the STL visualizer.
         
         Args:
             ax: Matplotlib 3D axis object
             canvas: Matplotlib canvas for redrawing
+            language_manager: Optional LanguageManager instance for translations
         """
         self.ax = ax
         self.canvas = canvas
+        self.language_manager = language_manager or get_language_manager()
+        self.translate = self.language_manager.translate
+        
         self.vertices = np.zeros((0, 3), dtype=np.float32)
         self.faces = np.zeros((0, 3), dtype=np.uint32)
         self.mesh = None
@@ -49,9 +54,9 @@ class STLVisualizer:
     def _setup_axes(self):
         """Set up the 3D axes with proper labels and grid."""
         self.ax.clear()
-        self.ax.set_xlabel('X (mm)')
-        self.ax.set_ylabel('Y (mm)')
-        self.ax.set_zlabel('Z (mm)')
+        self.ax.set_xlabel(self.translate('stl_view.axes.x_label'))
+        self.ax.set_ylabel(self.translate('stl_view.axes.y_label'))
+        self.ax.set_zlabel(self.translate('stl_view.axes.z_label'))
         self.ax.grid(True, alpha=0.5)
         self.ax.xaxis.pane.fill = False
         self.ax.yaxis.pane.fill = False

@@ -222,6 +222,22 @@ TRANSLATIONS = {
         "worker.debug.loading_cancellation_requested": "STL loading cancellation requested",
         "worker.warning.no_stl_header": "STL processor has no _header attribute",
         
+        # Progress module
+        "progress": {
+            "ui": {
+                "loading": "Loading...",
+                "loading_progress": "Loading: {progress}%"
+            },
+            "log": {
+                "progress": "Loading progress: {progress}%"
+            },
+            "errors": {
+                "invalid_progress_value": "Invalid progress value: {progress} - {error}",
+                "update_error": "Error updating progress dialog: {error}",
+                "reset_error": "Error resetting progress dialog: {error}"
+            }
+        },
+        
         # Settings Dialog Translations
         "settings_dialog.title": "Settings",
         
@@ -472,6 +488,86 @@ TRANSLATIONS = {
         "gcode.loading.permission_denied": "Permission denied when accessing file: {file_path}",
         "gcode.loading.io_error": "Error reading file: {file_path}",
         "gcode.loading.unexpected_error": "Unexpected error loading file: {file_path}",
+        
+        # G-code Optimizer
+        "gcode_optimizer.error.optimized_infill": "Error in generate_optimized_infill: {error}",
+        "gcode_optimizer.error.invalid_command": "Invalid G-code command: {command} at line {line_num}",
+        "gcode_optimizer.error.missing_variable_start": "Missing variable in start G-code: {error}",
+        "gcode_optimizer.error.invalid_start_gcode": "Error in start G-code: {error}",
+        "gcode_optimizer.error.unsupported_mesh_format": "Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' key.",
+        "gcode_optimizer.error.generating_gcode": "Error generating G-code: {error}",
+        "gcode_optimizer.error.missing_variable_end": "Missing variable in end G-code: {error}",
+        "gcode_optimizer.error.invalid_end_gcode": "Error in end G-code: {error}",
+        "gcode_optimizer.error.unsupported_mesh_with_faces": "Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' and 'faces' keys.",
+        "gcode_optimizer.error.no_face_info": "Could not determine face information from mesh",
+        
+        # G-code Comments
+        "gcode_optimizer.comment.custom_start_code": "--- Custom Start G-code ---",
+        "gcode_optimizer.comment.end_start_code": "--- End of Custom Start G-code ---",
+        "gcode_optimizer.comment.custom_end_code": "--- Custom End G-code ---",
+        "gcode_optimizer.comment.end_end_code": "--- End of Custom End G-code ---",
+        "gcode_optimizer.comment.layer_z": "--- Layer at Z={z} ---",
+        "gcode_optimizer.comment.move_to_layer": "Move to layer height",
+        "gcode_optimizer.comment.infill_section": "--- Infill ---",
+        "gcode_optimizer.comment.set_infill_speed": "Set infill speed",
+        "gcode_optimizer.comment.move_to_start": "Move to start",
+        "gcode_optimizer.comment.draw_infill_line": "Draw infill line",
+        
+        # Retraction Comments
+        "gcode_optimizer.retract.retract": "retract",
+        "gcode_optimizer.retract.unretract": "unretract",
+        
+        # STL Processor module
+        "stl_processor": {
+            "file_opened": "Opened STL file: {filename} ({num_triangles} triangles)",
+            "detection": {
+                "binary_detected": "Binary STL detected (null byte found in first 100 bytes)",
+                "ascii_detected": "ASCII STL detected (starts with 'solid' and no null bytes)",
+                "default_binary": "Could not determine STL format, defaulting to binary"
+            },
+            "ascii_header": {
+                "first_line": "ASCII STL header - First line: {line}",
+                "first_line_error": "ASCII STL header - Could not decode first line: {error}",
+                "triangle_count": "ASCII STL header - Number of triangles: {count}"
+            },
+            "errors": {
+                "file_not_found": "STL file not found: {path}",
+                "invalid_file": "Invalid or corrupted STL file: {path}",
+                "read_error": "Error reading STL file: {error}",
+                "invalid_format": "Invalid STL format",
+                "empty_file": "STL file is empty",
+                "header_error": "Error reading STL header: {error}",
+                "triangle_error": "Error reading triangle data: {error}"
+            }
+        },
+        
+        # Italian translations for G-code Optimizer
+        "gcode_optimizer.error.optimized_infill": "Errore in generate_optimized_infill: {error}",
+        "gcode_optimizer.error.invalid_command": "Comando G-code non valido: {command} alla riga {line_num}",
+        "gcode_optimizer.error.missing_variable_start": "Variabile mancante nel G-code di inizio: {error}",
+        "gcode_optimizer.error.invalid_start_gcode": "Errore nel G-code di inizio: {error}",
+        "gcode_optimizer.error.unsupported_mesh_format": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiave 'vertices'.",
+        "gcode_optimizer.error.generating_gcode": "Errore durante la generazione del G-code: {error}",
+        "gcode_optimizer.error.missing_variable_end": "Variabile mancante nel G-code di fine: {error}",
+        "gcode_optimizer.error.invalid_end_gcode": "Errore nel G-code di fine: {error}",
+        "gcode_optimizer.error.unsupported_mesh_with_faces": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiavi 'vertices' e 'faces'.",
+        "gcode_optimizer.error.no_face_info": "Impossibile determinare le informazioni sulle facce dalla mesh",
+        
+        # Italian translations for G-code Comments
+        "gcode_optimizer.comment.custom_start_code": "--- G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.end_start_code": "--- Fine del G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.custom_end_code": "--- G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.end_end_code": "--- Fine del G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.layer_z": "--- Strato a Z={z} ---",
+        "gcode_optimizer.comment.move_to_layer": "Sposta all'altezza dello strato",
+        "gcode_optimizer.comment.infill_section": "--- Riempimento ---",
+        "gcode_optimizer.comment.set_infill_speed": "Imposta velocità di riempimento",
+        "gcode_optimizer.comment.move_to_start": "Sposta all'inizio",
+        "gcode_optimizer.comment.draw_infill_line": "Disegna linea di riempimento",
+        
+        # Italian translations for Retraction Comments
+        "gcode_optimizer.retract.retract": "ritrazione",
+        "gcode_optimizer.retract.unretract": "estrusione",
     },
     "it": {
         # Application
@@ -614,7 +710,7 @@ TRANSLATIONS = {
         "validation.error.invalid_tool": "Numero utensile non valido: T{tool}",
         "validation.error.invalid_tool_selection": "Selezione utensile non valida: {command}",
         "validation.error.negative_feedrate": "La velocità di avanzamento non può essere negativa",
-        "validation.error.axis_out_of_bounds": "La posizione {axis} {value} è fuori dai limiti (0-{max_pos})",
+        "validation.error.axis_out_of_bounds": "{axis} position {value} è fuori dai limiti (0-{max_pos})",
         "validation.error.invalid_fan_speed": "La velocità della ventola {speed} è al di fuori dell'intervallo valido (0-255)",
         
         "validation.warning.feedrate_exceeds_max": "La velocità di avanzamento {feedrate} supera il massimo di {max_feedrate}",
@@ -688,6 +784,22 @@ TRANSLATIONS = {
         "worker.debug.loading_cancellation_requested": "Annullamento del caricamento STL richiesto",
         "worker.warning.no_stl_header": "Il processore STL non ha l'attributo _header",
         
+        # Progress module
+        "progress": {
+            "ui": {
+                "loading": "Loading...",
+                "loading_progress": "Loading: {progress}%"
+            },
+            "log": {
+                "progress": "Loading progress: {progress}%"
+            },
+            "errors": {
+                "invalid_progress_value": "Invalid progress value: {progress} - {error}",
+                "update_error": "Error updating progress dialog: {error}",
+                "reset_error": "Error resetting progress dialog: {error}"
+            }
+        },
+        
         # Settings Dialog Translations
         "settings_dialog.title": "Impostazioni",
         
@@ -739,10 +851,10 @@ TRANSLATIONS = {
         "settings_dialog.advanced.z_hop": "Sollevamento Z (mm):",
         "settings_dialog.advanced.skirt_line_count": "Numero Linee Gonna:",
         "settings_dialog.advanced.skirt_distance": "Distanza Gonna (mm):",
-        "settings_dialog.advanced.temperature": "Temperatura Ugello (°C):",
-        "settings_dialog.advanced.bed_temperature": "Temperatura Piatto (°C):",
-        "settings_dialog.advanced.fan_speed": "Velocità Ventola (%):",
-        "settings_dialog.advanced.fan_layer": "Strato Inizio Ventola:",
+        "settings_dialog.advanced.temperature": "Nozzle Temperature (°C):",
+        "settings_dialog.advanced.bed_temperature": "Bed Temperature (°C):",
+        "settings_dialog.advanced.fan_speed": "Fan Speed (%):",
+        "settings_dialog.advanced.fan_layer": "Fan Start Layer:",
         
         # G-code settings
         "settings_dialog.gcode.start": "G-code Iniziale:",
@@ -856,6 +968,34 @@ TRANSLATIONS = {
         "gcode.loading.permission_denied": "Permesso negato durante l'accesso al file: {file_path}",
         "gcode.loading.io_error": "Errore durante la lettura del file: {file_path}",
         "gcode.loading.unexpected_error": "Errore imprevisto durante il caricamento del file: {file_path}",
+        
+        # G-code Optimizer
+        "gcode_optimizer.error.optimized_infill": "Errore in generate_optimized_infill: {error}",
+        "gcode_optimizer.error.invalid_command": "Comando G-code non valido: {command} alla riga {line_num}",
+        "gcode_optimizer.error.missing_variable_start": "Variabile mancante nel G-code di inizio: {error}",
+        "gcode_optimizer.error.invalid_start_gcode": "Errore nel G-code di inizio: {error}",
+        "gcode_optimizer.error.unsupported_mesh_format": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiave 'vertices'.",
+        "gcode_optimizer.error.generating_gcode": "Errore durante la generazione del G-code: {error}",
+        "gcode_optimizer.error.missing_variable_end": "Variabile mancante nel G-code di fine: {error}",
+        "gcode_optimizer.error.invalid_end_gcode": "Errore nel G-code di fine: {error}",
+        "gcode_optimizer.error.unsupported_mesh_with_faces": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiavi 'vertices' e 'faces'.",
+        "gcode_optimizer.error.no_face_info": "Impossibile determinare le informazioni sulle facce dalla mesh",
+        
+        # G-code Comments
+        "gcode_optimizer.comment.custom_start_code": "--- G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.end_start_code": "--- Fine del G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.custom_end_code": "--- G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.end_end_code": "--- Fine del G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.layer_z": "--- Strato a Z={z} ---",
+        "gcode_optimizer.comment.move_to_layer": "Sposta all'altezza dello strato",
+        "gcode_optimizer.comment.infill_section": "--- Riempimento ---",
+        "gcode_optimizer.comment.set_infill_speed": "Imposta velocità di riempimento",
+        "gcode_optimizer.comment.move_to_start": "Sposta all'inizio",
+        "gcode_optimizer.comment.draw_infill_line": "Disegna linea di riempimento",
+        
+        # Retraction Comments
+        "gcode_optimizer.retract.retract": "ritrazione",
+        "gcode_optimizer.retract.unretract": "estrusione",
     },
 }
 

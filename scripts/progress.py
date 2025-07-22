@@ -8,6 +8,7 @@ import time
 import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6 import sip
+from scripts.language_manager import get_language_manager
 
 logger = logging.getLogger("STLtoGCode")
 
@@ -36,6 +37,8 @@ class ProgressReporter:
         self._last_progress_time = 0
         self._last_message = None
         self._logged_100_percent = False
+        self.language_manager = get_language_manager()
+        self.translate = self.language_manager.translate
     
     def update_progress(self, progress, message=None):
         """
@@ -83,7 +86,12 @@ class ProgressReporter:
             return False
             
         except (TypeError, ValueError) as e:
-            logger.warning(f"Invalid progress value: {progress} - {e}")
+            error_msg = self.translate(
+                'progress.errors.invalid_progress_value', 
+                progress=str(progress),
+                error=str(e)
+            )
+            logger.warning(error_msg)
             return False
     
     def _update_ui(self, progress_int, message):
@@ -101,7 +109,12 @@ class ProgressReporter:
             pass
             
         try:
-            progress_text = f"Loading: {progress_int}%"
+            # Use translated string for progress text
+            progress_text = self.translate(
+                'progress.ui.loading_progress', 
+                progress=progress_int
+            )
+            
             if message:
                 progress_text = f"{progress_text} - {message}"
                 
@@ -109,7 +122,11 @@ class ProgressReporter:
             self.progress_dialog.setValue(progress_int)
             QApplication.processEvents()
         except Exception as e:
-            logger.warning(f"Error updating progress dialog: {e}")
+            error_msg = self.translate(
+                'progress.errors.update_error',
+                error=str(e)
+            )
+            logger.warning(error_msg)
     
     def _log_progress(self, progress, message):
         """Log the progress at appropriate intervals."""
@@ -131,7 +148,10 @@ class ProgressReporter:
             should_log = True
         
         if should_log:
-            log_msg = f"Loading progress: {min(100.0, progress):.1f}%"
+            log_msg = self.translate(
+                'progress.log.progress',
+                progress=f"{min(100.0, progress):.1f}"
+            )
             if message:
                 log_msg = f"{log_msg} - {message}"
             logger.debug(log_msg)
@@ -141,12 +161,18 @@ class ProgressReporter:
         self._last_progress = -1
         self._last_progress_time = 0
         self._last_message = None
-        self._logged_100_percent = False  # Reset the 100% flag
+        self._logged_100_percent = False
         
         # Reset the progress dialog if it exists
         if hasattr(self, 'progress_dialog') and self.progress_dialog is not None:
             try:
                 self.progress_dialog.setValue(0)
-                self.progress_dialog.setLabelText("Loading...")
+                self.progress_dialog.setLabelText(
+                    self.translate('progress.ui.loading')
+                )
             except Exception as e:
-                logger.warning(f"Error resetting progress dialog: {e}")
+                error_msg = self.translate(
+                    'progress.errors.reset_error',
+                    error=str(e)
+                )
+                logger.warning(error_msg)
