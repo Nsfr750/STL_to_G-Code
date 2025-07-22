@@ -4,8 +4,15 @@ Configuration management for STL to GCode Converter.
 
 import json
 import os
-from pathlib import 
-from scripts.logger import get_loggerPath
+from pathlib import Path
+from scripts.logger import get_logger
+from scripts.language_manager import LanguageManager
+
+# Initialize language manager
+language_manager = LanguageManager()
+
+# Configure logging
+logger = get_logger(__name__)
 
 # Default configuration values
 DEFAULT_CONFIG = {
@@ -46,7 +53,8 @@ class Config:
                 return DEFAULT_CONFIG.copy()
                 
         except Exception as e:
-            print(f"Error loading config: {e}")
+            error_msg = language_manager.translate("config.error_loading", error=str(e))
+            logger.error(error_msg)
             return DEFAULT_CONFIG.copy()
     
     def _merge_dicts(self, default, custom):
@@ -66,7 +74,8 @@ class Config:
                 json.dump(self.config, f, indent=4)
             return True
         except Exception as e:
-            print(f"Error saving config: {e}")
+            error_msg = language_manager.translate("config.error_saving", error=str(e))
+            logger.error(error_msg)
             return False
     
     def get(self, key, default=None):

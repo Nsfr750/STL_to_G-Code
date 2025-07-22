@@ -11,6 +11,10 @@ from PyQt6.QtWidgets import QMessageBox, QApplication
 from PyQt6.QtCore import Qt
 import logging
 from scripts.logger import get_logger
+from scripts.language_manager import LanguageManager
+
+# Initialize language manager
+language_manager = LanguageManager()
 
 # Set up logging
 logger = get_logger(__name__)
@@ -34,7 +38,7 @@ def handle_error(
     """
     # Format the error message
     error_type = type(error).__name__
-    error_msg = str(error) or "No error message available"
+    error_msg = str(error) or language_manager.translate("error_handling.no_error_message")
     
     if context:
         error_msg = f"{context}: {error_msg}"
@@ -46,7 +50,7 @@ def handle_error(
         # Show error dialog in a non-blocking way
         QMessageBox.critical(
             parent,
-            f"Error - {error_type}",
+            language_manager.translate("error_handling.error_dialog_title", error_type=error_type),
             error_msg,
             QMessageBox.StandardButton.Ok,
             QMessageBox.StandardButton.Ok
@@ -70,19 +74,43 @@ def handle_file_error(
     file_name = os.path.basename(file_path)
     
     if isinstance(error, PermissionError):
-        msg = f"Permission denied when trying to {operation} '{file_name}'"
+        msg = language_manager.translate(
+            "error_handling.permission_denied",
+            operation=operation,
+            file_name=file_name
+        )
     elif isinstance(error, FileNotFoundError):
-        msg = f"File not found: {file_name}"
+        msg = language_manager.translate(
+            "error_handling.file_not_found",
+            file_name=file_name
+        )
     elif isinstance(error, IsADirectoryError):
-        msg = f"Expected a file but found a directory: {file_name}"
+        msg = language_manager.translate(
+            "error_handling.expected_file_found_dir",
+            file_name=file_name
+        )
     elif isinstance(error, OSError) and hasattr(error, 'winerror'):
         # Windows-specific error handling
         if error.winerror == 32:  # File in use
-            msg = f"Cannot {operation} '{file_name}': The file is in use by another process"
+            msg = language_manager.translate(
+                "error_handling.file_in_use",
+                operation=operation,
+                file_name=file_name
+            )
         else:
-            msg = f"Error {operation}ing file '{file_name}': {str(error)}"
+            msg = language_manager.translate(
+                "error_handling.file_operation_error",
+                operation=operation,
+                file_name=file_name,
+                error=str(error)
+            )
     else:
-        msg = f"Error {operation}ing file '{file_name}': {str(error)}"
+        msg = language_manager.translate(
+            "error_handling.file_operation_error",
+            operation=operation,
+            file_name=file_name,
+            error=str(error)
+        )
     
     handle_error(error, msg, parent)
 
@@ -135,26 +163,26 @@ def check_file_path(
         Tuple of (is_valid, error_message)
     """
     if not file_path or not isinstance(file_path, str) or not file_path.strip():
-        return False, "No file path provided"
+        return False, language_manager.translate("error_handling.no_file_path")
     
     if check_exists and not os.path.exists(file_path):
-        return False, f"File does not exist: {file_path}"
+        return False, language_manager.translate("error_handling.file_does_not_exist", file_path=file_path)
     
     if os.path.isdir(file_path):
-        return False, f"Path is a directory, not a file: {file_path}"
+        return False, language_manager.translate("error_handling.path_is_directory", file_path=file_path)
     
     if check_exists and check_readable and not os.access(file_path, os.R_OK):
-        return False, f"File is not readable: {file_path}"
+        return False, language_manager.translate("error_handling.file_not_readable", file_path=file_path)
     
     if check_writable:
         if os.path.exists(file_path):
             if not os.access(file_path, os.W_OK):
-                return False, f"File is not writable: {file_path}"
+                return False, language_manager.translate("error_handling.file_not_writable", file_path=file_path)
         else:
             # Check if the directory is writable
             dir_path = os.path.dirname(file_path) or '.'
             if not os.access(dir_path, os.W_OK):
-                return False, f"Cannot create file in read-only directory: {dir_path}"
+                return False, language_manager.translate("error_handling.directory_not_writable", dir_path=dir_path)
     
     return True, ""
 
@@ -163,7 +191,7 @@ def show_warning(message: str, title: str = "Warning", parent=None) -> None:
     if QApplication.instance() is not None:
         QMessageBox.warning(
             parent,
-            title,
+            language_manager.translate("error_handling.warning_title", title=title),
             message,
             QMessageBox.StandardButton.Ok,
             QMessageBox.StandardButton.Ok
@@ -174,7 +202,7 @@ def show_info(message: str, title: str = "Information", parent=None) -> None:
     if QApplication.instance() is not None:
         QMessageBox.information(
             parent,
-            title,
+            language_manager.translate("error_handling.info_title", title=title),
             message,
             QMessageBox.StandardButton.Ok,
             QMessageBox.StandardButton.Ok
@@ -203,7 +231,7 @@ def confirm(
         
     return QMessageBox.question(
         parent,
-        title,
+        language_manager.translate("error_handling.confirm_title", title=title),
         message,
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         default_button

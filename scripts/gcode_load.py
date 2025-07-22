@@ -9,8 +9,11 @@ import logging
 from scripts.logger import get_logger
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
-
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from scripts.language_manager import LanguageManager
+
+# Initialize language manager
+language_manager = LanguageManager()
 
 logger = get_logger(__name__)
 
@@ -40,47 +43,60 @@ def open_gcode_file(parent: Optional[QWidget] = None, file_path: Optional[str] =
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(
                 parent,
-                "Open G-code File",
+                language_manager.translate("gcode.loading.open_dialog_title"),
                 "",
-                "G-code Files (*.gcode *.nc *.tap);;All Files (*)"
+                language_manager.translate("gcode.loading.file_filter")
             )
             
             if not file_path:
-                logger.debug("No file selected")
+                logger.debug(language_manager.translate("gcode.loading.no_file_selected"))
                 return None, result
         
         # Validate file path
         path = Path(file_path)
         if not path.exists() or not path.is_file():
-            error_msg = f"File not found: {file_path}"
+            error_msg = language_manager.translate(
+                "gcode.loading.file_not_found", 
+                file_path=file_path
+            )
             logger.error(error_msg)
-            result['error'] = "File not found"
+            result['error'] = language_manager.translate("error_handling.file_not_found", file_path=file_path)
             result['error_details'] = error_msg
             return None, result
             
         # Check file size (warn for large files)
         file_size = path.stat().st_size
+        size_mb = file_size / (1024 * 1024)
+        
         if file_size > 50 * 1024 * 1024:  # 50MB
-            logger.warning(f"Large G-code file detected: {file_size/1024/1024:.2f}MB")
+            logger.warning(language_manager.translate(
+                "gcode.loading.large_file_detected",
+                size_mb=size_mb
+            ))
             
             if parent is not None:
                 reply = QMessageBox.question(
                     parent,
-                    "Large File Warning",
-                    f"This G-code file is {file_size/1024/1024:.2f}MB. "
-                    "Loading large files may take time and consume significant memory.\n\n"
-                    "Do you want to continue?",
+                    language_manager.translate("gcode.loading.large_file_title"),
+                    language_manager.translate(
+                        "gcode.loading.large_file_message",
+                        size_mb=size_mb
+                    ),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 
                 if reply != QMessageBox.StandardButton.Yes:
-                    logger.info("User canceled loading large file")
-                    result['error'] = "Operation canceled"
-                    result['error_details'] = "User canceled loading large file"
+                    logger.info(language_manager.translate("gcode.loading.user_canceled"))
+                    result['error'] = language_manager.translate("gcode.loading.operation_canceled")
+                    result['error_details'] = language_manager.translate("gcode.loading.user_canceled")
                     return None, result
         
         # Read the G-code file
-        logger.info(f"Loading G-code file: {file_path}")
+        logger.info(language_manager.translate(
+            "gcode.loading.loading_file",
+            file_path=file_path
+        ))
+        
         with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
             gcode_content = f.read()
         
@@ -93,37 +109,46 @@ def open_gcode_file(parent: Optional[QWidget] = None, file_path: Optional[str] =
             'line_count': len(gcode_content.splitlines())
         })
         
-        logger.info(f"Successfully loaded G-code file: {path.name} ({file_size} bytes, {result['line_count']} lines)")
+        logger.info(language_manager.translate(
+            "gcode.loading.success",
+            file_name=path.name,
+            file_size=file_size,
+            line_count=result['line_count']
+        ))
+        
         return gcode_content, result
         
     except PermissionError as e:
-        error_msg = f"Permission denied when accessing file: {file_path}"
-        logger.error(error_msg, exc_info=True)
-        result.update({
-            'error': "Permission denied",
-            'error_details': error_msg
-        })
+        error_msg = language_manager.translate(
+            "gcode.loading.permission_denied",
+            file_path=file_path
+        )
+        logger.error(error_msg)
+        result['error'] = error_msg
+        result['error_details'] = str(e)
         return None, result
         
-    except UnicodeDecodeError as e:
-        error_msg = f"Failed to decode G-code file (not valid UTF-8): {file_path}"
+    except IOError as e:
+        error_msg = language_manager.translate(
+            "gcode.loading.io_error",
+            file_path=file_path
+        )
         logger.error(error_msg, exc_info=True)
-        result.update({
-            'error': "Invalid file encoding",
-            'error_details': error_msg
-        })
+        result['error'] = error_msg
+        result['error_details'] = str(e)
         return None, result
         
     except Exception as e:
-        error_msg = f"Error loading G-code file: {str(e)}"
+        error_msg = language_manager.translate(
+            "gcode.loading.unexpected_error",
+            file_path=file_path
+        )
         logger.error(error_msg, exc_info=True)
-        result.update({
-            'error': "Error loading file",
-            'error_details': error_msg
-        })
+        result['error'] = error_msg
+        result['error_details'] = str(e)
         return None, result
 
-def show_file_open_error(parent: QWidget, error_details: str):
+def show_file_open_error(parent: QWidget, error_details: str) -> None:
     """
     Show an error message for file opening failures.
     
@@ -133,9 +158,7 @@ def show_file_open_error(parent: QWidget, error_details: str):
     """
     QMessageBox.critical(
         parent,
-        "Error Loading G-code",
-        f"Failed to load G-code file.\n\n"
-        f"Details: {error_details}\n\n"
-        "Please ensure the file exists and you have permission to access it.",
+        language_manager.translate("error_handling.error_dialog_title", error_type="File Open Error"),
+        error_details,
         QMessageBox.StandardButton.Ok
     )

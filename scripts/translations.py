@@ -288,6 +288,10 @@ TRANSLATIONS = {
         "settings_dialog.reset_title": "Reset to Defaults",
         "settings_dialog.reset_confirm": "Are you sure you want to reset all settings to their default values?",
 
+        # Configuration
+        "config.error_loading": "Error loading configuration: {error}",
+        "config.error_saving": "Error saving configuration: {error}",
+        
         # Markdown Viewer Translations
         "markdown_viewer.title": "Documentation",
         "markdown_viewer.label.document": "Document:",
@@ -426,7 +430,48 @@ TRANSLATIONS = {
         
         "about.cores": "CPU Cores",
         "about.available": "available",
-        "about.error_loading_system_info": "Error loading system information"
+        "about.error_loading_system_info": "Error loading system information",
+        
+        # STL Loading
+        "stl.loading.open_dialog_title": "Open STL File",
+        "stl.loading.file_filter": "STL Files (*.stl);;All Files (*)",
+        "stl.loading.no_file_selected": "No file selected",
+        "stl.loading.file_not_found": "File not found: {file_path}",
+        "stl.loading.operation_cancelled": "Operation cancelled by user",
+        "stl.loading.error_opening": "Error opening STL file: {error}",
+        "stl.loading.failed_to_open": "Failed to open file: {file_path}\n\nError: {error_msg}",
+        "stl.loading.error_metadata": "Error getting STL metadata: {error}",
+        "stl.loading.large_file_title": "Large File Warning",
+        "stl.loading.large_file_message": "The selected file is large ({size_mb:.1f} MB). This may take a while to process. Continue?",
+        "stl.loading.error_title": "Error Opening File",
+        
+        # Error Handling
+        "error_handling.no_error_message": "No error message available",
+        "error_handling.error_dialog_title": "Error - {error_type}",
+        "error_handling.permission_denied": "Permission denied when trying to {operation} '{file_name}'",
+        "error_handling.file_not_found": "File not found: {file_name}",
+        "error_handling.expected_file_found_dir": "Expected a file but found a directory: {file_name}",
+        "error_handling.file_in_use": "Cannot {operation} '{file_name}': The file is in use by another process",
+        "error_handling.file_operation_error": "Error {operation}ing file '{file_name}': {error}",
+        "error_handling.default_warning_title": "Warning",
+        "error_handling.default_info_title": "Information",
+        "error_handling.default_confirm_title": "Confirm",
+        
+        # G-code Loading
+        "gcode.loading.open_dialog_title": "Open G-code File",
+        "gcode.loading.file_filter": "G-code Files (*.gcode *.nc *.tap);;All Files (*)",
+        "gcode.loading.file_not_found": "File not found: {file_path}",
+        "gcode.loading.large_file_detected": "Large G-code file detected: {size_mb:.2f}MB",
+        "gcode.loading.large_file_title": "Large File Warning",
+        "gcode.loading.large_file_message": "This G-code file is {size_mb:.2f}MB. Loading large files may take time and consume significant memory.\n\nDo you want to continue?",
+        "gcode.loading.operation_canceled": "Operation canceled",
+        "gcode.loading.no_file_selected": "No file selected",
+        "gcode.loading.user_canceled": "User canceled loading large file",
+        "gcode.loading.loading_file": "Loading G-code file: {file_path}",
+        "gcode.loading.success": "Successfully loaded G-code file: {file_name} ({file_size} bytes, {line_count} lines)",
+        "gcode.loading.permission_denied": "Permission denied when accessing file: {file_path}",
+        "gcode.loading.io_error": "Error reading file: {file_path}",
+        "gcode.loading.unexpected_error": "Unexpected error loading file: {file_path}",
     },
     "it": {
         # Application
@@ -709,6 +754,10 @@ TRANSLATIONS = {
         "settings_dialog.reset_title": "Ripristina Impostazioni",
         "settings_dialog.reset_confirm": "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?",
         
+        # Configuration
+        "config.error_loading": "Errore durante il caricamento della configurazione: {error}",
+        "config.error_saving": "Errore durante il salvataggio della configurazione: {error}",
+        
         # About Dialog Translations
         "about.title": "Informazioni su STL to G-Code Converter",
         "about.app_name": "Convertitore STL in G-Code",
@@ -765,7 +814,48 @@ TRANSLATIONS = {
         
         "about.cores": "Core CPU",
         "about.available": "disponibile",
-        "about.error_loading_system_info": "Errore nel caricamento delle informazioni di sistema"
+        "about.error_loading_system_info": "Errore nel caricamento delle informazioni di sistema",
+        
+        # STL Loading
+        "stl.loading.open_dialog_title": "Apri file STL",
+        "stl.loading.file_filter": "File STL (*.stl);;Tutti i file (*)",
+        "stl.loading.no_file_selected": "Nessun file selezionato",
+        "stl.loading.file_not_found": "File non trovato: {file_path}",
+        "stl.loading.operation_cancelled": "Operazione annullata dall'utente",
+        "stl.loading.error_opening": "Errore durante l'apertura del file STL: {error}",
+        "stl.loading.failed_to_open": "Impossibile aprire il file: {file_path}\n\nErrore: {error_msg}",
+        "stl.loading.error_metadata": "Errore durante il recupero dei metadati STL: {error}",
+        "stl.loading.large_file_title": "Avviso file di grandi dimensioni",
+        "stl.loading.large_file_message": "Il file selezionato è di grandi dimensioni ({size_mb:.1f} MB). L'elaborazione potrebbe richiedere del tempo. Continuare?",
+        "stl.loading.error_title": "Errore durante l'apertura del file",
+        
+        # Error Handling
+        "error_handling.no_error_message": "Nessun messaggio di errore disponibile",
+        "error_handling.error_dialog_title": "Errore - {error_type}",
+        "error_handling.permission_denied": "Permesso negato durante il tentativo di {operation} '{file_name}'",
+        "error_handling.file_not_found": "File non trovato: {file_name}",
+        "error_handling.expected_file_found_dir": "Atteso un file ma trovata una cartella: {file_name}",
+        "error_handling.file_in_use": "Impossibile {operation} '{file_name}': Il file è in uso da un altro processo",
+        "error_handling.file_operation_error": "Errore durante {operation} del file '{file_name}': {error}",
+        "error_handling.default_warning_title": "Avviso",
+        "error_handling.default_info_title": "Informazione",
+        "error_handling.default_confirm_title": "Conferma",
+        
+        # G-code Loading
+        "gcode.loading.open_dialog_title": "Apri file G-code",
+        "gcode.loading.file_filter": "File G-code (*.gcode *.nc *.tap);;Tutti i file (*)",
+        "gcode.loading.file_not_found": "File non trovato: {file_path}",
+        "gcode.loading.large_file_detected": "Rilevato file G-code di grandi dimensioni: {size_mb:.2f}MB",
+        "gcode.loading.large_file_title": "Avviso file di grandi dimensioni",
+        "gcode.loading.large_file_message": "Questo file G-code è di {size_mb:.2f}MB. Il caricamento di file di grandi dimensioni potrebbe richiedere tempo e consumare molta memoria.\n\nVuoi continuare?",
+        "gcode.loading.operation_canceled": "Operazione annullata",
+        "gcode.loading.no_file_selected": "Nessun file selezionato",
+        "gcode.loading.user_canceled": "L'utente ha annullato il caricamento del file di grandi dimensioni",
+        "gcode.loading.loading_file": "Caricamento file G-code: {file_path}",
+        "gcode.loading.success": "File G-code caricato con successo: {file_name} ({file_size} byte, {line_count} righe)",
+        "gcode.loading.permission_denied": "Permesso negato durante l'accesso al file: {file_path}",
+        "gcode.loading.io_error": "Errore durante la lettura del file: {file_path}",
+        "gcode.loading.unexpected_error": "Errore imprevisto durante il caricamento del file: {file_path}",
     },
 }
 
