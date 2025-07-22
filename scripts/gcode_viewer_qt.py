@@ -8,6 +8,7 @@ import os
 import re
 import logging
 from scripts.logger import get_logger
+from scripts.translations import get_language_manager
 from pathlib import Path
 from typing import Optional
 
@@ -36,6 +37,9 @@ class CodeEditor(QPlainTextEdit):
     """Custom text editor with line numbers and syntax highlighting."""
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.language_manager = get_language_manager()
+        self.translate = self.language_manager.translate
+        
         self.setReadOnly(True)
         self.setFont(QFont('Consolas', 10))
         self.setStyleSheet("""
@@ -77,13 +81,10 @@ class CodeEditor(QPlainTextEdit):
         if rect is not None and dy != 0:
             self.lineNumberArea.scroll(0, dy)
         elif rect is not None and hasattr(rect, 'y'):
-            # Only call rect.y() if rect is a QRectF/QRegion object
             self.lineNumberArea.update(0, rect.y(), self.lineNumberArea.width(), rect.height())
         elif rect is not None and isinstance(rect, int):
-            # If rect is an integer (like when called from QPlainTextEdit.updateRequest)
             self.lineNumberArea.update(0, rect, self.lineNumberArea.width(), self.viewport().height())
         else:
-            # If rect is None or doesn't have y() method, update the entire line number area
             self.lineNumberArea.update()
         
         if rect is not None and hasattr(rect, 'contains') and rect.contains(self.viewport().rect()):
@@ -133,7 +134,10 @@ class GCodeViewer(QDialog):
     """G-code viewer dialog with syntax highlighting and search functionality."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("G-code Viewer")
+        self.language_manager = get_language_manager()
+        self.translate = self.language_manager.translate
+        
+        self.setWindowTitle(self.translate("gcode_viewer.title"))
         self.setGeometry(100, 100, 1000, 800)
         self.setStyleSheet("""
             QDialog {
@@ -175,25 +179,25 @@ class GCodeViewer(QDialog):
         toolbar = QHBoxLayout()
         
         # Open button
-        self.open_btn = QPushButton("Open G-code")
+        self.open_btn = QPushButton(self.translate("gcode_viewer.buttons.open"))
         self.open_btn.clicked.connect(self.open_file)
         toolbar.addWidget(self.open_btn)
         
         # Save button
-        self.save_btn = QPushButton("Save")
+        self.save_btn = QPushButton(self.translate("gcode_viewer.buttons.save"))
         self.save_btn.clicked.connect(self.save_file)
         self.save_btn.setEnabled(False)
         toolbar.addWidget(self.save_btn)
         
         # Search
-        toolbar.addWidget(QLabel("Search:"))
+        toolbar.addWidget(QLabel(self.translate("gcode_viewer.search.placeholder").replace("...", "")))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search in G-code...")
+        self.search_edit.setPlaceholderText(self.translate("gcode_viewer.search.placeholder"))
         self.search_edit.returnPressed.connect(self.search_text)
         toolbar.addWidget(self.search_edit)
         
         # Line number
-        self.line_number_label = QLabel("Line: 0")
+        self.line_number_label = QLabel(self.translate("gcode_viewer.line_number", number=0))
         toolbar.addWidget(self.line_number_label)
         
         # Add stretch to push elements to the left
@@ -219,9 +223,9 @@ class GCodeViewer(QDialog):
         """Open a G-code file."""
         file_name, _ = QFileDialog.getOpenFileName(
             self,
-            "Open G-code File",
+            self.translate("gcode_viewer.file_dialog.open_title"),
             "",
-            "G-code Files (*.gcode *.nc *.txt);;All Files (*)"
+            self.translate("gcode_viewer.file_dialog.filter")
         )
         
         if file_name:
@@ -235,10 +239,18 @@ class GCodeViewer(QDialog):
         try:
             with open(self.current_file, 'w') as f:
                 f.write(self.editor.toPlainText())
-            QMessageBox.information(self, "Success", "File saved successfully.")
+            QMessageBox.information(
+                self, 
+                self.translate("gcode_viewer.messages.success"),
+                self.translate("gcode_viewer.messages.file_saved")
+            )
         except Exception as e:
             self.logger.error(f"Error saving file: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
+            QMessageBox.critical(
+                self, 
+                self.translate("gcode_viewer.messages.error"),
+                self.translate("gcode_viewer.messages.save_error", error=str(e))
+            )
     
     def search_text(self):
         """Search for text in the G-code."""
@@ -255,7 +267,11 @@ class GCodeViewer(QDialog):
         found = self.editor.find(search_text, flags)
         
         if not found:
-            QMessageBox.information(self, "Not Found", f"'{search_text}' not found.")
+            QMessageBox.information(
+                self, 
+                self.translate("gcode_viewer.search.not_found_title"),
+                self.translate("gcode_viewer.search.not_found", text=search_text)
+            )
     
     def display_gcode(self, file_path):
         """Display G-code content in the viewer."""
@@ -264,13 +280,17 @@ class GCodeViewer(QDialog):
                 content = f.read()
             
             self.current_file = file_path
-            self.setWindowTitle(f"G-code Viewer - {os.path.basename(file_path)}")
+            self.setWindowTitle(self.translate("gcode_viewer.title_with_file", filename=os.path.basename(file_path)))
             self.highlight_gcode(content)
             self.save_btn.setEnabled(True)
             
         except Exception as e:
             self.logger.error(f"Error loading file: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
+            QMessageBox.critical(
+                self, 
+                self.translate("gcode_viewer.messages.error"),
+                self.translate("gcode_viewer.messages.load_error", error=str(e))
+            )
     
     def highlight_gcode(self, content):
         """Apply syntax highlighting to the G-code content."""
@@ -338,7 +358,7 @@ class GCodeViewer(QDialog):
         """Update the current line number display."""
         cursor = self.editor.textCursor()
         line = cursor.blockNumber() + 1
-        self.line_number_label.setText(f"Line: {line}")
+        self.line_number_label.setText(self.translate("gcode_viewer.line_number", number=line))
 
 # For testing
 if __name__ == "__main__":

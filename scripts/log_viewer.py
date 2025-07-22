@@ -4,10 +4,9 @@ Log viewer module for the STL to GCode Converter.
 This module provides a dockable log viewer with filtering capabilities.
 """
 import logging
-from scripts.logger import get_logger
 import os
-from datetime import datetime
 from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QDockWidget, QTextEdit, QComboBox, QVBoxLayout, QWidget, QLabel,
     QHBoxLayout, QPushButton, QApplication, QTextBrowser, QMessageBox
@@ -15,17 +14,29 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QFont, QPalette
 
+from scripts.logger import get_logger
+from scripts.translations import get_language_manager
+
 class LogViewer(QDockWidget):
     """
     A dockable log viewer widget that displays log messages with filtering by log level.
     """
     def __init__(self, parent=None):
         """Initialize the log viewer."""
-        super().__init__("Log Viewer", parent)
+        self.language_manager = get_language_manager()
+        self.translate = self.language_manager.translate
+        
+        super().__init__(self.translate("log_viewer.title"), parent)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Set up the user interface."""
         self.setObjectName("LogViewer")
-        self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | 
-                           Qt.DockWidgetArea.LeftDockWidgetArea |
-                           Qt.DockWidgetArea.RightDockWidgetArea)
+        self.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.LeftDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea
+        )
         
         # Apply dark theme
         self.setStyleSheet("""
@@ -83,20 +94,27 @@ class LogViewer(QDockWidget):
         self.top_bar.setSpacing(5)
         
         # Log file selector
-        self.log_file_label = QLabel("Log File:")
+        self.log_file_label = QLabel(self.translate("log_viewer.log_file_label"))
         self.log_file_combo = QComboBox()
         self.log_file_combo.setMinimumWidth(400)
         self.log_file_combo.currentTextChanged.connect(self.change_log_file)
         
         # Log level filter
-        self.filter_label = QLabel("Log Level:")
+        self.filter_label = QLabel(self.translate("log_viewer.labels.log_level"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
-        self.filter_combo.setCurrentText("INFO")
+        self.filter_combo.addItems([
+            self.translate("log_viewer.levels.all"),
+            self.translate("log_viewer.levels.debug"),
+            self.translate("log_viewer.levels.info"),
+            self.translate("log_viewer.levels.warning"),
+            self.translate("log_viewer.levels.error"),
+            self.translate("log_viewer.levels.critical")
+        ])
+        self.filter_combo.setCurrentText(self.translate("log_viewer.levels.info"))
         self.filter_combo.currentTextChanged.connect(self.filter_logs)
         
         # Clear button
-        self.clear_button = QPushButton("Clear Logs")
+        self.clear_button = QPushButton(self.translate("log_viewer.clear_button"))
         self.clear_button.clicked.connect(self.clear_logs)
         
         # Add widgets to top bar

@@ -99,7 +99,27 @@ TRANSLATIONS = {
         "clear_log": "Clear Log",
         "save_as": "Save As",
         "no_logs_available": "No Logs Available",
-
+        
+        # Log Viewer Translations
+        "log_viewer.title": "Log Viewer",
+        "log_viewer.labels.log_file": "Log File:",
+        "log_viewer.labels.log_level": "Log Level:",
+        "log_viewer.buttons.clear": "Clear Logs",
+        
+        # Log Level Options
+        "log_viewer.levels.all": "ALL",
+        "log_viewer.levels.debug": "DEBUG",
+        "log_viewer.levels.info": "INFO",
+        "log_viewer.levels.warning": "WARNING",
+        "log_viewer.levels.error": "ERROR",
+        "log_viewer.levels.critical": "CRITICAL",
+        
+        # Messages
+        "log_viewer.messages.no_logs": "No log files found",
+        "log_viewer.messages.logs_cleared": "Logs cleared",
+        "log_viewer.errors.init_failed": "Error initializing log files: {error}",
+        "log_viewer.errors.change_failed": "Error changing log file: {error}",
+        
         # G-code Editor
         "gcode_editor": {
             "no_issues": "No issues",
@@ -155,6 +175,29 @@ TRANSLATIONS = {
         "download": "Download",
         "view_changes": "View Changes",
         "update_available_title": "Update Available",
+        
+        # Update Checker
+        "updates.checking": "Checking for updates...",
+        "updates.error.check_failed": "Failed to check for updates: {error}",
+        "updates.error.connection": "Could not connect to the update server. Please check your internet connection.",
+        "updates.error.invalid_response": "Received an invalid response from the update server.",
+        "updates.available.title": "Update Available",
+        "updates.available.message": "A new version {version} is available.\n\nWould you like to download it now?\n\nChanges in this version:\n{changelog}",
+        "updates.available.download": "Download Update",
+        "updates.available.later": "Remind Me Later",
+        "updates.available.skip": "Skip This Version",
+        "updates.latest.title": "Up to Date",
+        "updates.latest.message": "You are using the latest version ({version}).",
+        "updates.downloading": "Downloading update...",
+        "updates.download.complete": "Download complete. The update will be installed when you restart the application.",
+        "updates.download.failed": "Failed to download update: {error}",
+        "updates.check.complete": "Update check complete.",
+        "updates.check.force": "Force checking for updates...",
+        "updates.check.offline": "Skipping update check (offline mode)",
+        "updates.check.frequency": "Checking for updates every {hours} hours",
+        "updates.check.last_checked": "Last checked: {time}",
+        "updates.check.next_check": "Next check: {time}",
+        "updates.check.manual": "Manual update check requested",
         
         # Worker-related translations
         "worker.error.unsupported_mesh_format": "Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' key.",
@@ -243,7 +286,147 @@ TRANSLATIONS = {
         
         # Reset confirmation
         "settings_dialog.reset_title": "Reset to Defaults",
-        "settings_dialog.reset_confirm": "Are you sure you want to reset all settings to their default values?"
+        "settings_dialog.reset_confirm": "Are you sure you want to reset all settings to their default values?",
+
+        # Markdown Viewer Translations
+        "markdown_viewer.title": "Documentation",
+        "markdown_viewer.label.document": "Document:",
+        "markdown_viewer.button.close": "Close",
+        "markdown_viewer.error.file_not_found": "File not found: {filename}",
+        "markdown_viewer.error.load_error": "Error loading {filename}: {error}",
+        "markdown_viewer.message.no_docs_title": "No Documentation Found",
+        "markdown_viewer.message.no_docs_text": "No markdown documentation files (*.md) were found in the 'docs' directory.",
+        
+        # G-code Viewer Translations
+        "gcode_viewer.title": "G-code Viewer",
+        "gcode_viewer.title_with_file": "G-code Viewer - {filename}",
+        
+        "gcode_viewer.buttons.open": "Open G-code",
+        "gcode_viewer.buttons.save": "Save",
+        
+        "gcode_viewer.search.placeholder": "Search in G-code...",
+        "gcode_viewer.search.not_found": "'{text}' not found.",
+        "gcode_viewer.search.not_found_title": "Not Found",
+        
+        "gcode_viewer.line_number": "Line: {number}",
+        
+        "gcode_viewer.file_dialog.open_title": "Open G-code File",
+        "gcode_viewer.file_dialog.filter": "G-code Files (*.gcode *.nc *.txt);;All Files (*)",
+        
+        "gcode_viewer.messages.success": "Success",
+        "gcode_viewer.messages.file_saved": "File saved successfully.",
+        "gcode_viewer.messages.error": "Error",
+        "gcode_viewer.messages.save_error": "Failed to save file: {error}",
+        "gcode_viewer.messages.load_error": "Failed to load file: {error}",
+        
+        # Help Dialog Translations
+        "help_dialog.title": "STL to GCode Converter - Help",
+        "help_dialog.buttons.close": "Close",
+        "help_dialog.buttons.documentation": "Open Full Documentation",
+        
+        "help.content.overview": """
+        <h1>STL to GCode Converter - User Guide</h1>
+        
+        <h2>Overview</h2>
+        <p>This application converts STL (STereoLithography) files to G-code for 3D printing and CNC machining, featuring a modern PyQt6-based interface with advanced visualization and customization options.</p>
+        
+        <h2>Getting Started</h2>
+        <ol>
+            <li>Open an STL file using File > Open or drag and drop</li>
+            <li>Adjust settings in the right panel as needed</li>
+            <li>Preview the 3D model using the view controls</li>
+            <li>Generate G-code using the toolbar button</li>
+            <li>Save or export your G-code</li>
+        </ol>
+        
+        <h2>Features</h2>
+        
+        <h3>File Management</h3>
+        <ul>
+            <li>Open STL files from your system</li>
+            <li>Recent files menu for quick access</li>
+            <li>Save G-code output to your preferred location</li>
+            <li>Export/import settings profiles</li>
+            <li>Drag and drop support</li>
+        </ul>
+        
+        <h3>3D View Controls</h3>
+        <ul>
+            <li>Rotate: Left-click and drag</li>
+            <li>Pan: Right-click and drag</li>
+            <li>Zoom: Mouse wheel or pinch gesture</li>
+            <li>Reset view: Double-click or toolbar button</li>
+        </ul>
+        
+        <h3>G-code Generation</h3>
+        <ul>
+            <li>Customizable layer height and print speed</li>
+            <li>Support structure generation</li>
+            <li>Infill patterns and density control</li>
+            <li>Multiple quality presets</li>
+        </ul>
+        
+        <h2>Support</h2>
+        <p>For additional help, please visit our <a href="https://github.com/yourusername/stl-to-gcode/wiki">documentation</a> or contact support.</p>
+        """,
+        
+        # About Dialog Translations
+        "about.title": "About STL to G-Code Converter",
+        "about.app_name": "STL to G-Code Converter",
+        "about.version": "Version: {version}",
+        "about.copyright": " 2025 Nsfr750",
+        "about.description": (
+            "A powerful application for converting STL files to G-code for 3D printing.\n\n"
+            "This tool provides advanced features for 3D model preparation and G-code optimization "
+            "to ensure high-quality 3D prints."
+        ),
+        "about.system_info": "System Information",
+        "about.os": "Operating System: {os_name} {os_version}",
+        "about.python": "Python: {python_version}",
+        "about.qt": "Qt: {qt_version}",
+        "about.pyqt": "PyQt: {pyqt_version}",
+        "about.cpu": "CPU: {cpu_info}",
+        "about.memory": "Memory: {memory:.2f} GB",
+        "about.gpu": "GPU: {gpu_info}",
+        "about.buttons.github": "GitHub",
+        "about.buttons.documentation": "Documentation",
+        "about.buttons.license": "License",
+        "about.buttons.close": "Close",
+        "about.buttons.check_updates": "Check for Updates",
+        "about.links.website": "Website",
+        "about.links.issues": "Report Issues",
+        "about.links.donate": "Donate",
+        "about.credits.title": "Credits",
+        "about.credits.developer": "Developer: {author}",
+        "about.credits.contributors": "Contributors",
+        "about.credits.libraries": "Libraries Used",
+        "about.credits.licenses": "Open Source Licenses",
+        
+        # About Dialog - Additional Keys
+        "about.urls.github": "https://github.com/Nsfr750/STL_to_G-Code",
+        "about.urls.documentation": "https://github.com/Nsfr750/STL_to_G-Code/wiki",
+        
+        "about.license_title": "License Information",
+        "about.license": "GNU General Public License v3.0",
+        "about.license_text": (
+            "This program is free software: you can redistribute it and/or modify\n"
+            "it under the terms of the GNU General Public License as published by\n"
+            "the Free Software Foundation, either version 3 of the License, or\n"
+            "(at your option) any later version.\n\n"
+            "This program is distributed in the hope that it will be useful,\n"
+            "but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+            "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"
+            "GNU General Public License for more details.\n\n"
+            "You should have received a copy of the GNU General Public License\n"
+            "along with this program.  If not, see <https://www.gnu.org/licenses/>."
+        ),
+        
+        "about.update_error_title": "Update Error",
+        "about.update_error_message": "An error occurred while checking for updates: {error}",
+        
+        "about.cores": "CPU Cores",
+        "about.available": "available",
+        "about.error_loading_system_info": "Error loading system information"
     },
     "it": {
         # Application
@@ -337,7 +520,27 @@ TRANSLATIONS = {
         "clear_log": "Pulisci Log",
         "save_as": "Salva come",
         "no_logs_available": "Nessun Log Disponibile",
-
+        
+        # Log Viewer Translations
+        "log_viewer.title": "Visualizzatore Log",
+        "log_viewer.labels.log_file": "File di log:",
+        "log_viewer.labels.log_level": "Livello:",
+        "log_viewer.buttons.clear": "Pulisci Log",
+        
+        # Log Level Options
+        "log_viewer.levels.all": "TUTTI",
+        "log_viewer.levels.debug": "DEBUG",
+        "log_viewer.levels.info": "INFO",
+        "log_viewer.levels.warning": "ATTENZIONE",
+        "log_viewer.levels.error": "ERRORE",
+        "log_viewer.levels.critical": "CRITICO",
+        
+        # Messages
+        "log_viewer.messages.no_logs": "Nessun file di log trovato",
+        "log_viewer.messages.logs_cleared": "Log cancellati",
+        "log_viewer.errors.init_failed": "Errore durante l'inizializzazione dei file di log: {error}",
+        "log_viewer.errors.change_failed": "Errore durante il cambio del file di log: {error}",
+        
         # G-code Editor
         "gcode_editor": {
             "no_issues": "Nessun problema",
@@ -393,6 +596,29 @@ TRANSLATIONS = {
         "download": "Scarica",
         "view_changes": "Visualizza Modifiche",
         "update_available_title": "Aggiornamento Disponibile",
+        
+        # Update Checker
+        "updates.checking": "Controllo aggiornamenti in corso...",
+        "updates.error.check_failed": "Impossibile controllare gli aggiornamenti: {error}",
+        "updates.error.connection": "Impossibile connettersi al server di aggiornamento. Controlla la tua connessione internet.",
+        "updates.error.invalid_response": "Risposta non valida ricevuta dal server di aggiornamento.",
+        "updates.available.title": "Aggiornamento Disponibile",
+        "updates.available.message": "È disponibile una nuova versione {version}.\n\nVuoi scaricarla ora?\n\nNovità di questa versione:\n{changelog}",
+        "updates.available.download": "Scarica Aggiornamento",
+        "updates.available.later": "Ricordamelo più tardi",
+        "updates.available.skip": "Salta questa versione",
+        "updates.latest.title": "Aggiornato",
+        "updates.latest.message": "Stai utilizzando l'ultima versione disponibile ({version}).",
+        "updates.downloading": "Download dell'aggiornamento in corso...",
+        "updates.download.complete": "Download completato. L'aggiornamento verrà installato al riavvio dell'applicazione.",
+        "updates.download.failed": "Impossibile scaricare l'aggiornamento: {error}",
+        "updates.check.complete": "Controllo aggiornamenti completato.",
+        "updates.check.force": "Forzo il controllo degli aggiornamenti...",
+        "updates.check.offline": "Controllo aggiornamenti saltato (modalità offline)",
+        "updates.check.frequency": "Controllo aggiornamenti ogni {hours} ore",
+        "updates.check.last_checked": "Ultimo controllo: {time}",
+        "updates.check.next_check": "Prossimo controllo: {time}",
+        "updates.check.manual": "Controllo aggiornamenti manuale richiesto",
         
         # Worker-related translations
         "worker.error.unsupported_mesh_format": "Formato mesh non supportato. Atteso oggetto trimesh o dizionario con chiave 'vertices'.",
@@ -470,7 +696,7 @@ TRANSLATIONS = {
         "settings_dialog.advanced.skirt_distance": "Distanza Gonna (mm):",
         "settings_dialog.advanced.temperature": "Temperatura Ugello (°C):",
         "settings_dialog.advanced.bed_temperature": "Temperatura Piatto (°C):",
-        "settings_dialog.advanced.fan_speed": "Velocità Ventola (\u0025):",
+        "settings_dialog.advanced.fan_speed": "Velocità Ventola (%):",
         "settings_dialog.advanced.fan_layer": "Strato Inizio Ventola:",
         
         # G-code settings
@@ -481,7 +707,65 @@ TRANSLATIONS = {
         
         # Reset confirmation
         "settings_dialog.reset_title": "Ripristina Impostazioni",
-        "settings_dialog.reset_confirm": "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?"
+        "settings_dialog.reset_confirm": "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?",
+        
+        # About Dialog Translations
+        "about.title": "Informazioni su STL to G-Code Converter",
+        "about.app_name": "Convertitore STL in G-Code",
+        "about.version": "Versione: {version}",
+        "about.copyright": " 2025 Nsfr750",
+        "about.description": (
+            "Un'applicazione avanzata per convertire file STL in G-code per la stampa 3D.\n\n"
+            "Questo strumento offre funzionalità avanzate per la preparazione di modelli 3D e "
+            "l'ottimizzazione del G-code per garantire stampe 3D di alta qualità."
+        ),
+        "about.system_info": "Informazioni di Sistema",
+        "about.os": "Sistema Operativo: {os_name} {os_version}",
+        "about.python": "Python: {python_version}",
+        "about.qt": "Qt: {qt_version}",
+        "about.pyqt": "PyQt: {pyqt_version}",
+        "about.cpu": "CPU: {cpu_info}",
+        "about.memory": "Memoria: {memory:.2f} GB",
+        "about.gpu": "GPU: {gpu_info}",
+        "about.buttons.github": "GitHub",
+        "about.buttons.documentation": "Documentazione",
+        "about.buttons.license": "Licenza",
+        "about.buttons.close": "Chiudi",
+        "about.buttons.check_updates": "Cerca Aggiornamenti",
+        "about.links.website": "Sito Web",
+        "about.links.issues": "Segnala Problemi",
+        "about.links.donate": "Dona",
+        "about.credits.title": "Crediti",
+        "about.credits.developer": "Sviluppatore: {author}",
+        "about.credits.contributors": "Collaboratori",
+        "about.credits.libraries": "Librerie Utilizzate",
+        "about.credits.licenses": "Open Source Licenses",
+        
+        # About Dialog - Additional Keys
+        "about.urls.github": "https://github.com/Nsfr750/STL_to_G-Code",
+        "about.urls.documentation": "https://github.com/Nsfr750/STL_to_G-Code/wiki",
+        
+        "about.license_title": "Informazioni sulla Licenza",
+        "about.license": "Licenza Pubblica Generica GNU v3.0",
+        "about.license_text": (
+            "Questo programma è un software libero: puoi ridistribuirlo e/o modificarlo\n"
+            "secondo i termini della GNU General Public License così come pubblicata dalla\n"
+            "Free Software Foundation, sia la versione 3 della Licenza, o (a tua scelta)\n"
+            "qualsiasi versione successiva.\n\n"
+            "Questo programma è distribuito nella speranza che possa essere utile,\n"
+            "ma SENZA ALCUNA GARANZIA; senza nemmeno la garanzia implicita di\n"
+            "COMMERCIABILITÀ o IDONEITÀ PER UN PARTICOLARE SCOPO. Vedere la\n"
+            "GNU General Public License per maggiori dettagli.\n\n"
+            "Dovresti aver ricevuto una copia della GNU General Public License\n"
+            "insieme a questo programma. In caso contrario, vedi <https://www.gnu.org/licenses/>."
+        ),
+        
+        "about.update_error_title": "Errore Aggiornamento",
+        "about.update_error_message": "Si è verificato un errore durante il controllo degli aggiornamenti: {error}",
+        
+        "about.cores": "Core CPU",
+        "about.available": "disponibile",
+        "about.error_loading_system_info": "Errore nel caricamento delle informazioni di sistema"
     },
 }
 

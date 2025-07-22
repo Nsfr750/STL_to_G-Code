@@ -6,8 +6,10 @@ This module provides a simple markdown viewer with syntax highlighting.
 import os
 import markdown
 from scripts.logger import get_logger
+from scripts.translations import get_language_manager
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextBrowser, QPushButton, 
-                            QFileDialog, QHBoxLayout, QLabel, QComboBox, QFrame)
+                            QFileDialog, QHBoxLayout, QLabel, QComboBox, QFrame,
+                            QMessageBox)
 from PyQt6.QtCore import Qt, QSize, QUrl
 from PyQt6.QtGui import (QTextDocument, QTextCharFormat, QTextCursor, 
                          QTextFormat, QTextBlockFormat, QTextFrameFormat, 
@@ -18,7 +20,10 @@ class MarkdownViewer(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Documentation")
+        self.language_manager = get_language_manager()
+        self.translate = self.language_manager.translate
+        
+        self.setWindowTitle(self.translate("markdown_viewer.title"))
         self.setMinimumSize(800, 600)
         
         # Store the docs directory path
@@ -37,14 +42,14 @@ class MarkdownViewer(QDialog):
         # Document selector
         self.doc_selector = QComboBox()
         self.doc_selector.currentTextChanged.connect(self.load_markdown_file)
-        toolbar.addWidget(QLabel("Document:"))
+        toolbar.addWidget(QLabel(self.translate("markdown_viewer.label.document")))
         toolbar.addWidget(self.doc_selector, 1)
         
         # Add some stretch
         toolbar.addStretch()
         
         # Close button
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(self.translate("markdown_viewer.button.close"))
         close_btn.clicked.connect(self.accept)
         toolbar.addWidget(close_btn)
         
@@ -133,7 +138,9 @@ class MarkdownViewer(QDialog):
             
         filepath = os.path.join(self.docs_dir, filename)
         if not os.path.exists(filepath):
-            self.text_browser.setHtml(f"<p style='color: red;'>File not found: {filename}</p>")
+            self.text_browser.setHtml(
+                f"<p style='color: red;'>{self.translate('markdown_viewer.error.file_not_found', filename=filename)}</p>"
+            )
             return
             
         try:
@@ -163,8 +170,9 @@ class MarkdownViewer(QDialog):
             self.text_browser.setHtml(html)
             
         except Exception as e:
-            self.text_browser.setHtml(f"<p style='color: red;'>Error loading {filename}: {str(e)}</p>")
-
+            self.text_browser.setHtml(
+                f"<p style='color: red;'>{self.translate('markdown_viewer.error.load_error', filename=filename, error=str(e))}</p>"
+            )
 
 def show_documentation(parent=None):
     """Show the documentation viewer dialog."""
@@ -172,9 +180,8 @@ def show_documentation(parent=None):
     if viewer.doc_selector.count() > 0:
         viewer.exec()
     else:
-        from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(
             parent, 
-            "No Documentation Found",
-            "No markdown documentation files (*.md) were found in the 'docs' directory."
+            viewer.translate("markdown_viewer.message.no_docs_title"),
+            viewer.translate("markdown_viewer.message.no_docs_text")
         )

@@ -245,3 +245,73 @@ class AboutDialog(QDialog):
             print(f"Error getting system info: {e}")
             print(traceback.format_exc())
             return self.translate("error_loading_system_info")
+
+    def open_github(self):
+        """Open the GitHub repository in the default web browser."""
+        try:
+            QDesktopServices.openUrl(QUrl(self.translate("github_url")))
+        except Exception as e:
+            print(f"Error opening GitHub: {e}")
+
+    def open_documentation(self):
+        """Open the documentation in the default web browser."""
+        try:
+            QDesktopServices.openUrl(QUrl(self.translate("documentation_url")))
+        except Exception as e:
+            print(f"Error opening documentation: {e}")
+
+    def show_license(self):
+        """Show the GPLv3 license information."""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        license_text = (
+            "This program is free software: you can redistribute it and/or modify\n"
+            "it under the terms of the GNU General Public License as published by\n"
+            "the Free Software Foundation, either version 3 of the License, or\n"
+            "(at your option) any later version.\n\n"
+            "This program is distributed in the hope that it will be useful,\n"
+            "but WITHOUT ANY WARRANTY; without even the implied warranty of\n"
+            "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n"
+            "GNU General Public License for more details.\n\n"
+            "You should have received a copy of the GNU General Public License\n"
+            "along with this program.  If not, see <https://www.gnu.org/licenses/>."
+        )
+        
+        QMessageBox.about(
+            self,
+            self.translate("about.license_title"),
+            f"{self.translate('about.app_name')} - {self.translate('about.license')}\n\n{license_text}"
+        )
+
+    def check_for_updates(self):
+        """Check for application updates."""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        try:
+            # Import UpdateChecker here to avoid circular imports
+            from .updates import UpdateChecker
+            
+            self.update_checker = UpdateChecker(parent=self, language_manager=self.lang_manager)
+            self.update_checker.check_for_updates()
+            
+        except ImportError as e:
+            print(f"Error importing update checker: {e}")
+            QMessageBox.warning(
+                self,
+                self.translate("about.update_error_title"),
+                self.translate("about.update_error_message", error=str(e))
+            )
+        except Exception as e:
+            print(f"Error checking for updates: {e}")
+            QMessageBox.critical(
+                self,
+                self.translate("about.update_error_title"),
+                self.translate("about.update_error_message", error=str(e))
+            )
+
+    def closeEvent(self, event):
+        """Handle dialog close event."""
+        # Clean up resources if needed
+        if hasattr(self, 'update_checker'):
+            self.update_checker.deleteLater()
+        event.accept()
