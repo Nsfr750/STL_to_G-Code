@@ -8,7 +8,10 @@ import os
 import logging
 from scripts.logger import get_logger
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
-from scripts.language_manager import get_language_manager
+from scripts.language_manager import LanguageManager
+
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 # Set up logging
 logger = get_logger(__name__)
@@ -18,18 +21,18 @@ class STLVisualizer:
     A class to handle visualization of STL files and infill patterns using matplotlib.
     """
     
-    def __init__(self, ax, canvas, language_manager=None):
+    def __init__(self, ax, canvas, language_manager=language_manager):
         """
         Initialize the STL visualizer.
         
         Args:
             ax: Matplotlib 3D axis object
             canvas: Matplotlib canvas for redrawing
-            language_manager: Optional LanguageManager instance for translations
+            language_manager: Optional LanguageManager instance for translations (defaults to global instance)
         """
         self.ax = ax
         self.canvas = canvas
-        self.language_manager = language_manager or get_language_manager()
+        self.language_manager = language_manager
         self.translate = self.language_manager.translate
         
         self.vertices = np.zeros((0, 3), dtype=np.float32)

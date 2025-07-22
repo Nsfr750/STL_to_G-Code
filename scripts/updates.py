@@ -11,7 +11,10 @@ import time
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
 # Import language manager for translations
-from scripts.translations import get_language_manager
+from scripts.language_manager import LanguageManager
+
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 # Get the application directory
 APP_DIR = Path(__file__).parent.parent
@@ -28,18 +31,29 @@ class UpdateChecker(QObject):
     error_occurred = pyqtSignal(str)
     
     def __init__(self, current_version: str, config_path: Optional[Path] = None):
+        """
+        Initialize the update checker.
+        
+        Args:
+            current_version: Current application version string (e.g., '1.0.0')
+            config_path: Optional path to configuration file
+        """
         super().__init__()
         self.current_version = current_version
-        self.config_path = config_path or APP_DIR
-        self.language_manager = get_language_manager()
+        self.config_path = config_path or UPDATES_FILE
+        self.language_manager = language_manager
         self.translate = self.language_manager.translate
         
-        # Setup directories and session
-        self._setup_directories()
-        self._setup_session()
+        # Load update configuration
+        self.config = self._load_config()
+        self.last_check = self.config.get('last_check', 0)
+        self.last_version = self.config.get('last_version', '')
         
-        # Connect language changed signal
-        self.language_manager.language_changed.connect(self._on_language_changed)
+        # Set up the worker thread
+        self.worker = None
+        self.thread = None
+        
+        logger.debug(f"Update checker initialized for version {current_version}")
     
     def _setup_directories(self):
         """Create necessary directories and files."""
@@ -218,7 +232,6 @@ def check_for_updates(parent=None, current_version: str = "0.0.0",
     from PyQt6.QtWidgets import QMessageBox
     
     # Get language manager for translations
-    language_manager = get_language_manager()
     translate = language_manager.translate
     
     def on_update_available(update_info: dict) -> None:
@@ -310,8 +323,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     # Initialize language manager
-    from scripts.translations import LanguageManager
-    language_manager = LanguageManager()
     language_manager.set_language('en')  # or 'it' for Italian
     
     # Test with the current version as 0.0.1 to force an update check

@@ -5,14 +5,17 @@ This module provides various optimization techniques for G-code generation,
 including path optimization, infill patterns, and print parameter tuning.
 """
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Tuple, Optional, Union, Iterator
 import math
 import re
 from collections import defaultdict
 import logging
 
 # Import the language manager
-from scripts.language_manager import language_manager
+from scripts.language_manager import LanguageManager
+
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 logger = logging.getLogger(__name__)
 

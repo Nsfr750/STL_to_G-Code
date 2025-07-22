@@ -12,13 +12,13 @@ from PyQt6.QtGui import QDesktopServices
 import webbrowser
 import os
 from scripts.logger import get_logger
-from scripts.language_manager import get_language_manager
+from scripts.language_manager import LanguageManager
 
 # Import the markdown viewer
 from .markdown_viewer import show_documentation
 
-# Initialize language manager
-language_manager = get_language_manager()
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 def get_help_content():
     """Generate help content with translated strings."""
@@ -110,7 +110,7 @@ class HelpDialog(QDialog):
         """
         super().__init__(parent)
         self.parent = parent
-        self.language_manager = get_language_manager()
+        self.language_manager = language_manager
         self.translate = self.language_manager.translate
         
         self.setWindowTitle(self.translate('help.dialog.title'))

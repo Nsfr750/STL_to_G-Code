@@ -15,7 +15,10 @@ from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QFont, QPalette
 
 from scripts.logger import get_logger
-from scripts.translations import get_language_manager
+from scripts.language_manager import LanguageManager
+
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 class LogViewer(QDockWidget):
     """
@@ -23,7 +26,7 @@ class LogViewer(QDockWidget):
     """
     def __init__(self, parent=None):
         """Initialize the log viewer."""
-        self.language_manager = get_language_manager()
+        self.language_manager = language_manager
         self.translate = self.language_manager.translate
         
         super().__init__(self.translate("log_viewer.title"), parent)

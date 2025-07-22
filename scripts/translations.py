@@ -450,7 +450,7 @@ TRANSLATIONS = {
         
         # STL Loading
         "stl.loading.open_dialog_title": "Open STL File",
-        "stl.loading.file_filter": "STL Files (*.stl);;All Files (*)",
+        "stl.loading.file_filter": "STL Files (*.stl)",
         "stl.loading.no_file_selected": "No file selected",
         "stl.loading.file_not_found": "File not found: {file_path}",
         "stl.loading.operation_cancelled": "Operation cancelled by user",
@@ -539,6 +539,31 @@ TRANSLATIONS = {
                 "header_error": "Error reading STL header: {error}",
                 "triangle_error": "Error reading triangle data: {error}"
             }
+        },
+        
+        # STL View
+        "stl_view": {
+            "axes": {
+                "x_label": "X",
+                "y_label": "Y",
+                "z_label": "Z"
+            },
+            "loading": "Loading STL file...",
+            "error_loading": "Error loading STL file"
+        },
+        
+        # STL Loading
+        "stl": {
+            "loading": {
+                "open_dialog_title": "Open STL File",
+                "file_filter": "STL Files (*.stl)",
+                "no_file_selected": "No file selected"
+            }
+        },
+        
+        # Error Handling
+        "error_handling": {
+            "error_dialog_title": "Error"
         },
         
         # Italian translations for G-code Optimizer
@@ -930,7 +955,7 @@ TRANSLATIONS = {
         
         # STL Loading
         "stl.loading.open_dialog_title": "Apri file STL",
-        "stl.loading.file_filter": "File STL (*.stl);;Tutti i file (*)",
+        "stl.loading.file_filter": "File STL (*.stl)",
         "stl.loading.no_file_selected": "Nessun file selezionato",
         "stl.loading.file_not_found": "File non trovato: {file_path}",
         "stl.loading.operation_cancelled": "Operazione annullata dall'utente",
@@ -943,7 +968,7 @@ TRANSLATIONS = {
         
         # Error Handling
         "error_handling.no_error_message": "Nessun messaggio di errore disponibile",
-        "error_handling.error_dialog_title": "Errore - {error_type}",
+        "error_handling.error_dialog_title": "Errore",
         "error_handling.permission_denied": "Permesso negato durante il tentativo di {operation} '{file_name}'",
         "error_handling.file_not_found": "File non trovato: {file_name}",
         "error_handling.expected_file_found_dir": "Atteso un file ma trovata una cartella: {file_name}",

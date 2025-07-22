@@ -47,120 +47,73 @@ class GCodeGenerationWorker(QObject):
     def generate(self):
         """Generate G-code from the STL mesh."""
         try:
-            # Initialize progress
-            self.progress.emit(0, 100)
-            
-            # Get z-coordinates from the mesh (handling both trimesh and dict)
-            if hasattr(self.stl_mesh, 'vertices') and hasattr(self.stl_mesh.vertices, '__array__'):
+            # Extract Z coordinates for layer calculation
+            if hasattr(self.stl_mesh, 'vertices'):
                 # Handle trimesh object
                 z_coords = self.stl_mesh.vertices[:, 2]
             elif isinstance(self.stl_mesh, dict) and 'vertices' in self.stl_mesh:
                 # Handle dictionary mesh
                 z_coords = self.stl_mesh['vertices'][:, 2]
             else:
-                error_msg = self.language_manager.get_translation(
+                error_msg = self.language_manager.translate(
                     "worker.error.unsupported_mesh_format",
                     default="Unsupported mesh format. Expected trimesh object or dictionary with 'vertices' key."
                 )
                 logger.error(error_msg)
                 self.error.emit(error_msg)
                 return
-            
+
             # Calculate total layers
-            z_min = float(z_coords.min())
-            z_max = float(z_coords.max())
+            z_min, z_max = np.min(z_coords), np.max(z_coords)
             total_layers = int((z_max - z_min) / self.settings['layer_height']) + 1
             
             logger.info(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.info.calculated_layers",
                     default="Calculated {layers} layers (z: {z_min:.2f}mm to {z_max:.2f}mm, height: {height:.2f}mm)",
                     layers=total_layers,
                     z_min=z_min,
                     z_max=z_max,
-                    height=z_max - z_min
+                    height=z_max-z_min
                 )
             )
             
-            # Initialize G-code optimizer with individual parameters
-            from scripts.gcode_optimizer import GCodeOptimizer
-            optimizer = GCodeOptimizer(
-                layer_height=self.settings['layer_height'],
-                nozzle_diameter=self.settings['extrusion_width'],
-                filament_diameter=self.settings['filament_diameter'],
-                print_speed=self.settings['print_speed'],
-                travel_speed=self.settings['travel_speed'],
-                infill_speed=self.settings['infill_speed'],
-                first_layer_speed=self.settings['first_layer_speed'],
-                retraction_length=self.settings['retraction_length'],
-                retraction_speed=self.settings['retraction_speed'],
-                z_hop=self.settings['z_hop'],
-                infill_density=self.settings['infill_density'],
-                infill_pattern=self.settings['infill_pattern'],
-                infill_angle=self.settings['infill_angle'],
-                language_manager=self.language_manager  # Pass language manager to optimizer
-            )
+            # Initialize progress
+            self.progress.emit(0, total_layers)
             
-            # Prepare context for G-code generation
-            context = {
-                'z_min': z_min,
-                'z_max': z_max,
-                'bed_temp': self.settings.get('bed_temp', 60),
-                'extruder_temp': self.settings.get('extruder_temp', 200),
-                'fan_speed': self.settings.get('fan_speed', 0),
-                'material': self.settings.get('material', 'PLA')
-            }
+            # Create G-code generator
+            gcode_generator = self._generate_gcode()
             
-            # Prepare start and end G-code
-            start_gcode = self.settings.get('start_gcode', '')
-            end_gcode = self.settings.get('end_gcode', '')
-            
-            # Generate G-code in chunks to keep the UI responsive
-            gcode_generator = optimizer.generate_gcode(
-                self.stl_mesh,
-                start_gcode=start_gcode,
-                end_gcode=end_gcode,
-                context=context
-            )
-            
+            # Process G-code in chunks
             for i, chunk in enumerate(gcode_generator):
                 if self._is_cancelled:
                     logger.info(
-                        self.language_manager.get_translation(
+                        self.language_manager.translate(
                             "worker.info.generation_cancelled",
                             default="G-code generation cancelled by user"
                         )
                     )
                     break
                     
-                # Emit progress (layer number, total layers)
-                self.progress.emit(i + 1, total_layers)
+                # Emit progress
+                progress = min(int((i / total_layers) * 100), 100)
+                self.progress.emit(progress, total_layers)
                 
-                # Emit the G-code chunk
-                if chunk:
-                    self.gcode_chunk.emit(chunk)
-                    
-                    # Generate preview data for the first few layers
-                    if i < 10:  # Only send preview for first 10 layers for performance
-                        preview_data = {
-                            'layer': i + 1,
-                            'total_layers': total_layers,
-                            'gcode': chunk
-                        }
-                        self.preview_ready.emit(preview_data)
+                # Emit G-code chunk
+                self.gcode_chunk.emit(chunk)
                 
-                # Process events to keep the UI responsive
+                # Allow other events to be processed
                 QThread.yieldCurrentThread()
             
             logger.info(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.info.generation_complete",
                     default="G-code generation completed successfully"
                 )
             )
             
         except Exception as e:
-            error_msg = self.language_manager.get_translation(
+            error_msg = self.language_manager.translate(
                 "worker.error.generation_failed",
                 default="Error in G-code generation: {error}",
                 error=str(e)
@@ -197,17 +150,15 @@ class STLLoadingWorker(QObject):
         # Log STL processor info
         if hasattr(stl_processor, '_header'):
             logger.debug(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.debug.stl_header",
-                    default="STL header: {header}",
                     header=str(stl_processor._header)
                 )
             )
         else:
             logger.warning(
-                self.language_manager.get_translation(
-                    "worker.warning.no_stl_header",
-                    default="STL processor has no _header attribute"
+                self.language_manager.translate(
+                    "worker.warning.no_stl_header"
                 )
             )
     
@@ -215,7 +166,7 @@ class STLLoadingWorker(QObject):
     def start_loading(self):
         """Start the loading process in the background thread."""
         logger.info(
-            self.language_manager.get_translation(
+            self.language_manager.translate(
                 "worker.info.stl_loading_started",
                 default="STL loading worker started"
             )
@@ -224,7 +175,7 @@ class STLLoadingWorker(QObject):
         try:
             # Get total number of triangles for progress reporting
             if not hasattr(self.stl_processor, '_header') or not hasattr(self.stl_processor._header, 'num_triangles'):
-                error_msg = self.language_manager.get_translation(
+                error_msg = self.language_manager.translate(
                     "worker.error.missing_header_info",
                     default="STL processor is missing required header information"
                 )
@@ -234,7 +185,7 @@ class STLLoadingWorker(QObject):
                 
             total_triangles = self.stl_processor._header.num_triangles
             logger.info(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.info.total_triangles",
                     default="Total triangles to process: {count}",
                     count=total_triangles
@@ -242,7 +193,7 @@ class STLLoadingWorker(QObject):
             )
             
             if total_triangles <= 0:
-                error_msg = self.language_manager.get_translation(
+                error_msg = self.language_manager.translate(
                     "worker.error.invalid_triangle_count",
                     default="Invalid number of triangles in STL file: {count}",
                     count=total_triangles
@@ -251,54 +202,55 @@ class STLLoadingWorker(QObject):
                 self.error_occurred.emit(error_msg)
                 return
             
-            # Initialize chunk buffers
-            chunk_vertices = []
-            chunk_faces = []
+            # Initialize triangle collection
+            vertices = []
+            faces = []
             processed_triangles = 0
             
             logger.debug(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.debug.starting_triangle_iteration",
                     default="Starting triangle iteration..."
                 )
             )
             
-            # Process STL in chunks
+            # Process triangles in chunks
             for i, triangle in enumerate(self.stl_processor.iter_triangles()):
                 if self._is_cancelled:
                     logger.info(
-                        self.language_manager.get_translation(
+                        self.language_manager.translate(
                             "worker.info.loading_cancelled",
                             default="Loading cancelled by user"
                         )
                     )
                     break
-                
-                # Add triangle vertices and face indices
-                vertex_offset = len(chunk_vertices)
-                chunk_vertices.extend(triangle.vertices)
-                
-                # Add face indices relative to the current chunk
-                chunk_faces.append([vertex_offset, vertex_offset + 1, vertex_offset + 2])
+                    
+                # Add triangle to current chunk
+                base_idx = len(vertices) // 3
+                vertices.extend([
+                    triangle[0][0], triangle[0][1], triangle[0][2],
+                    triangle[1][0], triangle[1][1], triangle[1][2],
+                    triangle[2][0], triangle[2][1], triangle[2][2]
+                ])
+                faces.append([base_idx, base_idx+1, base_idx+2])
                 processed_triangles += 1
                 
-                # Emit progress update every 100 triangles
-                if processed_triangles % 100 == 0:
-                    self.progress_updated.emit(processed_triangles, total_triangles)
-                
-                # Process chunk if we've reached the chunk size
-                if len(chunk_vertices) >= self.chunk_size * 3:  # 3 vertices per triangle
-                    self._emit_chunk(chunk_vertices, chunk_faces, processed_triangles, total_triangles)
-                    chunk_vertices = []
-                    chunk_faces = []
+                # Emit chunk if we've reached chunk size or end of file
+                if len(vertices) >= self.chunk_size * 9:  # 3 vertices * 3 coordinates per triangle
+                    self._emit_chunk(vertices, faces, processed_triangles, total_triangles)
+                    vertices = []
+                    faces = []
+                    
+                # Allow other events to be processed
+                QThread.yieldCurrentThread()
             
-            # Process any remaining triangles in the last chunk
-            if chunk_vertices and not self._is_cancelled:
-                self._emit_chunk(chunk_vertices, chunk_faces, processed_triangles, total_triangles, is_final=True)
+            # Emit any remaining triangles
+            if vertices and not self._is_cancelled:
+                self._emit_chunk(vertices, faces, processed_triangles, total_triangles, is_final=True)
             
             if not self._is_cancelled:
                 logger.info(
-                    self.language_manager.get_translation(
+                    self.language_manager.translate(
                         "worker.info.loading_complete",
                         default="STL loading completed successfully"
                     )
@@ -306,44 +258,43 @@ class STLLoadingWorker(QObject):
                 self.loading_finished.emit()
                 
         except Exception as e:
-            error_msg = self.language_manager.get_translation(
+            error_msg = self.language_manager.translate(
                 "worker.error.loading_failed",
                 default="Error in STL loading worker: {error}",
                 error=str(e)
             )
-            logger.error(error_msg, exc_info=True) 
+            logger.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
         finally:
-            # Clean up
+            # Clean up resources
             try:
                 if hasattr(self.stl_processor, 'close'):
                     self.stl_processor.close()
             except Exception as e:
                 logger.error(
-                    self.language_manager.get_translation(
+                    self.language_manager.translate(
                         "worker.error.cleanup_failed",
                         default="Error closing STL processor: {error}",
                         error=str(e)
-                    ),
-                    exc_info=True
+                    )
                 )
     
     def _emit_chunk(self, vertices, faces, processed_triangles, total_triangles, is_final=False):
         """Emit a chunk of STL data with proper progress information."""
-        progress = 100.0 if is_final else (processed_triangles / total_triangles) * 100
+        progress = (processed_triangles / total_triangles) * 100.0
         
-        # Only log progress at certain intervals or for significant changes
+        # Only emit progress if it's the final chunk or if progress has changed significantly
         if is_final or processed_triangles % 100 == 0 or not hasattr(self, '_last_progress') or \
            abs(progress - getattr(self, '_last_progress', 0)) >= 1.0:  # At least 1% change
             
-            status_msg = self.language_manager.get_translation(
+            status_msg = self.language_manager.translate(
                 "worker.status.loading_stl",
                 default="Loading STL... {progress:.1f}%",
                 progress=progress
             )
             
             logger.debug(
-                self.language_manager.get_translation(
+                self.language_manager.translate(
                     "worker.debug.emitting_chunk",
                     default="Emitting chunk with {triangles} triangles, progress: {progress:.1f}%",
                     triangles=len(vertices)//3,
@@ -351,21 +302,25 @@ class STLLoadingWorker(QObject):
                 )
             )
             
-            self.chunk_loaded.emit({
-                'vertices': np.array(vertices, dtype=np.float32),
-                'faces': np.array(faces, dtype=np.int32),
-                'progress': progress,
-                'status': status_msg
-            })
+            # Emit progress update
+            self.progress_updated.emit(int(progress), 100)
             
-            # Update the last progress value
+            # Update last progress
             self._last_progress = progress
+        
+        # Emit the chunk data
+        self.chunk_loaded.emit({
+            'vertices': vertices,
+            'faces': faces,
+            'progress': progress,
+            'is_final': is_final
+        })
     
     def cancel(self):
         """Cancel the loading process."""
         self._is_cancelled = True
         logger.debug(
-            self.language_manager.get_translation(
+            self.language_manager.translate(
                 "worker.debug.loading_cancellation_requested",
                 default="STL loading cancellation requested"
             )

@@ -417,7 +417,7 @@ class STLToGCodeApp(QMainWindow):
         )
         help_action.setShortcut("F1")
         help_action.setStatusTip("Show help documentation")
-        help_action.triggered.connect(lambda: show_help(self))
+        help_action.triggered.connect(self.show_help)
         toolbar.addAction(help_action)
         
         # Set up keyboard shortcuts
@@ -1926,6 +1926,11 @@ class STLToGCodeApp(QMainWindow):
         
         # Update progress
         self.progress_reporter.update_progress(progress, message)
+
+    def show_help(self):
+        """Show the help dialog."""
+        from scripts.help import show_help
+        show_help(self)
 
 # Run the application
 if __name__ == "__main__":

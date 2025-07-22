@@ -8,7 +8,10 @@ import time
 import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6 import sip
-from scripts.language_manager import get_language_manager
+from scripts.language_manager import LanguageManager
+
+# Create a global language manager instance
+language_manager = LanguageManager()
 
 logger = logging.getLogger("STLtoGCode")
 
@@ -23,13 +26,14 @@ class ProgressReporter:
     - UI and logging integration
     """
     
-    def __init__(self, progress_dialog=None, is_loading=True):
+    def __init__(self, progress_dialog=None, is_loading=True, language_manager=language_manager):
         """
         Initialize the progress reporter.
         
         Args:
             progress_dialog: Optional QProgressDialog for UI updates
             is_loading: Initial loading state
+            language_manager: Optional LanguageManager instance for translations (defaults to global instance)
         """
         self.progress_dialog = progress_dialog
         self.is_loading = is_loading
@@ -37,7 +41,7 @@ class ProgressReporter:
         self._last_progress_time = 0
         self._last_message = None
         self._logged_100_percent = False
-        self.language_manager = get_language_manager()
+        self.language_manager = language_manager
         self.translate = self.language_manager.translate
     
     def update_progress(self, progress, message=None):
