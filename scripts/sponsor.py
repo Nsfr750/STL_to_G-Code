@@ -61,13 +61,13 @@ class SponsorDialog(QDialog):
 
     def retranslate_ui(self) -> None:
         """Retranslate the UI elements."""
-        self.setWindowTitle(self.translate("support_development"))
+        self.setWindowTitle(self.translate("support_title"))
 
         if hasattr(self, "title_label"):
-            self.title_label.setText(self.translate("support_app_name"))
+            self.title_label.setText(self.translate("support_project_header"))
 
         if hasattr(self, "message_label"):
-            self.message_label.setText(self.translate("support_message"))
+            self.message_label.setText(self.translate("support_project_description"))
 
         if hasattr(self, "github_btn"):
             self.github_btn.setText(self.translate("github_sponsors"))
@@ -84,241 +84,96 @@ class SponsorDialog(QDialog):
             self.close_btn.setText(self.translate("close"))
 
         if hasattr(self, "donate_btn"):
-            self.donate_btn.setText(self.translate("donate_with_paypal"))
+            self.donate_btn.setText(self.translate("paypal_donation"))
 
         if hasattr(self, "copy_monero_btn"):
-            self.copy_monero_btn.setText(self.translate("copy_monero_address"))
+            self.copy_monero_btn.setText(self.translate("copy_address"))
 
     def setup_ui(self):
         """Initialize the UI components."""
         layout = QVBoxLayout(self)
 
-        # Title
-        self.title_label = QLabel()
-        self.title_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold; margin-bottom: 20px;"
-        )
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Set window title
+        self.setWindowTitle(self.translate("support_title"))
+
+        # Header
+        self.title_label = QLabel(self.translate("support_project_header"))
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(self.title_label)
 
-        # Message
-        self.message_label = QLabel()
+        # Description
+        self.message_label = QLabel(self.translate("support_project_description"))
         self.message_label.setWordWrap(True)
-        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.message_label)
 
-        # Create a container widget for the grid layout
-        grid_container = QWidget()
-        grid = QGridLayout(grid_container)
+        # Add some spacing
+        layout.addSpacing(20)
 
-        # GitHub button
-        self.github_btn = QPushButton()
-        self.github_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.github_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #1a73e8;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1557b0;
-            }
-        """
-        )
+        # Ways to support
+        support_label = QLabel(f"<b>{self.translate('ways_to_support')}</b>")
+        layout.addWidget(support_label)
 
-        # PayPal
-        self.paypal_label = QLabel()
-        self.paypal_label.setOpenExternalLinks(True)
-        self.paypal_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Buttons layout
+        buttons_layout = QHBoxLayout()
 
-        # Monero
-        monero_address = "47Jc6MC47WJVFhiQFYwHyBNQP5BEsjUPG6tc8R37FwcTY8K5Y3LvFzveSXoGiaDQSxDrnCUBJ5WBj6Fgmsfix8VPD4w3gXF"
-        self.monero_label = QLabel()
-        monero_address_label = QLabel(monero_address)
-        monero_address_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        monero_address_label.setStyleSheet(
-            """
-            QLabel {
-                font-family: monospace;
-                background-color: #2a2a2a;
-                padding: 5px;
-                border-radius: 3px;
-                border: 1px solid #444;
-                color: #f0f0f0;
-            }
-        """
-        )
+        # GitHub Sponsors button
+        self.github_btn = QPushButton(self.translate("github_sponsors"))
+        self.github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/sponsors/Nsfr750")))
+        buttons_layout.addWidget(self.github_btn)
 
-        # Generate QR Code
-        try:
-            # Create QR code
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(f"monero:{monero_address}")
-            qr.make(fit=True)
+        # PayPal Donation button
+        self.donate_btn = QPushButton(self.translate("paypal_donation"))
+        self.donate_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://paypal.me/3dmega")))
+        buttons_layout.addWidget(self.donate_btn)
 
-            # Generate QR code image
-            qr_img = qr.make_image(
-                fill_color="#4a9cff", back_color="#2a2a2a"
-            )  # Changed to solid background
-
-            # Convert to QPixmap directly using PIL
-            qr_img = qr_img.convert("RGBA")
-            data = qr_img.tobytes("raw", "RGBA")
-            qimage = QImage(
-                data, qr_img.size[0], qr_img.size[1], QImage.Format.Format_RGBA8888
-            )
-            pixmap = QPixmap.fromImage(qimage)
-
-            # Scale the pixmap
-            pixmap = pixmap.scaled(
-                200,
-                200,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-
-            # Create and configure the QR code label
-            self.qr_label = QLabel()
-            self.qr_label.setPixmap(pixmap)
-            self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.qr_label.setToolTip(self.translate("scan_to_donate_xmr"))
-
-            # Add some styling to make it more visible
-            self.qr_label.setStyleSheet(
-                """
-                QLabel {
-                    background-color: #2a2a2a;
-                    border: 1px solid #444;
-                    border-radius: 5px;
-                    padding: 10px;
-                }
-            """
-            )
-
-        except Exception as e:
-            print(f"Error generating QR code: {e}")
-            self.qr_label = QLabel(self.translate("qr_generation_failed"))
-            self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.qr_label.setStyleSheet("color: #ff4444; font-weight: bold;")
-
-        # Add widgets to grid
-        grid.addWidget(
-            QLabel(f"<h3>{self.translate('ways_to_support')}</h3>"), 0, 0, 1, 2
-        )
-        grid.addWidget(self.github_btn, 1, 0, 1, 2)
-        grid.addWidget(self.paypal_label, 2, 0, 1, 2)
-        grid.addWidget(self.monero_label, 3, 0, 1, 2)
-        grid.addWidget(monero_address_label, 4, 0, 1, 2)
-
-        # Add QR code to the grid if it was created
-        if hasattr(self, "qr_label") and self.qr_label is not None:
-            # Create a container widget for the QR code with proper alignment
-            qr_container = QWidget()
-            qr_layout = QVBoxLayout(qr_container)
-            qr_layout.addWidget(self.qr_label, 0, Qt.AlignmentFlag.AlignCenter)
-            qr_layout.setContentsMargins(10, 10, 10, 10)
-
-            # Add the container to the grid, spanning 5 rows (from 0 to 4)
-            grid.addWidget(qr_container, 0, 2, 5, 1)
+        layout.addLayout(buttons_layout)
 
         # Add some spacing
-        grid.setSpacing(10)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        layout.addSpacing(20)
 
-        # Add grid container to layout
-        layout.addWidget(grid_container)
+        # Monero donation
+        self.monero_label = QLabel(f"<b>{self.translate('monero')}</b>")
+        layout.addWidget(self.monero_label)
+
+        # Monero address
+        monero_address = "47Jc6MC47WJVFhiQFYwHyBNQP5BEsjUPG6tc8R37FwcTY8K5Y3LvFzveSXoGiaDQSxDrnCUBJ5WBj6Fgmsfix8VPD4w3gXF"
+        address_label = QLabel(monero_address)
+        address_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(address_label)
+
+        # Copy address button
+        self.copy_monero_btn = QPushButton(self.translate("copy_address"))
+        self.copy_monero_btn.clicked.connect(lambda: self.copy_to_clipboard(monero_address))
+        layout.addWidget(self.copy_monero_btn)
+
+        # Add some spacing
+        layout.addSpacing(20)
 
         # Other ways to help
-        other_help = QTextBrowser()
-        other_help.setOpenExternalLinks(True)
-        other_help.setHtml(
-            f"<h3>{self.translate('other_ways_to_help')}</h3>"
-            f"<ul>"
-            f"<li>{self.translate('star_on_github')} <a href=\"https://github.com/Nsfr750/Images-Deduplicator\">GitHub</a></li>"
-            f"<li>{self.translate('report_bugs')}</li>"
-            f"<li>{self.translate('share_with_others')}</li>"
-            f"</ul>"
-        )
-        other_help.setMaximumHeight(150)
-        other_help.setStyleSheet(
-            """
-            QTextBrowser {
-                background-color: #2a2a2a;
-                border: 1px solid #444;
-                border-radius: 4px;
-                color: #f0f0f0;
-            }
-            a { color: #4a9cff; }
-        """
-        )
-        layout.addWidget(other_help)
+        other_ways = QLabel(f"<b>{self.translate('other_ways_to_help')}</b>")
+        layout.addWidget(other_ways)
 
-        # Button layout
-        button_layout = QHBoxLayout()
+        help_list = QLabel(
+            f"• {self.translate('star_on_github')} GitHub\n"
+            f"• {self.translate('report_bugs')}\n"
+            f"• {self.translate('share_with_others')}"
+        )
+        help_list.setWordWrap(True)
+        layout.addWidget(help_list)
 
         # Close button
-        self.close_btn = QPushButton()
+        self.close_btn = QPushButton(self.translate("close"))
         self.close_btn.clicked.connect(self.accept)
 
-        # Donate button
-        self.donate_btn = QPushButton()
-        self.donate_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #0079C1;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0062A3;
-            }
-        """
-        )
-        self.donate_btn.clicked.connect(self.open_paypal_link)
+        # Button layout
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.close_btn)
 
-        # Copy Monero address button
-        self.copy_monero_btn = QPushButton()
-        self.copy_monero_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #F26822;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                margin-right: 10px;
-            }
-            QPushButton:hover {
-                background-color: #D45B1D;
-            }
-        """
-        )
-        self.copy_monero_btn.clicked.connect(
-            lambda: self.copy_to_clipboard(monero_address)
-        )
+        layout.addLayout(btn_layout)
 
-        button_layout.addWidget(self.close_btn)
-        button_layout.addStretch()
-        button_layout.addWidget(self.copy_monero_btn)
-        button_layout.addWidget(self.donate_btn)
-
-        layout.addLayout(button_layout)
+        # Set layout
+        self.setLayout(layout)
 
         # Apply dark theme
         self.apply_dark_theme()
@@ -383,45 +238,16 @@ class SponsorDialog(QDialog):
         """
         )
 
-    def open_donation_link(self):
-        """Open donation link in default web browser."""
-        QDesktopServices.openUrl(QUrl("https://github.com/sponsors/Nsfr750"))
-
-    def open_paypal_link(self):
-        """Open PayPal link in default web browser."""
-        QDesktopServices.openUrl(QUrl("https://paypal.me/3dmega"))
-
     def copy_to_clipboard(self, text):
-        """Copy text to clipboard and show a tooltip."""
+        """Copy text to clipboard and show feedback."""
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
 
-        # Show a temporary tooltip
-        button = self.sender()
-        if button:
-            original_text = button.text()
-            button.setText(self.translate("copied"))
-            button.setStyleSheet(button.styleSheet() + "background-color: #4CAF50;")
-
-            # Reset button text after 2 seconds
-            QTimer.singleShot(2000, lambda: self.reset_button(button, original_text))
-
-    def reset_button(self, button, text):
-        """Reset button text and style."""
-        button.setText(text)
-        button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #F26822;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                margin-right: 10px;
-            }
-            QPushButton:hover {
-                background-color: #D45B1D;
-            }
-        """
-        )
+        # Show feedback
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(self.translate("address_copied"))
+        msg.setInformativeText(self.translate("address_copied_to_clipboard"))
+        msg.setWindowTitle("")
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()

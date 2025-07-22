@@ -17,12 +17,12 @@ from scripts.logger import get_logger
 # MINOR version when you add functionality in a backwards compatible manner
 # PATCH version when you make backwards compatible bug fixes
 VERSION_MAJOR = 2
-VERSION_MINOR = 0
+VERSION_MINOR = 1
 VERSION_PATCH = 0
 
 # Version qualifier (pre-release identifier)
 # Can be 'alpha', 'beta', 'rc' (release candidate), or empty string for final release
-VERSION_QUALIFIER = ''
+VERSION_QUALIFIER = 'beta'
 
 def get_version():
     """

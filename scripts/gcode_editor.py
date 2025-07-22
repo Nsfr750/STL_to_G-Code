@@ -13,6 +13,7 @@ import logging
 from scripts.logger import get_logger
 
 from .gcode_validator import GCodeValidator, ValidationIssue, ValidationSeverity, PrinterLimits
+from .language_manager import LanguageManager
 
 class GCodeLexer(QsciLexerCustom):
     """Custom lexer for G-code syntax highlighting."""
@@ -21,12 +22,12 @@ class GCodeLexer(QsciLexerCustom):
         
         # Define styles
         self.styles = {
-            0: "Default",
-            1: "G-command",
-            2: "M-command",
-            3: "Parameter",
-            4: "Comment",
-            5: "Error"
+            0: "default",
+            1: "g_command",
+            2: "m_command",
+            3: "parameter",
+            4: "comment",
+            5: "error"
         }
         
         # Set default font
@@ -113,12 +114,24 @@ class GCodeEditor(QsciScintilla):
     # Signals
     validation_complete = pyqtSignal(list)  # List of ValidationIssue objects
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language_manager: Optional[LanguageManager] = None):
         super().__init__(parent)
         self.validator = GCodeValidator()
         self.issues = []
+        self.language_manager = language_manager or LanguageManager()
         self._setup_editor()
         self._setup_validation()
+        self._connect_signals()
+    
+    def _connect_signals(self):
+        """Connect language manager signals."""
+        if self.language_manager:
+            self.language_manager.language_changed.connect(self.retranslate_ui)
+    
+    def retranslate_ui(self):
+        """Retranslate UI elements on language change."""
+        # This editor doesn't have many UI elements to retranslate
+        pass
     
     def _setup_editor(self):
         """Set up the editor with syntax highlighting and basic settings."""
@@ -234,10 +247,12 @@ class GCodeEditor(QsciScintilla):
 class GCodeEditorWidget(QWidget):
     """Widget containing the G-code editor with validation results."""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language_manager: Optional[LanguageManager] = None):
         super().__init__(parent)
+        self.language_manager = language_manager or LanguageManager()
         self._setup_ui()
         self._setup_connections()
+        self.retranslate_ui()
     
     def _setup_ui(self):
         """Set up the UI components."""
@@ -247,7 +262,7 @@ class GCodeEditorWidget(QWidget):
         splitter = QSplitter(Qt.Orientation.Vertical)
         
         # Create editor
-        self.editor = GCodeEditor()
+        self.editor = GCodeEditor(language_manager=self.language_manager)
         
         # Create issues panel
         self.issues_panel = QWidget()
@@ -255,7 +270,7 @@ class GCodeEditorWidget(QWidget):
         
         # Issues toolbar
         toolbar = QToolBar()
-        self.issues_label = QLabel("No issues")
+        self.issues_label = QLabel()
         toolbar.addWidget(self.issues_label)
         
         # Issues list
@@ -276,13 +291,24 @@ class GCodeEditorWidget(QWidget):
     def _setup_connections(self):
         """Set up signal connections."""
         self.editor.validation_complete.connect(self._on_validation_complete)
+        if self.language_manager:
+            self.language_manager.language_changed.connect(self.retranslate_ui)
+    
+    def retranslate_ui(self):
+        """Retranslate UI elements when language changes."""
+        if not self.issues_list.count():
+            self.issues_label.setText(
+                self.language_manager.get_translation("gcode_editor.no_issues")
+            )
     
     def _on_validation_complete(self, issues):
         """Handle validation completion."""
         self.issues_list.clear()
         
         if not issues:
-            self.issues_label.setText("No issues found")
+            self.issues_label.setText(
+                self.language_manager.get_translation("gcode_editor.no_issues_found")
+            )
             self.issues_list.setVisible(False)
             return
         
@@ -293,23 +319,50 @@ class GCodeEditorWidget(QWidget):
         
         status = []
         if error_count:
-            status.append(f"{error_count} errors")
+            status.append(
+                self.language_manager.get_translation(
+                    "gcode_editor.error_count", 
+                    count=error_count
+                )
+            )
         if warning_count:
-            status.append(f"{warning_count} warnings")
+            status.append(
+                self.language_manager.get_translation(
+                    "gcode_editor.warning_count", 
+                    count=warning_count
+                )
+            )
         if info_count:
-            status.append(f"{info_count} info")
+            status.append(
+                self.language_manager.get_translation(
+                    "gcode_editor.info_count", 
+                    count=info_count
+                )
+            )
         
-        self.issues_label.setText(" • ".join(status) if status else "No issues")
+        if status:
+            self.issues_label.setText(" • ".join(status))
+        else:
+            self.issues_label.setText(
+                self.language_manager.get_translation("gcode_editor.no_issues")
+            )
         
         # Add issues to list
         for issue in issues:
-            icon = "🛑"  # Default icon
+            icon = "🛑"  # Default icon for errors
             if issue.severity == ValidationSeverity.WARNING:
                 icon = "⚠️"
             elif issue.severity == ValidationSeverity.INFO:
                 icon = "ℹ️"
                 
-            self.issues_list.addItem(f"{icon} Line {issue.line_number}: {issue.message}")
+            self.issues_list.addItem(
+                self.language_manager.get_translation(
+                    "gcode_editor.issue_line",
+                    icon=icon,
+                    line=issue.line_number,
+                    message=issue.message
+                )
+            )
         
         self.issues_list.setVisible(True)
     

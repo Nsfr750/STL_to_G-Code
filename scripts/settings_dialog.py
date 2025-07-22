@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from scripts.logger import get_logger
+from scripts.language_manager import LanguageManager
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                            QSpinBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
                            QTabWidget, QGroupBox, QFormLayout, QPlainTextEdit, QWidget, QComboBox,
@@ -49,17 +50,14 @@ class SettingsManager:
             dict: Loaded settings or empty dict if file doesn't exist or is invalid
         """
         if not self.config_file.exists():
-            self.logger.info("No settings file found, using default settings")
+            self.logger.info("No settings file found, using defaults")
             return {}
             
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
-                self.settings = json.load(f)
+                settings = json.load(f)
                 self.logger.info("Settings loaded successfully")
-                return self.settings
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error parsing settings file: {e}")
-            return {}
+                return settings
         except Exception as e:
             self.logger.error(f"Error loading settings: {e}")
             return {}
@@ -75,47 +73,42 @@ class SettingsManager:
         """
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=4, sort_keys=True)
+                json.dump(settings, f, indent=4)
             self.logger.info("Settings saved successfully")
-            self.settings = settings.copy()
             return True
         except Exception as e:
             self.logger.error(f"Error saving settings: {e}")
             return False
-    
-    def get_setting(self, key: str, default: Any = None) -> Any:
-        """Get a setting value by key.
-        
-        Args:
-            key: Setting key
-            default: Default value if key doesn't exist
-            
-        Returns:
-            The setting value or default if not found
-        """
-        return self.settings.get(key, default)
 
 
 class SettingsDialog(QDialog):
     """Dialog for configuring optimization settings."""
     
-    settings_changed = pyqtSignal(dict)  # Signal emitted when settings are saved
+    settings_changed = pyqtSignal(dict)
     
-    def __init__(self, settings: Optional[Dict[str, Any]] = None, parent=None):
+    def __init__(self, settings: Optional[Dict[str, Any]] = None, parent=None, language_manager: Optional[LanguageManager] = None):
         """Initialize the settings dialog.
         
         Args:
             settings: Optional initial settings (dict or QSettings)
             parent: Parent widget
+            language_manager: Language manager for translations
         """
         super().__init__(parent)
-        self.setWindowTitle("Optimization Settings")
+        
+        # Initialize language manager
+        self.lang_manager = language_manager or LanguageManager()
+        
+        # Connect language changed signal
+        if self.lang_manager:
+            self.lang_manager.language_changed.connect(self.retranslate_ui)
+        
         self.setMinimumWidth(600)
         
         # Initialize settings manager
         self.settings_manager = SettingsManager()
         
-        # Load settings or use provided defaults
+        # Default settings
         self.default_settings = {
             'layer_height': 0.2,
             'print_speed': 60,
@@ -170,355 +163,297 @@ class SettingsDialog(QDialog):
         self._create_widgets()
         self._setup_layout()
         self._load_settings()
+        self.retranslate_ui()
     
-    def _set_checkbox_style(self):
-        """Set the style for checkboxes to use a checkmark."""
-        style = """
-        QCheckBox {
-            spacing: 5px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 1px solid #999999;
-            border-radius: 3px;
-            background: #ffffff;
-        }
-        QCheckBox::indicator:unchecked {
-            border: 1px solid #999999;
-            background: #ffffff;
-        }
-        QCheckBox::indicator:checked {
-            border: 1px solid #0078d7;
-            background: #0078d7;
-            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><polyline fill="none" stroke="white" stroke-width="2" points="1.5,8 6,12 14.5,3.5"/></svg>');
-        }
-        QCheckBox::indicator:indeterminate {
-            border: 1px solid #999999;
-            background: #f0f0f0;
-            image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><line x1="3" y1="8" x2="13" y2="8" stroke="%23999999" stroke-width="2"/></svg>');
-        }
-        QCheckBox::indicator:disabled {
-            border: 1px solid #cccccc;
-            background: #f0f0f0;
-        }
-        """
+    def translate(self, key, **kwargs):
+        """Helper method to get translated text."""
+        if hasattr(self, "lang_manager") and self.lang_manager:
+            return self.lang_manager.translate(key, **kwargs)
+        return key  # Fallback to key if no translation available
+    
+    def retranslate_ui(self):
+        """Retranslate the UI elements."""
+        self.setWindowTitle(self.translate("settings_dialog.title"))
         
-        # Apply the style to all QCheckBox widgets
-        self.setStyleSheet(style)
+        # Tab names
+        self.tab_widget.setTabText(0, self.translate("settings_dialog.tabs.general"))
+        self.tab_widget.setTabText(1, self.translate("settings_dialog.tabs.path_optimization"))
+        self.tab_widget.setTabText(2, self.translate("settings_dialog.tabs.infill"))
+        self.tab_widget.setTabText(3, self.translate("settings_dialog.tabs.advanced"))
+        
+        # Group box titles
+        self.general_group.setTitle(self.translate("settings_dialog.general.title"))
+        self.path_optimization_group.setTitle(self.translate("settings_dialog.path_optimization.title"))
+        self.infill_group.setTitle(self.translate("settings_dialog.infill.title"))
+        self.advanced_group.setTitle(self.translate("settings_dialog.advanced.title"))
+        self.gcode_group.setTitle(self.translate("settings_dialog.gcode.title"))
+        
+        # Button box
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setText(self.translate("common.buttons.ok"))
+        self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(self.translate("common.buttons.cancel"))
+        self.button_box.button(QDialogButtonBox.StandardButton.Apply).setText(self.translate("common.buttons.apply"))
+        self.button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults).setText(
+            self.translate("common.buttons.restore_defaults"))
     
     def _create_widgets(self):
         """Create the dialog widgets."""
-        # Set checkbox style first
-        self._set_checkbox_style()
-        
         # Create tab widget
         self.tab_widget = QTabWidget()
         
-        # General tab
-        self.general_tab = QWidget()
+        # Create tabs
         self._create_general_tab()
-        
-        # Path Optimization tab
-        self.path_opt_tab = QWidget()
         self._create_path_optimization_tab()
-        
-        # Infill tab
-        self.infill_tab = QWidget()
         self._create_infill_tab()
-        
-        # Advanced tab
-        self.advanced_tab = QWidget()
         self._create_advanced_tab()
         
-        # Add tabs
-        self.tab_widget.addTab(self.general_tab, "General")
-        self.tab_widget.addTab(self.path_opt_tab, "Path Optimization")
-        self.tab_widget.addTab(self.infill_tab, "Infill")
-        self.tab_widget.addTab(self.advanced_tab, "Advanced")
-        
-        # Dialog buttons
+        # Create button box
         self.button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel |
             QDialogButtonBox.StandardButton.Apply |
-            QDialogButtonBox.StandardButton.Reset
+            QDialogButtonBox.StandardButton.RestoreDefaults
         )
+        
+        # Connect signals
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         self.button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply)
-        self.button_box.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.reset_to_defaults)
+        self.button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.reset_to_defaults)
     
     def _create_general_tab(self):
         """Create the General tab."""
+        self.general_tab = QWidget()
         layout = QVBoxLayout(self.general_tab)
         
         # General settings group
-        general_group = QGroupBox("General Settings")
+        self.general_group = QGroupBox()
         form_layout = QFormLayout()
         
         # Layer height
-        self.layer_height = QDoubleSpinBox()
-        self.layer_height.setRange(0.05, 0.5)
-        self.layer_height.setSingleStep(0.05)
-        self.layer_height.setSuffix(" mm")
-        form_layout.addRow("Layer Height:", self.layer_height)
+        self.layer_height_spin = QDoubleSpinBox()
+        self.layer_height_spin.setRange(0.05, 1.0)
+        self.layer_height_spin.setSingleStep(0.05)
+        self.layer_height_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.general.layer_height")), self.layer_height_spin)
         
         # Print speed
-        self.print_speed = QSpinBox()
-        self.print_speed.setRange(1, 300)
-        self.print_speed.setSuffix(" mm/s")
-        form_layout.addRow("Print Speed:", self.print_speed)
+        self.print_speed_spin = QSpinBox()
+        self.print_speed_spin.setRange(1, 300)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.general.print_speed")), self.print_speed_spin)
         
         # Travel speed
-        self.travel_speed = QSpinBox()
-        self.travel_speed.setRange(1, 300)
-        self.travel_speed.setSuffix(" mm/s")
-        form_layout.addRow("Travel Speed:", self.travel_speed)
+        self.travel_speed_spin = QSpinBox()
+        self.travel_speed_spin.setRange(1, 500)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.general.travel_speed")), self.travel_speed_spin)
         
-        # Retraction
-        self.retraction_length = QDoubleSpinBox()
-        self.retraction_length.setRange(0, 10)
-        self.retraction_length.setSingleStep(0.5)
-        self.retraction_length.setSuffix(" mm")
-        form_layout.addRow("Retraction Length:", self.retraction_length)
+        # Retraction length
+        self.retraction_length_spin = QDoubleSpinBox()
+        self.retraction_length_spin.setRange(0, 20)
+        self.retraction_length_spin.setSingleStep(0.5)
+        self.retraction_length_spin.setDecimals(1)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.general.retraction_length")), self.retraction_length_spin)
         
-        general_group.setLayout(form_layout)
-        layout.addWidget(general_group)
+        self.general_group.setLayout(form_layout)
+        layout.addWidget(self.general_group)
         layout.addStretch()
+        
+        self.tab_widget.addTab(self.general_tab, "")
     
     def _create_path_optimization_tab(self):
         """Create the Path Optimization tab."""
-        layout = QVBoxLayout(self.path_opt_tab)
+        self.path_optimization_tab = QWidget()
+        layout = QVBoxLayout(self.path_optimization_tab)
         
         # Path optimization group
-        path_group = QGroupBox("Path Optimization")
+        self.path_optimization_group = QGroupBox()
         form_layout = QFormLayout()
         
         # Enable path optimization
-        self.enable_path_optimization = QCheckBox("Enable path optimization")
-        form_layout.addRow(self.enable_path_optimization)
+        self.enable_path_optimization_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.enable")), self.enable_path_optimization_cb)
         
-        # Arc detection
-        self.enable_arc_detection = QCheckBox("Enable arc detection (G2/G3)")
-        form_layout.addRow(self.enable_arc_detection)
+        # Enable arc detection
+        self.enable_arc_detection_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.enable_arcs")), self.enable_arc_detection_cb)
         
         # Arc tolerance
-        self.arc_tolerance = QDoubleSpinBox()
-        self.arc_tolerance.setRange(0.001, 1.0)
-        self.arc_tolerance.setSingleStep(0.01)
-        self.arc_tolerance.setSuffix(" mm")
-        form_layout.addRow("Arc Detection Tolerance:", self.arc_tolerance)
+        self.arc_tolerance_spin = QDoubleSpinBox()
+        self.arc_tolerance_spin.setRange(0.01, 1.0)
+        self.arc_tolerance_spin.setSingleStep(0.01)
+        self.arc_tolerance_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.arc_tolerance")), self.arc_tolerance_spin)
         
-        # Minimum arc segments
-        self.min_arc_segments = QSpinBox()
-        self.min_arc_segments.setRange(3, 20)
-        form_layout.addRow("Minimum Arc Segments:", self.min_arc_segments)
+        # Min arc segments
+        self.min_arc_segments_spin = QSpinBox()
+        self.min_arc_segments_spin.setRange(3, 100)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.min_arc_segments")), self.min_arc_segments_spin)
         
-        path_group.setLayout(form_layout)
-        layout.addWidget(path_group)
+        # Remove redundant moves
+        self.remove_redundant_moves_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.remove_redundant")), self.remove_redundant_moves_cb)
         
-        # Redundant move removal group
-        move_group = QGroupBox("Move Optimization")
-        move_layout = QVBoxLayout()
+        # Combine coincident moves
+        self.combine_coincident_moves_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.combine_coincident")), self.combine_coincident_moves_cb)
         
-        self.remove_redundant_moves = QCheckBox("Remove redundant moves")
-        self.remove_redundant_moves.setToolTip("Remove consecutive moves to the same position")
-        move_layout.addWidget(self.remove_redundant_moves)
+        # Optimize travel moves
+        self.optimize_travel_moves_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.path_optimization.optimize_travel")), self.optimize_travel_moves_cb)
         
-        self.combine_coincident_moves = QCheckBox("Combine coincident moves")
-        self.combine_coincident_moves.setToolTip("Combine moves that are in the same direction")
-        move_layout.addWidget(self.combine_coincident_moves)
-        
-        self.optimize_travel_moves = QCheckBox("Optimize travel moves")
-        self.optimize_travel_moves.setToolTip("Use nearest-neighbor algorithm to optimize travel moves")
-        move_layout.addWidget(self.optimize_travel_moves)
-        
-        move_group.setLayout(move_layout)
-        layout.addWidget(move_group)
-        
+        self.path_optimization_group.setLayout(form_layout)
+        layout.addWidget(self.path_optimization_group)
         layout.addStretch()
+        
+        self.tab_widget.addTab(self.path_optimization_tab, "")
     
     def _create_infill_tab(self):
         """Create the Infill tab."""
+        self.infill_tab = QWidget()
         layout = QVBoxLayout(self.infill_tab)
         
         # Infill settings group
-        infill_group = QGroupBox("Infill Settings")
+        self.infill_group = QGroupBox()
         form_layout = QFormLayout()
         
         # Infill density
-        self.infill_density = QSpinBox()
-        self.infill_density.setRange(0, 100)
-        self.infill_density.setSuffix("%")
-        form_layout.addRow("Infill Density:", self.infill_density)
+        self.infill_density_spin = QDoubleSpinBox()
+        self.infill_density_spin.setRange(0, 1)
+        self.infill_density_spin.setSingleStep(0.05)
+        self.infill_density_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.infill.density")), self.infill_density_spin)
         
         # Infill pattern
-        self.infill_pattern = QComboBox()
-        self.infill_pattern.addItems(["grid", "lines", "triangles", "cubic", "gyroid"])
-        form_layout.addRow("Infill Pattern:", self.infill_pattern)
+        self.infill_pattern_combo = QComboBox()
+        self.infill_pattern_combo.addItems([
+            self.translate("settings_dialog.infill.patterns.grid"),
+            self.translate("settings_dialog.infill.patterns.lines"),
+            self.translate("settings_dialog.infill.patterns.triangles"),
+            self.translate("settings_dialog.infill.patterns.trihexagon"),
+            self.translate("settings_dialog.infill.patterns.cubic")
+        ])
+        form_layout.addRow(QLabel(self.translate("settings_dialog.infill.pattern")), self.infill_pattern_combo)
         
         # Infill angle
-        self.infill_angle = QSpinBox()
-        self.infill_angle.setRange(0, 180)
-        self.infill_angle.setSuffix("°")
-        form_layout.addRow("Infill Angle:", self.infill_angle)
+        self.infill_angle_spin = QSpinBox()
+        self.infill_angle_spin.setRange(0, 359)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.infill.angle")), self.infill_angle_spin)
         
-        # Optimized infill
-        self.enable_optimized_infill = QCheckBox("Enable optimized infill (A* path planning)")
-        form_layout.addRow(self.enable_optimized_infill)
+        # Enable optimized infill
+        self.enable_optimized_infill_cb = QCheckBox()
+        form_layout.addRow(QLabel(self.translate("settings_dialog.infill.enable_optimized")), self.enable_optimized_infill_cb)
         
         # Infill resolution
-        self.infill_resolution = QDoubleSpinBox()
-        self.infill_resolution.setRange(0.1, 5.0)
-        self.infill_resolution.setSingleStep(0.1)
-        self.infill_resolution.setSuffix(" mm")
-        self.infill_resolution.setToolTip("Resolution for optimized infill path planning")
-        form_layout.addRow("Infill Resolution:", self.infill_resolution)
+        self.infill_resolution_spin = QDoubleSpinBox()
+        self.infill_resolution_spin.setRange(0.1, 5.0)
+        self.infill_resolution_spin.setSingleStep(0.1)
+        self.infill_resolution_spin.setDecimals(1)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.infill.resolution")), self.infill_resolution_spin)
         
-        infill_group.setLayout(form_layout)
-        layout.addWidget(infill_group)
-        
-        # Connect signals
-        self.enable_optimized_infill.toggled.connect(self.infill_resolution.setEnabled)
-        
+        self.infill_group.setLayout(form_layout)
+        layout.addWidget(self.infill_group)
         layout.addStretch()
+        
+        self.tab_widget.addTab(self.infill_tab, "")
     
     def _create_advanced_tab(self):
         """Create the Advanced tab."""
+        self.advanced_tab = QWidget()
         layout = QVBoxLayout(self.advanced_tab)
         
         # Advanced settings group
-        advanced_group = QGroupBox("Advanced Settings")
+        self.advanced_group = QGroupBox()
         form_layout = QFormLayout()
         
         # Extrusion width
-        self.extrusion_width = QDoubleSpinBox()
-        self.extrusion_width.setRange(0.1, 1.0)
-        self.extrusion_width.setSingleStep(0.05)
-        self.extrusion_width.setSuffix(" mm")
-        form_layout.addRow("Extrusion Width:", self.extrusion_width)
+        self.extrusion_width_spin = QDoubleSpinBox()
+        self.extrusion_width_spin.setRange(0.1, 2.0)
+        self.extrusion_width_spin.setSingleStep(0.05)
+        self.extrusion_width_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.extrusion_width")), self.extrusion_width_spin)
         
         # Filament diameter
-        self.filament_diameter = QDoubleSpinBox()
-        self.filament_diameter.setRange(1.0, 3.0)
-        self.filament_diameter.setSingleStep(0.05)
-        self.filament_diameter.setSuffix(" mm")
-        form_layout.addRow("Filament Diameter:", self.filament_diameter)
+        self.filament_diameter_spin = QDoubleSpinBox()
+        self.filament_diameter_spin.setRange(1.0, 3.0)
+        self.filament_diameter_spin.setSingleStep(0.05)
+        self.filament_diameter_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.filament_diameter")), self.filament_diameter_spin)
         
-        # First layer settings
-        self.first_layer_height = QDoubleSpinBox()
-        self.first_layer_height.setRange(0.1, 1.0)
-        self.first_layer_height.setSingleStep(0.05)
-        self.first_layer_height.setSuffix(" mm")
-        form_layout.addRow("First Layer Height:", self.first_layer_height)
+        # First layer height
+        self.first_layer_height_spin = QDoubleSpinBox()
+        self.first_layer_height_spin.setRange(0.05, 1.0)
+        self.first_layer_height_spin.setSingleStep(0.05)
+        self.first_layer_height_spin.setDecimals(2)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.first_layer_height")), self.first_layer_height_spin)
         
-        self.first_layer_speed = QSpinBox()
-        self.first_layer_speed.setRange(1, 100)
-        self.first_layer_speed.setSuffix(" %")
-        form_layout.addRow("First Layer Speed:", self.first_layer_speed)
+        # First layer speed
+        self.first_layer_speed_spin = QSpinBox()
+        self.first_layer_speed_spin.setRange(1, 300)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.first_layer_speed")), self.first_layer_speed_spin)
         
         # Z-hop
-        self.z_hop = QDoubleSpinBox()
-        self.z_hop.setRange(0, 1.0)
-        self.z_hop.setSingleStep(0.05)
-        self.z_hop.setSuffix(" mm")
-        form_layout.addRow("Z-hop Height:", self.z_hop)
+        self.z_hop_spin = QDoubleSpinBox()
+        self.z_hop_spin.setRange(0, 10.0)
+        self.z_hop_spin.setSingleStep(0.1)
+        self.z_hop_spin.setDecimals(1)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.z_hop")), self.z_hop_spin)
         
-        # Skirt/Brim
-        self.skirt_line_count = QSpinBox()
-        self.skirt_line_count.setRange(0, 10)
-        form_layout.addRow("Skirt Line Count:", self.skirt_line_count)
+        # Skirt line count
+        self.skirt_line_count_spin = QSpinBox()
+        self.skirt_line_count_spin.setRange(0, 10)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.skirt_line_count")), self.skirt_line_count_spin)
         
-        self.skirt_distance = QDoubleSpinBox()
-        self.skirt_distance.setRange(0, 20)
-        self.skirt_distance.setSingleStep(0.5)
-        self.skirt_distance.setSuffix(" mm")
-        form_layout.addRow("Skirt Distance:", self.skirt_distance)
+        # Skirt distance
+        self.skirt_distance_spin = QDoubleSpinBox()
+        self.skirt_distance_spin.setRange(0, 20.0)
+        self.skirt_distance_spin.setSingleStep(0.5)
+        self.skirt_distance_spin.setDecimals(1)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.skirt_distance")), self.skirt_distance_spin)
         
-        advanced_group.setLayout(form_layout)
-        layout.addWidget(advanced_group)
-        
-        # Temperature settings group
-        temp_group = QGroupBox("Temperature Settings")
-        temp_layout = QFormLayout()
-        
-        # Extruder temperature
-        self.temperature = QSpinBox()
-        self.temperature.setRange(150, 300)
-        self.temperature.setSuffix(" °C")
-        temp_layout.addRow("Extruder Temperature:", self.temperature)
+        # Temperature
+        self.temperature_spin = QSpinBox()
+        self.temperature_spin.setRange(0, 400)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.temperature")), self.temperature_spin)
         
         # Bed temperature
-        self.bed_temperature = QSpinBox()
-        self.bed_temperature.setRange(0, 120)
-        self.bed_temperature.setSuffix(" °C")
-        temp_layout.addRow("Bed Temperature:", self.bed_temperature)
+        self.bed_temperature_spin = QSpinBox()
+        self.bed_temperature_spin.setRange(0, 200)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.bed_temperature")), self.bed_temperature_spin)
         
-        # Fan settings
-        self.fan_speed = QSpinBox()
-        self.fan_speed.setRange(0, 100)
-        self.fan_speed.setSuffix(" %")
-        temp_layout.addRow("Fan Speed:", self.fan_speed)
+        # Fan speed
+        self.fan_speed_spin = QSpinBox()
+        self.fan_speed_spin.setRange(0, 100)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.fan_speed")), self.fan_speed_spin)
         
-        self.fan_layer = QSpinBox()
-        self.fan_layer.setRange(0, 20)
-        self.fan_layer.setToolTip("Layer to turn on the fan (0 = first layer)")
-        temp_layout.addRow("Fan Start Layer:", self.fan_layer)
+        # Fan layer
+        self.fan_layer_spin = QSpinBox()
+        self.fan_layer_spin.setRange(0, 20)
+        form_layout.addRow(QLabel(self.translate("settings_dialog.advanced.fan_layer")), self.fan_layer_spin)
         
-        temp_group.setLayout(temp_layout)
-        layout.addWidget(temp_group)
+        self.advanced_group.setLayout(form_layout)
         
-        # Custom G-code group
-        gcode_group = QGroupBox("Custom G-code")
+        # G-code group
+        self.gcode_group = QGroupBox()
         gcode_layout = QVBoxLayout()
         
-        # Start G-code tab widget
-        gcode_tabs = QTabWidget()
+        # Start G-code
+        self.start_gcode_edit = QPlainTextEdit()
+        self.start_gcode_edit.setPlaceholderText(self.translate("settings_dialog.gcode.start_placeholder"))
+        gcode_layout.addWidget(QLabel(self.translate("settings_dialog.gcode.start")))
+        gcode_layout.addWidget(self.start_gcode_edit)
         
-        # Start G-code tab
-        start_tab = QWidget()
-        start_layout = QVBoxLayout()
+        # End G-code
+        self.end_gcode_edit = QPlainTextEdit()
+        self.end_gcode_edit.setPlaceholderText(self.translate("settings_dialog.gcode.end_placeholder"))
+        gcode_layout.addWidget(QLabel(self.translate("settings_dialog.gcode.end")))
+        gcode_layout.addWidget(self.end_gcode_edit)
         
-        self.start_gcode = QPlainTextEdit()
-        self.start_gcode.setPlaceholderText(
-            "; Add custom start G-code here\n"
-            "; Available placeholders:\n"
-            "; {bed_temp} - Bed temperature\n"
-            "; {extruder_temp} - Extruder temperature\n"
-            "; {fan_speed} - Fan speed (0-255)\n"
-            "; {material} - Filament material"
-        )
-        self.start_gcode.setMinimumHeight(200)
-        start_layout.addWidget(QLabel("Start G-code:"))
-        start_layout.addWidget(self.start_gcode)
+        self.gcode_group.setLayout(gcode_layout)
         
-        start_tab.setLayout(start_layout)
-        
-        # End G-code tab
-        end_tab = QWidget()
-        end_layout = QVBoxLayout()
-        
-        self.end_gcode = QPlainTextEdit()
-        self.end_gcode.setPlaceholderText(
-            "; Add custom end G-code here\n"
-            "; Available placeholders same as start G-code"
-        )
-        self.end_gcode.setMinimumHeight(200)
-        end_layout.addWidget(QLabel("End G-code:"))
-        end_layout.addWidget(self.end_gcode)
-        
-        end_tab.setLayout(end_layout)
-        
-        # Add tabs
-        gcode_tabs.addTab(start_tab, "Start G-code")
-        gcode_tabs.addTab(end_tab, "End G-code")
-        
-        gcode_layout.addWidget(gcode_tabs)
-        gcode_group.setLayout(gcode_layout)
-        layout.addWidget(gcode_group)
-        
+        layout.addWidget(self.advanced_group)
+        layout.addWidget(self.gcode_group)
         layout.addStretch()
+        
+        self.tab_widget.addTab(self.advanced_tab, "")
     
     def _setup_layout(self):
         """Set up the dialog layout."""
@@ -529,90 +464,96 @@ class SettingsDialog(QDialog):
     def _load_settings(self):
         """Load settings into the UI."""
         # General settings
-        self.layer_height.setValue(self.settings.get('layer_height', 0.2))
-        self.print_speed.setValue(self.settings.get('print_speed', 60))
-        self.travel_speed.setValue(self.settings.get('travel_speed', 120))
-        self.retraction_length.setValue(self.settings.get('retraction_length', 5.0))
+        self.layer_height_spin.setValue(self.settings.get('layer_height', 0.2))
+        self.print_speed_spin.setValue(self.settings.get('print_speed', 60))
+        self.travel_speed_spin.setValue(self.settings.get('travel_speed', 120))
+        self.retraction_length_spin.setValue(self.settings.get('retraction_length', 5.0))
         
-        # Path optimization
-        self.enable_path_optimization.setChecked(self.settings.get('enable_path_optimization', True))
-        self.enable_arc_detection.setChecked(self.settings.get('enable_arc_detection', True))
-        self.arc_tolerance.setValue(self.settings.get('arc_tolerance', 0.05))
-        self.min_arc_segments.setValue(self.settings.get('min_arc_segments', 8))
-        self.remove_redundant_moves.setChecked(self.settings.get('remove_redundant_moves', True))
-        self.combine_coincident_moves.setChecked(self.settings.get('combine_coincident_moves', True))
-        self.optimize_travel_moves.setChecked(self.settings.get('optimize_travel_moves', True))
+        # Path optimization settings
+        self.enable_path_optimization_cb.setChecked(self.settings.get('enable_path_optimization', True))
+        self.enable_arc_detection_cb.setChecked(self.settings.get('enable_arc_detection', True))
+        self.arc_tolerance_spin.setValue(self.settings.get('arc_tolerance', 0.05))
+        self.min_arc_segments_spin.setValue(self.settings.get('min_arc_segments', 8))
+        self.remove_redundant_moves_cb.setChecked(self.settings.get('remove_redundant_moves', True))
+        self.combine_coincident_moves_cb.setChecked(self.settings.get('combine_coincident_moves', True))
+        self.optimize_travel_moves_cb.setChecked(self.settings.get('optimize_travel_moves', True))
         
         # Infill settings
-        self.infill_density.setValue(int(self.settings.get('infill_density', 0.2) * 100))
-        self.infill_pattern.setCurrentText(self.settings.get('infill_pattern', 'grid'))
-        self.infill_angle.setValue(self.settings.get('infill_angle', 45))
-        self.enable_optimized_infill.setChecked(self.settings.get('enable_optimized_infill', True))
-        self.infill_resolution.setValue(self.settings.get('infill_resolution', 1.0))
+        self.infill_density_spin.setValue(self.settings.get('infill_density', 0.2))
+        
+        infill_pattern = self.settings.get('infill_pattern', 'grid')
+        pattern_index = {
+            'grid': 0,
+            'lines': 1,
+            'triangles': 2,
+            'trihexagon': 3,
+            'cubic': 4
+        }.get(infill_pattern, 0)
+        self.infill_pattern_combo.setCurrentIndex(pattern_index)
+        
+        self.infill_angle_spin.setValue(self.settings.get('infill_angle', 45))
+        self.enable_optimized_infill_cb.setChecked(self.settings.get('enable_optimized_infill', True))
+        self.infill_resolution_spin.setValue(self.settings.get('infill_resolution', 1.0))
         
         # Advanced settings
-        self.extrusion_width.setValue(self.settings.get('extrusion_width', 0.48))
-        self.filament_diameter.setValue(self.settings.get('filament_diameter', 1.75))
-        self.first_layer_height.setValue(self.settings.get('first_layer_height', 0.3))
-        self.first_layer_speed.setValue(int(self.settings.get('first_layer_speed', 30) / 60 * 100))  # Convert from mm/s to %
-        self.z_hop.setValue(self.settings.get('z_hop', 0.4))
-        self.skirt_line_count.setValue(self.settings.get('skirt_line_count', 1))
-        self.skirt_distance.setValue(self.settings.get('skirt_distance', 5.0))
+        self.extrusion_width_spin.setValue(self.settings.get('extrusion_width', 0.48))
+        self.filament_diameter_spin.setValue(self.settings.get('filament_diameter', 1.75))
+        self.first_layer_height_spin.setValue(self.settings.get('first_layer_height', 0.3))
+        self.first_layer_speed_spin.setValue(self.settings.get('first_layer_speed', 30))
+        self.z_hop_spin.setValue(self.settings.get('z_hop', 0.4))
+        self.skirt_line_count_spin.setValue(self.settings.get('skirt_line_count', 1))
+        self.skirt_distance_spin.setValue(self.settings.get('skirt_distance', 5.0))
+        self.temperature_spin.setValue(self.settings.get('temperature', 200))
+        self.bed_temperature_spin.setValue(self.settings.get('bed_temperature', 60))
+        self.fan_speed_spin.setValue(self.settings.get('fan_speed', 100))
+        self.fan_layer_spin.setValue(self.settings.get('fan_layer', 2))
         
-        # Temperature settings
-        self.temperature.setValue(self.settings.get('temperature', 200))
-        self.bed_temperature.setValue(self.settings.get('bed_temperature', 60))
-        self.fan_speed.setValue(self.settings.get('fan_speed', 100))
-        self.fan_layer.setValue(self.settings.get('fan_layer', 2))
-        
-        # Custom G-code
-        self.start_gcode.setPlainText(self.settings.get('start_gcode', ''))
-        self.end_gcode.setPlainText(self.settings.get('end_gcode', ''))
+        # G-code
+        self.start_gcode_edit.setPlainText(self.settings.get('start_gcode', ''))
+        self.end_gcode_edit.setPlainText(self.settings.get('end_gcode', ''))
     
     def get_settings(self):
         """Get the current settings from the UI."""
-        settings = {}
-        
-        # General settings
-        settings['layer_height'] = self.layer_height.value()
-        settings['print_speed'] = self.print_speed.value()
-        settings['travel_speed'] = self.travel_speed.value()
-        settings['retraction_length'] = self.retraction_length.value()
-        
-        # Path optimization
-        settings['enable_path_optimization'] = self.enable_path_optimization.isChecked()
-        settings['enable_arc_detection'] = self.enable_arc_detection.isChecked()
-        settings['arc_tolerance'] = self.arc_tolerance.value()
-        settings['min_arc_segments'] = self.min_arc_segments.value()
-        settings['remove_redundant_moves'] = self.remove_redundant_moves.isChecked()
-        settings['combine_coincident_moves'] = self.combine_coincident_moves.isChecked()
-        settings['optimize_travel_moves'] = self.optimize_travel_moves.isChecked()
-        
-        # Infill settings
-        settings['infill_density'] = self.infill_density.value() / 100.0  # Convert % to decimal
-        settings['infill_pattern'] = self.infill_pattern.currentText()
-        settings['infill_angle'] = self.infill_angle.value()
-        settings['enable_optimized_infill'] = self.enable_optimized_infill.isChecked()
-        settings['infill_resolution'] = self.infill_resolution.value()
-        
-        # Advanced settings
-        settings['extrusion_width'] = self.extrusion_width.value()
-        settings['filament_diameter'] = self.filament_diameter.value()
-        settings['first_layer_height'] = self.first_layer_height.value()
-        settings['first_layer_speed'] = int(self.first_layer_speed.value() * 0.6)  # Convert % to mm/s (assuming 100% = 60mm/s)
-        settings['z_hop'] = self.z_hop.value()
-        settings['skirt_line_count'] = self.skirt_line_count.value()
-        settings['skirt_distance'] = self.skirt_distance.value()
-        
-        # Temperature settings
-        settings['temperature'] = self.temperature.value()
-        settings['bed_temperature'] = self.bed_temperature.value()
-        settings['fan_speed'] = self.fan_speed.value()
-        settings['fan_layer'] = self.fan_layer.value()
-        
-        # Custom G-code
-        settings['start_gcode'] = self.start_gcode.toPlainText()
-        settings['end_gcode'] = self.end_gcode.toPlainText()
+        settings = {
+            # General settings
+            'layer_height': self.layer_height_spin.value(),
+            'print_speed': self.print_speed_spin.value(),
+            'travel_speed': self.travel_speed_spin.value(),
+            'retraction_length': self.retraction_length_spin.value(),
+            
+            # Path optimization settings
+            'enable_path_optimization': self.enable_path_optimization_cb.isChecked(),
+            'enable_arc_detection': self.enable_arc_detection_cb.isChecked(),
+            'arc_tolerance': self.arc_tolerance_spin.value(),
+            'min_arc_segments': self.min_arc_segments_spin.value(),
+            'remove_redundant_moves': self.remove_redundant_moves_cb.isChecked(),
+            'combine_coincident_moves': self.combine_coincident_moves_cb.isChecked(),
+            'optimize_travel_moves': self.optimize_travel_moves_cb.isChecked(),
+            
+            # Infill settings
+            'infill_density': self.infill_density_spin.value(),
+            'infill_pattern': ['grid', 'lines', 'triangles', 'trihexagon', 'cubic'][self.infill_pattern_combo.currentIndex()],
+            'infill_angle': self.infill_angle_spin.value(),
+            'enable_optimized_infill': self.enable_optimized_infill_cb.isChecked(),
+            'infill_resolution': self.infill_resolution_spin.value(),
+            
+            # Advanced settings
+            'extrusion_width': self.extrusion_width_spin.value(),
+            'filament_diameter': self.filament_diameter_spin.value(),
+            'first_layer_height': self.first_layer_height_spin.value(),
+            'first_layer_speed': self.first_layer_speed_spin.value(),
+            'z_hop': self.z_hop_spin.value(),
+            'skirt_line_count': self.skirt_line_count_spin.value(),
+            'skirt_distance': self.skirt_distance_spin.value(),
+            'temperature': self.temperature_spin.value(),
+            'bed_temperature': self.bed_temperature_spin.value(),
+            'fan_speed': self.fan_speed_spin.value(),
+            'fan_layer': self.fan_layer_spin.value(),
+            
+            # G-code
+            'start_gcode': self.start_gcode_edit.toPlainText(),
+            'end_gcode': self.end_gcode_edit.toPlainText()
+        }
         
         return settings
     
@@ -623,50 +564,25 @@ class SettingsDialog(QDialog):
     
     def apply(self):
         """Apply the current settings."""
+        settings = self.get_settings()
         if self._save_settings():
-            self.settings_changed.emit(self.settings)
+            self.settings_changed.emit(settings)
     
     def reset_to_defaults(self):
         """Reset settings to default values."""
-        # Default settings
-        default_settings = {
-            'layer_height': 0.2,
-            'print_speed': 60,
-            'travel_speed': 120,
-            'retraction_length': 5.0,
-            'enable_path_optimization': True,
-            'enable_arc_detection': True,
-            'arc_tolerance': 0.05,
-            'min_arc_segments': 8,
-            'remove_redundant_moves': True,
-            'combine_coincident_moves': True,
-            'optimize_travel_moves': True,
-            'infill_density': 0.2,
-            'infill_pattern': 'grid',
-            'infill_angle': 45,
-            'enable_optimized_infill': True,
-            'infill_resolution': 1.0,
-            'extrusion_width': 0.48,
-            'filament_diameter': 1.75,
-            'first_layer_height': 0.3,
-            'first_layer_speed': 30,
-            'z_hop': 0.4,
-            'skirt_line_count': 1,
-            'skirt_distance': 5.0,
-            'temperature': 200,
-            'bed_temperature': 60,
-            'fan_speed': 100,
-            'fan_layer': 2,
-            'start_gcode': '',
-            'end_gcode': ''
-        }
+        reply = QMessageBox.question(
+            self,
+            self.translate("settings_dialog.reset_title"),
+            self.translate("settings_dialog.reset_confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
         
-        # Update UI with default values
-        self.settings.update(default_settings)
-        self._load_settings()
-        
-        # Emit settings changed signal
-        self.settings_changed.emit(self.settings)
+        if reply == QMessageBox.StandardButton.Yes:
+            self.settings = self.default_settings.copy()
+            self._load_settings()
+            self._save_settings()
+            self.settings_changed.emit(self.settings)
     
     def _save_settings(self):
         """Save current settings to the config file.
@@ -674,24 +590,8 @@ class SettingsDialog(QDialog):
         Returns:
             bool: True if save was successful, False otherwise
         """
-        try:
-            # Update settings from UI elements
-            self.settings = self.get_settings()
-            
-            # Save to file
-            if self.settings_manager.save_settings(self.settings):
-                return True
-            return False
-                
-        except Exception as e:
-            get_logger(__name__).error(f"Error saving settings: {e}")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to save settings: {str(e)}",
-                QMessageBox.StandardButton.Ok
-            )
-            return False
+        self.settings = self.get_settings()
+        return self.settings_manager.save_settings(self.settings)
 
 
 if __name__ == "__main__":
@@ -701,22 +601,12 @@ if __name__ == "__main__":
     
     app = QApplication(sys.argv)
     
-    # Default settings
-    settings = {
-        'layer_height': 0.2,
-        'print_speed': 60,
-        'travel_speed': 120,
-        'retraction_length': 5.0,
-        'enable_path_optimization': True,
-        'enable_arc_detection': True,
-        'infill_density': 0.2,
-        'infill_pattern': 'grid',
-        'temperature': 200,
-        'bed_temperature': 60
-    }
+    # Initialize language manager
+    from scripts.language_manager import LanguageManager
+    lang_manager = LanguageManager()
     
-    dialog = SettingsDialog(settings)
-    if dialog.exec() == QDialog.DialogCode.Accepted:
-        print("Settings saved:", dialog.get_settings())
+    # Create and show the dialog
+    dialog = SettingsDialog(language_manager=lang_manager)
+    dialog.show()
     
-    sys.exit()
+    sys.exit(app.exec())

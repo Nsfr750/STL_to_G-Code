@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import List, Dict, Optional, Tuple, Set, Pattern
 from scripts.logger import get_logger
+from .language_manager import LanguageManager
 
 class ValidationSeverity(Enum):
     """Severity levels for validation issues."""
@@ -18,6 +19,11 @@ class ValidationSeverity(Enum):
     WARNING = auto()
     ERROR = auto()
     CRITICAL = auto()
+    
+    def get_display_name(self, language_manager: LanguageManager) -> str:
+        """Get the localized display name for this severity level."""
+        key = f"validation.severity.{self.name.lower()}"
+        return language_manager.get_translation(key, default=self.name.title())
 
 @dataclass
 class ValidationIssue:
@@ -28,6 +34,26 @@ class ValidationIssue:
     code: str = ""
     suggestion: str = ""
     command: str = ""
+    
+    def get_localized_message(self, language_manager: LanguageManager) -> str:
+        """Get the localized message for this issue."""
+        # If message is a translation key, use it; otherwise, use as-is
+        if self.message.startswith("validation."):
+            return language_manager.get_translation(
+                self.message, 
+                default=self.message,
+                **self._get_message_params()
+            )
+        return self.message
+    
+    def _get_message_params(self) -> Dict[str, str]:
+        """Extract parameters from the message for string formatting."""
+        # Extract any parameters that might be in the message
+        # This is a simple implementation that can be enhanced as needed
+        params = {}
+        if hasattr(self, '_message_params'):
+            return self._message_params
+        return params
 
 @dataclass
 class PrinterLimits:
@@ -54,9 +80,11 @@ class PrinterLimits:
 class GCodeValidator:
     """Validates G-code for syntax, safety, and printer compatibility."""
     
-    def __init__(self, printer_limits: Optional[PrinterLimits] = None):
-        """Initialize the validator with optional printer limits."""
+    def __init__(self, printer_limits: Optional[PrinterLimits] = None, 
+                 language_manager: Optional[LanguageManager] = None):
+        """Initialize the validator with optional printer limits and language manager."""
         self.printer_limits = printer_limits if printer_limits else PrinterLimits()
+        self.language_manager = language_manager or LanguageManager()
         self.issues: List[ValidationIssue] = []
         self._current_line = 0
         self._current_command = ""
@@ -118,7 +146,14 @@ class GCodeValidator:
         # Match G/M command with parameters
         match = self._gcode_pattern.match(line)
         if not match:
-            self._add_issue("Invalid G-code syntax", ValidationSeverity.ERROR, line)
+            self._add_issue(
+                self.language_manager.get_translation(
+                    "validation.error.invalid_syntax",
+                    default="Invalid G-code syntax"
+                ),
+                ValidationSeverity.ERROR,
+                line
+            )
             return
             
         command = match.group('command').upper()
@@ -134,7 +169,11 @@ class GCodeValidator:
                 params[param] = value
             except (ValueError, IndexError):
                 self._add_issue(
-                    f"Invalid parameter value: {param_match.group(0)}",
+                    self.language_manager.get_translation(
+                        "validation.error.invalid_parameter",
+                        default=f"Invalid parameter value: {param_match.group(0)}",
+                        param=param_match.group(0)
+                    ),
                     ValidationSeverity.ERROR,
                     line
                 )
@@ -144,7 +183,12 @@ class GCodeValidator:
             self._process_command(command, params, line)
         except Exception as e:
             self._add_issue(
-                f"Error processing command: {str(e)}",
+                self.language_manager.get_translation(
+                    "validation.error.processing_command",
+                    default=f"Error processing command: {str(e)}",
+                    command=command,
+                    error=str(e)
+                ),
                 ValidationSeverity.ERROR,
                 line
             )
@@ -191,7 +235,11 @@ class GCodeValidator:
                 tool = int(command[1:])
                 if tool < 0 or tool >= self.printer_limits.extruder_count:
                     self._add_issue(
-                        f"Invalid tool number: T{tool}",
+                        self.language_manager.get_translation(
+                            "validation.error.invalid_tool",
+                            default=f"Invalid tool number: T{tool}",
+                            tool=tool
+                        ),
                         ValidationSeverity.ERROR,
                         original_line
                     )
@@ -199,7 +247,11 @@ class GCodeValidator:
                     self._state['current_tool'] = tool
             except (ValueError, IndexError):
                 self._add_issue(
-                    f"Invalid tool selection: {command}",
+                    self.language_manager.get_translation(
+                        "validation.error.invalid_tool_selection",
+                        default=f"Invalid tool selection: {command}",
+                        command=command
+                    ),
                     ValidationSeverity.ERROR,
                     original_line
                 )
@@ -211,13 +263,21 @@ class GCodeValidator:
             feedrate = params['F']
             if feedrate < 0:
                 self._add_issue(
-                    "Feedrate cannot be negative",
+                    self.language_manager.get_translation(
+                        "validation.error.negative_feedrate",
+                        default="Feedrate cannot be negative"
+                    ),
                     ValidationSeverity.ERROR,
                     original_line
                 )
             elif feedrate > self.printer_limits.max_feedrate['x']:
                 self._add_issue(
-                    f"Feedrate {feedrate} exceeds maximum of {self.printer_limits.max_feedrate['x']}",
+                    self.language_manager.get_translation(
+                        "validation.warning.feedrate_exceeds_max",
+                        default="Feedrate {feedrate} exceeds maximum of {max_feedrate}",
+                        feedrate=feedrate,
+                        max_feedrate=self.printer_limits.max_feedrate['x']
+                    ),
                     ValidationSeverity.WARNING,
                     original_line
                 )
@@ -234,7 +294,13 @@ class GCodeValidator:
                     max_pos = self.printer_limits.bed_size[axis_idx]
                     if value < 0 or value > max_pos:
                         self._add_issue(
-                            f"{axis} position {value} is out of bounds (0-{max_pos})",
+                            self.language_manager.get_translation(
+                                "validation.error.axis_out_of_bounds",
+                                default="{axis} position {value} is out of bounds (0-{max_pos})",
+                                axis=axis,
+                                value=value,
+                                max_pos=max_pos
+                            ),
                             ValidationSeverity.WARNING if command == 'G0' else ValidationSeverity.ERROR,
                             original_line
                         )
@@ -267,8 +333,14 @@ class GCodeValidator:
             temp = params['S']
             if temp < self.printer_limits.min_temp or temp > self.printer_limits.max_temp:
                 self._add_issue(
-                    f"Extruder temperature {temp}°C is outside safe range "
-                    f"({self.printer_limits.min_temp}-{self.printer_limits.max_temp}°C)",
+                    self.language_manager.get_translation(
+                        "validation.warning.temp_out_of_range",
+                        default=("Extruder temperature {temp}°C is outside safe range "
+                               "({min_temp}-{max_temp}°C)"),
+                        temp=temp,
+                        min_temp=self.printer_limits.min_temp,
+                        max_temp=self.printer_limits.max_temp
+                    ),
                     ValidationSeverity.WARNING if wait else ValidationSeverity.ERROR,
                     self._current_command
                 )
@@ -278,7 +350,10 @@ class GCodeValidator:
         """Process M140/M190 (Set/Set and Wait for Bed Temperature) command."""
         if not self.printer_limits.has_heated_bed:
             self._add_issue(
-                "Printer does not have a heated bed",
+                self.language_manager.get_translation(
+                    "validation.warning.no_heated_bed",
+                    default="Printer does not have a heated bed"
+                ),
                 ValidationSeverity.WARNING,
                 self._current_command
             )
@@ -288,8 +363,14 @@ class GCodeValidator:
             temp = params['S']
             if temp < self.printer_limits.min_bed_temp or temp > self.printer_limits.max_bed_temp:
                 self._add_issue(
-                    f"Bed temperature {temp}°C is outside safe range "
-                    f"({self.printer_limits.min_bed_temp}-{self.printer_limits.max_bed_temp}°C)",
+                    self.language_manager.get_translation(
+                        "validation.warning.bed_temp_out_of_range",
+                        default=("Bed temperature {temp}°C is outside safe range "
+                               "({min_temp}-{max_temp}°C)"),
+                        temp=temp,
+                        min_temp=self.printer_limits.min_bed_temp,
+                        max_temp=self.printer_limits.max_bed_temp
+                    ),
                     ValidationSeverity.WARNING if wait else ValidationSeverity.ERROR,
                     self._current_command
                 )
@@ -299,7 +380,10 @@ class GCodeValidator:
         """Process M106 (Set Fan Speed) command."""
         if not self.printer_limits.has_fan:
             self._add_issue(
-                "Printer does not have a controllable fan",
+                self.language_manager.get_translation(
+                    "validation.warning.no_controllable_fan",
+                    default="Printer does not have a controllable fan"
+                ),
                 ValidationSeverity.WARNING,
                 self._current_command
             )
@@ -309,7 +393,11 @@ class GCodeValidator:
             speed = params['S']
             if speed < 0 or speed > 255:
                 self._add_issue(
-                    f"Fan speed {speed} is outside valid range (0-255)",
+                    self.language_manager.get_translation(
+                        "validation.error.invalid_fan_speed",
+                        default="Fan speed {speed} is outside valid range (0-255)",
+                        speed=speed
+                    ),
                     ValidationSeverity.ERROR,
                     self._current_command
                 )
@@ -322,7 +410,10 @@ class GCodeValidator:
             self._state['fan_speed'] == 0 and 
             self.printer_limits.has_fan):
             self._add_issue(
-                "Hotend is hot but part cooling fan is off",
+                self.language_manager.get_translation(
+                    "validation.warning.hotend_hot_fan_off",
+                    default="Hotend is hot but part cooling fan is off"
+                ),
                 ValidationSeverity.WARNING,
                 line_number=self._current_line
             )
@@ -331,7 +422,10 @@ class GCodeValidator:
         if (self._state['extruder_temp'] > 50 and 
             self._state['position']['z'] > 10):
             self._add_issue(
-                "Hotend is hot but appears to be away from the print area",
+                self.language_manager.get_translation(
+                    "validation.warning.hotend_hot_away_from_bed",
+                    default="Hotend is hot but appears to be away from the print area"
+                ),
                 ValidationSeverity.WARNING,
                 line_number=self._current_line
             )
@@ -351,7 +445,8 @@ class GCodeValidator:
             command=self._current_command
         ))
 
-def validate_gcode(gcode: str, printer_limits: Optional[PrinterLimits] = None) -> List[ValidationIssue]:
+def validate_gcode(gcode: str, printer_limits: Optional[PrinterLimits] = None,
+                 language_manager: Optional[LanguageManager] = None) -> List[ValidationIssue]:
     """
     Validate G-code and return a list of issues.
 
@@ -361,9 +456,10 @@ def validate_gcode(gcode: str, printer_limits: Optional[PrinterLimits] = None) -
     Args:
         gcode: The G-code to validate
         printer_limits: Optional PrinterLimits instance. If None, default limits will be used.
+        language_manager: Optional LanguageManager instance for localization.
 
     Returns:
         List of validation issues found
     """
-    validator = GCodeValidator(printer_limits)
+    validator = GCodeValidator(printer_limits, language_manager)
     return validator.validate(gcode)

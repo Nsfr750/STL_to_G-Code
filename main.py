@@ -45,6 +45,8 @@ from scripts.view_settings import view_settings  # Add this import
 from scripts.logger import setup_logging, get_logger
 from PyQt6.QtCore import QSettings
 from scripts.progress import ProgressReporter  # Add import at the top of the file with other imports
+from scripts.language_manager import LanguageManager
+from scripts.menu import MenuManager
 try:
     from PyQt6 import sip
 except ImportError:
@@ -73,6 +75,13 @@ class STLToGCodeApp(QMainWindow):
     def __init__(self):
         super().__init__()
         
+        # Initialize logger
+        self.logger = get_logger(__name__)
+        self.logger.info("Starting STL to GCode Converter")
+        
+        # Initialize language manager
+        self.language_manager = LanguageManager()
+        
         # Initialize settings
         self.settings = QSettings("STLtoGCode", "STLtoGCode")
         self.recent_files = []
@@ -82,8 +91,7 @@ class STLToGCodeApp(QMainWindow):
         self.ui = UI(self)  # Pass self as parent
         
         # Initialize the UI manager
-        from scripts.menu import MenuManager
-        self.menu_manager = MenuManager(self)
+        self.menu_manager = MenuManager(self, self.language_manager)
         
         # Initialize the log viewer
         self.log_viewer = None
@@ -101,10 +109,6 @@ class STLToGCodeApp(QMainWindow):
         self.file_path = None
         self.worker_thread = None
         self.worker = None
-        
-        # Set up the logger
-        self.logger = get_logger(__name__)
-        self.logger.info("Starting STL to GCode Converter")
         
         # Set window properties
         self.setWindowTitle("STL to GCode Converter")
