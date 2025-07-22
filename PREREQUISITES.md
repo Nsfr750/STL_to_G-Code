@@ -14,7 +14,7 @@ Before running the STL to GCode Converter, ensure that you have the following in
 - **CPU**: Dual-core processor (2.0 GHz or faster)
 - **RAM**: 4 GB
 - **Storage**: 1 GB free space
-- **Display**: 1280x720 resolution
+- **Display**: 1366x768 resolution
 
 
 #### Recommended
@@ -23,6 +23,7 @@ Before running the STL to GCode Converter, ensure that you have the following in
 - **RAM**: 8 GB or more
 - **Storage**: 2 GB free space (SSD recommended)
 - **Display**: 1920x1080 resolution or higher with 100% scaling
+- **GPU**: Discrete GPU with OpenGL 3.3+ support for better 3D rendering
 
 
 ### 💻 Software Requirements
@@ -31,7 +32,7 @@ Before running the STL to GCode Converter, ensure that you have the following in
 #### Operating Systems
 
 - **Windows**: 10 or later (64-bit)
-- **macOS**: 11.0 (Big Sur) or later (Apple Silicon or Intel)
+- **macOS**: 12.0 (Monterey) or later (Apple Silicon or Intel)
 - **Linux**: Ubuntu 22.04 LTS or later, Fedora 36+, or other modern distributions
   - May require additional system packages (see below)
 
@@ -39,7 +40,7 @@ Before running the STL to GCode Converter, ensure that you have the following in
 #### Python Requirements
 
 - **Python**: 3.8 or later (3.10+ recommended)
-- **pip**: 22.0 or later
+- **pip**: 23.0 or later
 - **Git**: For development and version control
 
 
@@ -48,118 +49,87 @@ Before running the STL to GCode Converter, ensure that you have the following in
 
 ### Core Dependencies
 
-```bash
-pip install -r requirements.txt
-```
+- **PyQt6**: Modern GUI framework (>= 6.6.0)
+- **PyQt6-WebEngine**: Qt WebEngine for PyQt6 (>= 6.6.0)
+- **QScintilla**: Advanced text editor component (>= 2.15.1)
+- **numpy**: Numerical computing (>= 1.26.0)
+- **numpy-stl**: STL file processing (>= 3.1.0)
+- **scipy**: Scientific computing (>= 1.12.0)
+- **scikit-image**: Image processing (>= 0.22.0)
+- **matplotlib**: 3D visualization (>= 3.8.0)
+- **Pillow**: Image processing (>= 10.1.0)
+- **markdown**: Markdown rendering (>= 3.5.0)
+- **pygments**: Syntax highlighting (>= 2.16.0)
 
 
-### Main Dependencies
+### Development Dependencies
 
-- **PyQt6**: Modern GUI framework
-- **numpy**: Numerical computing
-- **numpy-stl**: STL file processing
-- **matplotlib**: 3D visualization
-- **trimesh**: Advanced 3D mesh processing
-- **Pillow**: Image processing
-- **requests**: HTTP requests
-- **QScintilla**: Advanced text editor component
-- **pyqt6-tools**: Additional Qt tools (development only)
+- **black**: Code formatting (>= 23.11.0)
+- **flake8**: Code linting (>= 6.1.0)
+- **pytest**: Unit testing (>= 7.4.3)
+- **pytest-qt**: Qt testing (>= 4.2.0)
+- **mypy**: Type checking (>= 1.7.0)
+- **sphinx**: Documentation generation (>= 7.2.0)
+- **sphinx-rtd-theme**: Read the Docs theme (>= 1.3.0)
 
 
 ### Optional Dependencies
 
-- **PyQt6-Qt6**: Qt6 runtime (for standalone packaging)
-- **PyQt6-sip**: Required for some PyQt6 functionality
-- **pyinstaller**: For creating standalone executables
+- **opencv-python-headless**: Advanced image processing (>= 4.8.0)
 
 
-## Linux-Specific Requirements
+## Installation
 
 
-### Ubuntu/Debian
+### Windows
+
+1. Install Python 3.10+ from [python.org](https://www.python.org/downloads/)
+2. Install required system dependencies:
+   ```powershell
+   winget install Git.Git
+   ```
+3. Clone the repository and install Python dependencies:
+   ```powershell
+   git clone https://github.com/Nsfr750/STL_to_G-Code.git
+   cd STL_to_G-Code
+   pip install -r requirements.txt
+   ```
+
+
+### Linux (Ubuntu/Debian)
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y \
-    python3-dev \
-    python3-pip \
-    build-essential \
-    libgl1-mesa-glx \
-    libxcb-xinerama0 \
-    libxkbcommon-x11-0 \
-    libxcb-icccm4 \
-    libxcb-image0 \
-    libxcb-keysyms1 \
-    libxcb-randr0 \
-    libxcb-render-util0 \
-    libxcb-xinerama0 \
-    libxcb-xinput0 \
-    libxcb-xkb1 \
-    libxkbcommon-x11-0 \
-    libxkbcommon-x11-dev
+sudo apt update
+sudo apt install python3-pip python3-venv git
+# For PyQt6
+sudo apt install python3-pyqt6 python3-pyqt6.qtwebengine python3-pyqt6.qtsvg
+# For QScintilla
+sudo apt install pyqt6-dev-tools qttools6-dev-tools
+
+# Clone and install
+pip install -r requirements.txt
 ```
 
 
-### Fedora
+### macOS
 
 ```bash
-sudo dnf install -y \
-    python3-devel \
-    python3-pip \
-    @development-tools \
-    mesa-libGL \
-    libxcb \
-    libxkbcommon-x11 \
-    libxkbcommon-x11-devel
+# Install Homebrew if not installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install dependencies
+brew install python@3.10 git
+brew install pyqt@6 qscintilla2
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
 ```
 
 
-## Windows Specific Notes
+## Logging
 
-- Ensure you have the latest graphics drivers installed
-- On systems with both integrated and dedicated GPUs, ensure the application uses the dedicated GPU
-- For best performance, add the application to your GPU's high-performance applications list
-
-
-## macOS Specific Notes
-
-- Requires Xcode Command Line Tools
-- May require additional permissions for camera/microphone access
-- For M1/M2 Macs, use native ARM64 Python for best performance
-
-
-## Development Dependencies
-
-```bash
-pip install -r requirements-dev.txt
-```
-
-
-## Verifying Installation
-
-After installation, verify all dependencies are correctly installed by running:
-
-```bash
-python -c "from PyQt6.QtCore import QT_VERSION_STR; print(f'Qt version: {QT_VERSION_STR}')"
-python -c "import numpy as np; print(f'numpy version: {np.__version__}')"
-python -c "import matplotlib; print(f'matplotlib version: {matplotlib.__version__}')"
-```
-
-
-## Troubleshooting
-
-
-### Common Issues
-
-1. **Missing Dependencies**: Check error messages and install any missing system packages
-2. **Performance Issues**: Try disabling GPU acceleration in settings if experiencing performance problems
-3. **Display Issues**: If UI elements appear incorrectly, try running with the `-style=Fusion` flag
-
-
-### Getting Help
-
-If you encounter any issues, please:
-
-1. Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-2. Search the [GitHub Issues](https://github.com/yourusername/STL_to_G-Code/issues)
-3. Open a new issue if your problem hasn't been reported
+Logs are stored in `stl_to_gcode.log` in the application's root directory. For debugging purposes, you can view the log file using any text editor or the built-in log viewer.

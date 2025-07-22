@@ -9,6 +9,7 @@
 - [x] Added dockable panels and tool windows
 - [x] Improved high DPI display support
 - [x] Added comprehensive logging system
+- [x] Configured file logging to 'stl_to_gcode.log'
 
 ### G-code Features
 

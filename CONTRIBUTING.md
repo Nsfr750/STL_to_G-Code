@@ -33,7 +33,7 @@ This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By parti
 
 ### Prerequisites
 - Python 3.8 or higher
-- pip (Python package manager)
+- pip 23.0 or later
 - Git
 - (Optional) A Python virtual environment (recommended)
 
@@ -51,19 +51,14 @@ This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By parti
    python -m venv venv
    .\venv\Scripts\activate
    
-   # On macOS/Linux
+   # On Linux/macOS
    python3 -m venv venv
    source venv/bin/activate
    ```
 
 3. Install development dependencies:
    ```bash
-   pip install -r requirements-dev.txt
-   ```
-
-4. Install the package in development mode:
-   ```bash
-   pip install -e .
+   pip install -r requirements.txt
    ```
 
 ## Making Changes
@@ -72,66 +67,88 @@ This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By parti
    ```bash
    git checkout -b feature/your-feature-name
    # or
-   git checkout -b bugfix/issue-number-short-description
+   git checkout -b bugfix/issue-number-description
    ```
 
-2. Make your changes following the code style guidelines
-3. Add tests for your changes
-4. Update documentation as needed
-5. Run tests to ensure everything works
+2. Make your changes following the code style guidelines below
+
+3. Run tests to ensure nothing is broken:
+   ```bash
+   pytest
+   ```
+
+4. Format your code:
+   ```bash
+   black .
+   ```
+
+5. Check for linting errors:
+   ```bash
+   flake8 .
+   ```
+
+6. Commit your changes with a descriptive message:
+   ```bash
+   git add .
+   git commit -m "feat: add new feature"
+   # or
+   git commit -m "fix: resolve issue with gcode generation"
+   ```
 
 ## Pull Request Process
 
-1. Ensure all tests pass
-2. Update the README.md with details of changes if needed
-3. Increment the version number in any files that need it
-4. Submit the pull request with a clear title and description
-5. Reference any related issues in your PR description
-6. Wait for code review and address any feedback
+1. Push your changes to your fork:
+   ```bash
+   git push origin your-branch-name
+   ```
+
+2. Open a pull request against the `main` branch
+3. Fill out the pull request template with all relevant information
+4. Ensure all CI checks pass
+5. Request a review from one of the maintainers
+6. Address any review feedback
+7. Once approved, your PR will be merged by a maintainer
 
 ## Reporting Issues
 
 When reporting issues, please include:
 - A clear, descriptive title
 - Steps to reproduce the issue
-- Expected behavior
-- Actual behavior
-- Environment details (OS, Python version, etc.)
-- Any error messages or logs
+- Expected vs. actual behavior
 - Screenshots if applicable
+- Your operating system and Python version
+- Any error messages or logs from `stl_to_gcode.log`
 
 ## Feature Requests
 
-For feature requests, please:
-1. Check if a similar feature request already exists
-2. Describe the feature and why it would be useful
-3. Include any relevant use cases
+We welcome feature requests! Please:
+1. Check if a similar feature already exists
+2. Explain why this feature would be valuable
+3. Provide as much detail as possible about the implementation
 
 ## Code Style
 
-- Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) for Python code
-- Use type hints for all function parameters and return values
-- Keep lines under 100 characters when possible
-- Use docstrings for all public modules, classes, and functions
-- Write clear, concise commit messages
+- Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) guidelines
+- Use [Google style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
+- Keep lines under 88 characters (Black's default)
+- Type hints are encouraged for all new code
+- Use f-strings for string formatting (Python 3.6+)
 
 ## Testing
 
-- Write unit tests for new features and bug fixes
-- Run all tests before submitting a PR:
-  ```bash
-  pytest
-  ```
-- Ensure test coverage doesn't decrease
-- Add integration tests for complex features
+- Write tests for all new features and bug fixes
+- Ensure all tests pass before submitting a PR
+- Use descriptive test function names (e.g., `test_function_name_expected_behavior`)
+- Add integration tests for critical paths
+- Update tests when changing functionality
 
 ## Documentation
 
-- Update the README.md with any changes to the setup or usage
-- Add docstrings to all new functions and classes
-- Update any relevant documentation in the `docs/` directory
-- Keep comments clear and up-to-date
+- Update relevant documentation when adding new features
+- Add docstrings to all public functions and classes
+- Keep the README up to date
+- Document any breaking changes in CHANGELOG.md
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's [LICENSE](LICENSE) file.
+By contributing, you agree that your contributions will be licensed under the GPLv3 License. See the [LICENSE](LICENSE) file for details.

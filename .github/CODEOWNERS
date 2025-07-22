@@ -1,0 +1,53 @@
+# CODEOWNERS file for STL to G-Code Converter
+# This file defines who is responsible for reviewing and maintaining different parts of the codebase.
+# Each line is a file pattern followed by one or more owners.
+# The last matching pattern has the most precedence.
+
+# Default owner for the entire project
+* @Nsfr750
+
+# Core application files
+/main.py @Nsfr750
+/README.md @Nsfr750
+/CONTRIBUTING.md @Nsfr750
+/CHANGELOG.md @Nsfr750
+/PREREQUISITES.md @Nsfr750
+/TO_DO.md @Nsfr750
+
+# Python package files
+/setup.py @Nsfr750
+/setup.cfg @Nsfr750
+/pyproject.toml @Nsfr750
+/requirements*.txt @Nsfr750
+
+# Documentation
+/docs/ @Nsfr750
+
+# Core modules
+/scripts/__init__.py @Nsfr750
+/scripts/logger.py @Nsfr750
+/scripts/version.py @Nsfr750
+/scripts/error_handling.py @Nsfr750
+/scripts/config.py @Nsfr750
+
+# STL processing
+/scripts/STL_load.py @Nsfr750
+/scripts/STL_view.py @Nsfr750
+/scripts/stl_processor.py @Nsfr750
+
+# G-code processing
+/scripts/gcode_*.py @Nsfr750
+/scripts/gcode_optimizer.py @Nsfr750
+
+# UI components
+/scripts/ui_qt.py @Nsfr750
+/scripts/view_settings.py @Nsfr750
+/scripts/settings_dialog.py @Nsfr750
+/scripts/markdown_viewer.py @Nsfr750
+/scripts/log_viewer.py @Nsfr750
+
+# Tests
+test_scripts/ @Nsfr750
+
+# GitHub workflows
+.github/ @Nsfr750

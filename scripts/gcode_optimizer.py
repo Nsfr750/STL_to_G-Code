@@ -5,7 +5,7 @@ This module provides various optimization techniques for G-code generation,
 including path optimization, infill patterns, and print parameter tuning.
 """
 import math
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Union, Any, Iterator
 import numpy as np
 from scipy.spatial import distance
 import logging
@@ -798,23 +798,16 @@ class GCodeOptimizer:
         
         return (nx1, ny1, nx2, ny2)
 
-    def generate_gcode(self, stl_mesh, start_gcode: str = "", end_gcode: str = "", context: Optional[Dict] = None):
-        """Generate G-code from an STL mesh with custom start/end G-code.
+    def validate_gcode(self, gcode: str) -> None:
+        """
+        Validate G-code commands.
         
         Args:
-            stl_mesh: The STL mesh to generate G-code for
-            start_gcode: Custom G-code to insert at the start (supports {variable} substitution)
-            end_gcode: Custom G-code to insert at the end (supports {variable} substitution)
-            context: Optional dictionary of variables for string formatting
-            
-        Yields:
-            Chunks of G-code as strings
+            gcode: The G-code string to validate
             
         Raises:
-            ValueError: If there are any invalid G-code commands
+            ValueError: If any invalid G-code commands are found
         """
-        context = context or {}
-        
         # Define valid G-code commands
         valid_commands = {
             'G0', 'G1', 'G2', 'G3', 'G4', 'G10', 'G11', 'G20', 'G21', 'G28', 'G29',
@@ -837,32 +830,46 @@ class GCodeOptimizer:
             'M913', 'M914', 'M928', 'M997', 'M998', 'M999'
         }
         
-        def validate_gcode(gcode: str) -> None:
-            """Validate G-code commands."""
-            lines = gcode.split('\n')
-            for line_num, line in enumerate(lines, 1):
-                line = line.split(';', 1)[0].strip()  # Remove comments
-                if not line:
-                    continue
-                    
-                # Skip empty lines and comments
-                if not line or line.startswith(';'):
-                    continue
-                    
-                # Check for valid command
-                parts = line.split()
-                if not parts:
-                    continue
-                    
-                command = parts[0].upper()
-                if command not in valid_commands and not any(cmd in valid_commands for cmd in [command.split('.')[0], command[:-1] if command[-1].isdigit() else ""]):
-                    raise ValueError(f"Invalid G-code command: {command} at line {line_num}")
+        lines = gcode.split('\n')
+        for line_num, line in enumerate(lines, 1):
+            line = line.split(';', 1)[0].strip()  # Remove comments
+            if not line:
+                continue
+                
+            # Skip empty lines and comments
+            if not line or line.startswith(';'):
+                continue
+                
+            # Check for valid command
+            parts = line.split()
+            if not parts:
+                continue
+                
+            command = parts[0].upper()
+            if command not in valid_commands and not any(cmd in valid_commands for cmd in [command.split('.')[0], command[:-1] if command[-1].isdigit() else ""]):
+                raise ValueError(f"Invalid G-code command: {command} at line {line_num}")
+
+    def generate_gcode(self, stl_mesh, start_gcode: str = "", end_gcode: str = "", context: Optional[Dict] = None) -> Iterator[str]:
+        """
+        Generate G-code from an STL mesh with custom start/end G-code.
         
+        Args:
+            stl_mesh: The STL mesh to generate G-code for (can be trimesh.Trimesh, dict, or numpy array)
+            start_gcode: Custom G-code to insert at the start (supports {variable} substitution)
+            end_gcode: Custom G-code to insert at the end (supports {variable} substitution)
+            context: Optional dictionary of variables for string formatting
+            
+        Yields:
+            Chunks of G-code as strings
+            
+        Raises:
+            ValueError: If there are any invalid G-code commands
+        """
         # Process start G-code with variable substitution and validation
         if start_gcode:
             try:
-                formatted_start = start_gcode.format(**context)
-                validate_gcode(formatted_start)
+                formatted_start = start_gcode.format(**(context or {}))
+                self.validate_gcode(formatted_start)
                 yield "\n".join([
                     "; --- Custom Start G-code ---",
                     formatted_start,
@@ -877,24 +884,43 @@ class GCodeOptimizer:
         
         # Generate main G-code
         try:
-            z_min = stl_mesh.z.min()
-            z_max = stl_mesh.z.max()
+            # Extract vertices based on input type
+            if hasattr(stl_mesh, 'vertices') and hasattr(stl_mesh.vertices, 'shape'):
+                # trimesh.Trimesh object
+                vertices = stl_mesh.vertices
+            elif isinstance(stl_mesh, dict) and 'vertices' in stl_mesh:
+                # Dictionary with 'vertices' key
+                vertices = stl_mesh['vertices']
+            elif hasattr(stl_mesh, 'shape') and len(stl_mesh.shape) == 2 and stl_mesh.shape[1] == 3:
+                # Numpy array of vertices
+                vertices = stl_mesh
+            else:
+                raise ValueError("Unsupported mesh format. Expected trimesh.Trimesh, dict with 'vertices' key, or numpy array.")
             
-            for z in np.arange(z_min, z_max, self.layer_height):
+            # Calculate Z bounds from vertices
+            z_min = vertices[:, 2].min()
+            z_max = vertices[:, 2].max()
+            
+            # Generate G-code for each layer
+            current_z = z_min
+            while current_z <= z_max:
                 if hasattr(self, '_is_cancelled') and self._is_cancelled:
                     return
                     
-                layer_gcode = self._generate_layer_gcode(stl_mesh, z)
+                layer_gcode = self._generate_layer_gcode(stl_mesh, current_z)
                 if layer_gcode:
                     yield layer_gcode
+                
+                current_z += self.layer_height
+                
         except Exception as e:
             raise ValueError(f"Error generating G-code: {str(e)}")
         
         # Process end G-code with variable substitution and validation
         if end_gcode:
             try:
-                formatted_end = end_gcode.format(**context)
-                validate_gcode(formatted_end)
+                formatted_end = end_gcode.format(**(context or {}))
+                self.validate_gcode(formatted_end)
                 yield "\n".join([
                     "\n; --- Custom End G-code ---",
                     formatted_end,
@@ -908,19 +934,92 @@ class GCodeOptimizer:
                 raise ValueError(f"Error in end G-code: {str(e)}")
     
     def _generate_layer_gcode(self, stl_mesh, z: float) -> str:
-        """Generate G-code for a single layer.
+        """
+        Generate G-code for a single layer with infill.
         
         Args:
-            stl_mesh: The STL mesh
+            stl_mesh: The STL mesh (can be a numpy array, trimesh.Trimesh, or dict)
             z: Z-coordinate of the layer
             
         Returns:
             G-code for the layer as a string
         """
-        # This is a placeholder - implement actual layer generation
-        # This should be implemented to generate the actual G-code for each layer
-        return f"; Layer at Z={z:.3f}\n"
+        # Handle different input types for stl_mesh
+        if hasattr(stl_mesh, 'vertices') and hasattr(stl_mesh.vertices, 'shape'):
+            # Handle trimesh.Trimesh objects
+            vertices = stl_mesh.vertices
+            faces = stl_mesh.faces
+        elif isinstance(stl_mesh, dict) and 'vertices' in stl_mesh and 'faces' in stl_mesh:
+            # Handle dictionary with 'vertices' and 'faces' keys
+            vertices = stl_mesh['vertices']
+            faces = stl_mesh['faces']
+        elif hasattr(stl_mesh, 'shape') and len(stl_mesh.shape) == 2 and stl_mesh.shape[1] == 3:
+            # Handle numpy array of vertices
+            vertices = stl_mesh
+            # Create simple triangular faces (assuming points form triangles in order)
+            faces = np.arange(len(vertices)).reshape(-1, 3) if len(vertices) % 3 == 0 else None
+        else:
+            raise ValueError("Unsupported mesh format. Expected trimesh.Trimesh, dict with 'vertices' and 'faces', or numpy array.")
+            
+        if faces is None:
+            raise ValueError("Could not determine face information from mesh")
 
+        # Calculate layer boundaries
+        z_min = vertices[:, 2].min()
+        z_max = vertices[:, 2].max()
+        
+        # Skip if this z is outside the mesh bounds
+        if z < z_min or z > z_max:
+            return ""
+            
+        # Generate G-code for this layer
+        gcode = []
+        gcode.append(f"\n; --- Layer at Z={z:.3f} ---")
+        gcode.append(f"G1 Z{z:.3f} F{self.travel_speed * 60:.0f} ; Move to layer height")
+        
+        # Add your layer generation logic here
+        # For example, generate perimeters, infill, etc.
+        
+        # Example: Generate infill if enabled
+        if self.infill_density > 0:
+            # Get the bounds of the current layer
+            layer_verts = vertices[(vertices[:, 2] >= z - self.layer_height/2) & 
+                                 (vertices[:, 2] <= z + self.layer_height/2)]
+            
+            if len(layer_verts) > 0:
+                x_min, y_min = layer_verts[:, :2].min(axis=0)
+                x_max, y_max = layer_verts[:, :2].max(axis=0)
+                bounds = (x_min, y_min, x_max, y_max)
+                
+                # Generate infill pattern
+                spacing = 1.0 / (self.infill_density / 100.0)
+                
+                if self.enable_optimized_infill:
+                    infill_lines = self.generate_optimized_infill(
+                        bounds=bounds,
+                        angle=self.infill_angle,
+                        spacing=spacing,
+                        resolution=self.infill_resolution
+                    )
+                else:
+                    infill_lines = self.generate_infill_pattern(
+                        bounds=bounds,
+                        angle=self.infill_angle,
+                        spacing=spacing
+                    )
+                
+                # Convert infill lines to G-code
+                if infill_lines:
+                    gcode.append("; --- Infill ---")
+                    gcode.append(f"G1 F{self.infill_speed * 60:.0f} ; Set infill speed")
+                    
+                    for line in infill_lines:
+                        x1, y1, x2, y2 = line
+                        gcode.append(f"G1 X{x1:.3f} Y{y1:.3f} ; Move to start")
+                        gcode.append(f"G1 X{x2:.3f} Y{y2:.3f} ; Draw infill line")
+        
+        return "\n".join(gcode) + "\n"
+    
     def __init__(self, 
                  layer_height: float,
                  nozzle_diameter: float,

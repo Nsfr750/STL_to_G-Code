@@ -8,7 +8,7 @@ import logging
 from scripts.logger import get_logger
 from pathlib import Path
 import datetime
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QIcon, QAction, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QMessageBox, QTabWidget, 
     QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
@@ -23,8 +23,8 @@ from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import art3d
 from stl import mesh
 from scripts.version import __version__
-from scripts.about import About
-from scripts.sponsor import Sponsor
+from scripts.about import AboutDialog
+from scripts.sponsor import SponsorDialog
 from scripts.help import show_help
 from scripts.updates import UpdateChecker  # Import the new UpdateChecker class
 from scripts.ui_qt import UI  # Import the new UI module
@@ -81,6 +81,13 @@ class STLToGCodeApp(QMainWindow):
         from scripts.ui_qt import UI
         self.ui = UI(self)  # Pass self as parent
         
+        # Initialize the UI manager
+        from scripts.menu import MenuManager
+        self.menu_manager = MenuManager(self)
+        
+        # Initialize the log viewer
+        self.log_viewer = None
+        
         # Set up the UI
         self._setup_ui()
         
@@ -109,12 +116,6 @@ class STLToGCodeApp(QMainWindow):
             self.logger.info(f"Loaded application icon from {icon_path}")
         else:
             self.logger.warning(f"Icon not found at {icon_path}")
-        
-        # Initialize the UI manager
-        # self.ui = UI()
-        
-        # Initialize the log viewer
-        self.log_viewer = None
         
         # Set window properties
         self.setWindowTitle(f"STL to GCode Converter v{__version__}")
@@ -164,15 +165,194 @@ class STLToGCodeApp(QMainWindow):
         
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
-        # Set up the menu bar
-        self._setup_menus()
+        # Main widget and layout
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QHBoxLayout(self.central_widget)
         
-        # Central widget and main layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        # Create splitter for resizable panels
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_layout.addWidget(self.splitter)
+        
+        # Main 3D view widget
+        self.view_3d_widget = QWidget()
+        self.view_3d_layout = QVBoxLayout(self.view_3d_widget)
+        
+        # Add 3D visualization
+        self.figure = Figure(figsize=(10, 8), dpi=100)
+        self.ax = self.figure.add_subplot(111, projection='3d')
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        
+        # Initialize STL visualizer
+        self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
+        
+        # Add to layout
+        self.view_3d_layout.addWidget(self.toolbar)
+        self.view_3d_layout.addWidget(self.canvas)
+        
+        # Add infill controls
+        self.infill_controls = QHBoxLayout()
+        self.infill_checkbox = QCheckBox("Show Infill")
+        self.infill_checkbox.setChecked(True)
+        self.infill_checkbox.stateChanged.connect(self.toggle_infill_visibility)
+        self.infill_controls.addWidget(self.infill_checkbox)
+        
+        # Infill color button
+        self.infill_color_btn = QPushButton("Infill Color")
+        self.infill_color_btn.clicked.connect(self.change_infill_color)
+        self.infill_controls.addWidget(self.infill_color_btn)
+        
+        # Infill width control
+        self.infill_width_spin = QDoubleSpinBox()
+        self.infill_width_spin.setRange(0.1, 5.0)
+        self.infill_width_spin.setValue(0.5)
+        self.infill_width_spin.setSingleStep(0.1)
+        self.infill_width_spin.valueChanged.connect(self.update_infill_style)
+        self.infill_controls.addWidget(QLabel("Infill Width:"))
+        self.infill_controls.addWidget(self.infill_width_spin)
+        
+        # Add stretch to push controls to the left
+        self.infill_controls.addStretch()
+        
+        # Add controls to layout
+        control_frame = QFrame()
+        control_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        control_frame.setLayout(self.infill_controls)
+        self.view_3d_layout.addWidget(control_frame)
+        
+        # Add to splitter
+        self.splitter.addWidget(self.view_3d_widget)
+        
+        # Right panel for settings and controls
+        self.setup_right_panel()
+        
+        # Set initial sizes for splitter (give more space to 3D view)
+        self.splitter.setSizes([int(self.width() * 0.8), int(self.width() * 0.2)])
+        
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready")
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+        
+    def update_infill_visualization(self, layer_z=None):
+        """
+        Update the infill visualization for the current or specified layer.
+        
+        Args:
+            layer_z: Z-coordinate of the layer to visualize infill for.
+                     If None, uses the current layer.
+        """
+        if not hasattr(self, 'gcode_optimizer') or not self.gcode_optimizer:
+            return
+            
+        try:
+            # Get the current layer Z if not specified
+            if layer_z is None:
+                if not hasattr(self, 'current_layer_z') or self.current_layer_z is None:
+                    return
+                layer_z = self.current_layer_z
+            
+            # Get the STL mesh for the current layer
+            if not hasattr(self, 'stl_mesh') or self.stl_mesh is None:
+                return
+            
+            # Get the layer bounds
+            if hasattr(self.stl_mesh, 'vertices') and hasattr(self.stl_mesh.vertices, '__array__'):
+                vertices = self.stl_mesh.vertices
+            elif isinstance(self.stl_mesh, dict) and 'vertices' in self.stl_mesh:
+                vertices = self.stl_mesh['vertices']
+            else:
+                return
+                
+            x_min, y_min = vertices[:, 0].min(), vertices[:, 1].min()
+            x_max, y_max = vertices[:, 0].max(), vertices[:, 1].max()
+            bounds = (x_min, y_min, x_max, y_max)
+            
+            # Generate infill pattern
+            if self.gcode_optimizer.infill_density > 0:
+                spacing = 1.0 / (self.gcode_optimizer.infill_density / 100.0)
+                
+                if self.gcode_optimizer.enable_optimized_infill:
+                    infill_lines = self.gcode_optimizer.generate_optimized_infill(
+                        bounds=bounds,
+                        angle=self.gcode_optimizer.infill_angle,
+                        spacing=spacing,
+                        resolution=self.gcode_optimizer.infill_resolution
+                    )
+                else:
+                    infill_lines = self.gcode_optimizer.generate_infill_pattern(
+                        bounds=bounds,
+                        angle=self.gcode_optimizer.infill_angle,
+                        spacing=spacing
+                    )
+                
+                # Convert 2D infill lines to 3D by adding Z coordinate
+                infill_3d = []
+                for line in infill_lines:
+                    x1, y1, x2, y2 = line
+                    infill_3d.append([x1, y1, layer_z, x2, y2, layer_z])
+                
+                # Update the visualization
+                self.stl_visualizer.update_infill(infill_3d)
+            else:
+                # No infill, clear any existing infill
+                self.stl_visualizer.update_infill([])
+                
+        except Exception as e:
+            logger.error(f"Error updating infill visualization: {str(e)}", exc_info=True)
+            self.status_bar.showMessage(f"Error updating infill visualization: {str(e)}", 5000)
+
+    def toggle_infill_visibility(self, state):
+        """Toggle infill visibility in the 3D view."""
+        self.stl_visualizer.toggle_infill(state == Qt.CheckState.Checked.value)
+        self.canvas.draw_idle()
+
+    def change_infill_color(self):
+        """Open a color dialog to change the infill color."""
+        from PyQt6.QtWidgets import QColorDialog
+        
+        current_color = self.stl_visualizer.infill_color
+        color = QColorDialog.getColor(
+            QColor(
+                int(current_color[0] * 255),
+                int(current_color[1] * 255),
+                int(current_color[2] * 255),
+                int((current_color[3] if len(current_color) > 3 else 1.0) * 255)
+            ),
+            self,
+            "Select Infill Color"
+        )
+        
+        if color.isValid():
+            # Convert QColor to RGBA list [0-1]
+            rgba = [
+                color.redF(),
+                color.greenF(),
+                color.blueF(),
+                color.alphaF()
+            ]
+            self.stl_visualizer.set_infill_style(color=rgba)
+
+    def update_infill_style(self):
+        """Update infill style based on UI controls."""
+        width = self.infill_width_spin.value()
+        self.stl_visualizer.set_infill_style(width=width)
+
+    def setup_right_panel(self):
+        """Set up the right panel for settings and controls."""
+        # Right panel for settings and controls
+        self.right_panel = QWidget()
+        self.right_layout = QVBoxLayout(self.right_panel)
+        
+        # Add to splitter
+        self.splitter.addWidget(self.right_panel)
         
         # Create main toolbar with improved organization
         toolbar = QToolBar("Main Toolbar")
@@ -233,7 +413,7 @@ class STLToGCodeApp(QMainWindow):
         )
         help_action.setShortcut("F1")
         help_action.setStatusTip("Show help documentation")
-        help_action.triggered.connect(self.show_documentation)
+        help_action.triggered.connect(lambda: show_help(self))
         toolbar.addAction(help_action)
         
         # Set up keyboard shortcuts
@@ -330,18 +510,7 @@ class STLToGCodeApp(QMainWindow):
         content_layout.addWidget(right_panel, stretch=4)
         
         # Add content to main layout
-        main_layout.addWidget(content_widget, stretch=1)
-        
-        # Status bar
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        
-        # Progress bar for long operations
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(100)
-        self.progress_bar.setVisible(False)
-        self.status_bar.addPermanentWidget(self.progress_bar)
+        self.right_layout.addWidget(content_widget, stretch=1)
         
         # Set initial tab
         self.tab_widget.setCurrentIndex(0)  # Show 3D View by default
@@ -403,140 +572,11 @@ class STLToGCodeApp(QMainWindow):
             toolbar: The toolbar to style. If None, styles all toolbars.
         """
         try:
-            # Get the toolbar(s) to style
-            toolbars = []
-            if toolbar is not None:
-                toolbars.append(toolbar)
-            else:
-                # Add all toolbars if none specified
-                if hasattr(self, 'stl_toolbar') and self.stl_toolbar is not None:
-                    toolbars.append(self.stl_toolbar)
-                if hasattr(self, 'vis_toolbar') and self.vis_toolbar is not None:
-                    toolbars.append(self.vis_toolbar)
-            
-            # Style each toolbar
-            for tb in toolbars:
-                tb.setStyleSheet("""
-                    QToolBar {
-                        background-color: #2b2b2b;
-                        border: 1px solid #444;
-                        border-radius: 4px;
-                        spacing: 2px;
-                        padding: 2px;
-                    }
-                    QToolButton {
-                        background-color: #424242;
-                        border: 1px solid #555;
-                        border-radius: 3px;
-                        padding: 3px;
-                    }
-                    QToolButton:hover {
-                        background-color: #555;
-                    }
-                    QToolButton:pressed {
-                        background-color: #666;
-                    }
-                """)
-                
+            # This is a workaround for the matplotlib toolbar styling
+            # The actual styling is done in the UI module
+            pass
         except Exception as e:
             logger.error(f"Error styling matplotlib toolbar: {str(e)}", exc_info=True)
-    
-    def _setup_menus(self):
-        """Set up the menu bar and menus."""
-        menubar = self.menuBar()
-        
-        # File menu
-        self.file_menu = menubar.addMenu("&File")
-        
-        open_stl_action = QAction("&Open STL...", self)
-        open_stl_action.setShortcut("Ctrl+O")
-        open_stl_action.triggered.connect(self.open_file)
-        self.file_menu.addAction(open_stl_action)
-        
-        # Add Open G-code action
-        open_gcode_action = QAction("Open &G-code File...", self)
-        open_gcode_action.setShortcut("Ctrl+G")
-        open_gcode_action.setStatusTip("Open a G-code file")
-        open_gcode_action.triggered.connect(self.open_gcode_in_editor)
-        self.file_menu.addAction(open_gcode_action)
-        
-        # Save GCode action
-        self.save_gcode_action = QAction("&Save GCode As...", self)
-        self.save_gcode_action.setShortcut("Ctrl+Shift+S")
-        self.save_gcode_action.setStatusTip("Save the generated GCode to a file")
-        self.save_gcode_action.triggered.connect(self.save_gcode)
-        self.save_gcode_action.setEnabled(False)  # Will be enabled when GCode is generated
-        self.file_menu.addAction(self.save_gcode_action)
-        
-        self.file_menu.addSeparator()
-        
-        # Exit action
-        exit_action = QAction("E&xit", self)
-        exit_action.setShortcut("Ctrl+Q")
-        exit_action.setStatusTip("Exit the application")
-        exit_action.triggered.connect(self.close)
-        self.file_menu.addAction(exit_action)
-        
-        # Edit menu
-        edit_menu = menubar.addMenu("&Edit")
-        
-        # Settings action
-        settings_action = QAction("&Settings...", self)
-        settings_action.setStatusTip("Configure application settings")
-        settings_action.triggered.connect(self.show_settings)
-        settings_action.setShortcut("Ctrl+,")
-        edit_menu.addAction(settings_action)
-        
-        # View menu
-        view_menu = menubar.addMenu("&View")
-        
-        # Toggle Log Viewer action
-        self.toggle_log_viewer_action = QAction("Show &Log", self)
-        self.toggle_log_viewer_action.setCheckable(True)
-        self.toggle_log_viewer_action.setChecked(False)
-        self.toggle_log_viewer_action.setStatusTip("Show or hide the log viewer")
-        self.toggle_log_viewer_action.triggered.connect(self.toggle_log_viewer)
-        view_menu.addAction(self.toggle_log_viewer_action)
-        
-        # Help menu
-        help_menu = menubar.addMenu("&Help")
-
-        # About action
-        about_action = QAction("&About", self)
-        about_action.setStatusTip("Show the application's About box")
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
-        
-        # Help action
-        help_action = QAction("&Help", self)
-        help_action.setShortcut("F1")
-        help_action.setStatusTip("Show help documentation")
-        help_action.triggered.connect(lambda: show_help(self))
-        help_menu.addAction(help_action)
-        
-        # Documentation action
-        docs_action = QAction("&Documentation", self)
-        docs_action.setStatusTip("Open the application documentation")
-        docs_action.triggered.connect(self.show_documentation)
-        help_menu.addAction(docs_action)
-        
-        help_menu.addSeparator()
-        # Sponsor action
-        sponsor_action = QAction("&Sponsor", self)
-        sponsor_action.setStatusTip("Support the project")
-        sponsor_action.triggered.connect(self.show_sponsor)
-        help_menu.addAction(sponsor_action)
-        
-        help_menu.addSeparator()
-               
-        # Check for updates action
-        update_action = QAction("Check for &Updates...", self)
-        update_action.setStatusTip("Check for application updates")
-        update_action.triggered.connect(self.check_updates)
-        help_menu.addAction(update_action)
-        
-        # Store actions for later reference
-        self.open_action = open_stl_action
     
     def open_file(self, file_path=None):
         """Open an STL file and load it into the viewer with progressive loading."""
@@ -847,7 +887,8 @@ class STLToGCodeApp(QMainWindow):
             position = cursor.position()
             
             # Append the buffered G-code to the editor
-            self.gcode_editor.moveCursor(cursor.End)
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.gcode_editor.setTextCursor(cursor)
             self.gcode_editor.insertPlainText(self.gcode_buffer)
             self.gcode_buffer = ""
             
@@ -1179,18 +1220,19 @@ class STLToGCodeApp(QMainWindow):
             logger.error(f"Error cancelling G-code generation: {str(e)}", exc_info=True)
 
     def show_about(self):
-        """Show the About dialog using the About class from scripts.about."""
+        """Show the About dialog using the AboutDialog class from scripts.about."""
         try:
-            About.show_about(self)  # This will use the static method from the About class
+            about_dialog = AboutDialog(self)
+            about_dialog.exec()
         except Exception as e:
             logger.error(f"Error showing about dialog: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to show about dialog: {str(e)}")
     
     def show_sponsor(self):
-        """Show the sponsor dialog using the Sponsor class from scripts.sponsor."""
+        """Show the sponsor dialog using the SponsorDialog class from scripts.sponsor."""
         try:
-            sponsor_dialog = Sponsor(self)
-            sponsor_dialog.show_sponsor()
+            sponsor_dialog = SponsorDialog(self)
+            sponsor_dialog.exec()  # Use exec() to show the dialog modally
         except Exception as e:
             logger.error(f"Error showing sponsor dialog: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to show sponsor dialog: {str(e)}")

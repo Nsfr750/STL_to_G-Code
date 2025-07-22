@@ -1,208 +1,247 @@
-"""
-About dialog module for the STL to GCode Converter application.
-
-This module provides the About dialog window that displays application information,
-version details, and copyright notice using PyQt6.
-"""
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
-                             QHBoxLayout, QTextBrowser, QApplication)
-from PyQt6.QtCore import Qt, QSize, QUrl, QT_VERSION_STR, PYQT_VERSION_STR
-from PyQt6.QtGui import QPixmap, QIcon, QDesktopServices, QFont
+from PyQt6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QHBoxLayout,
+    QTextBrowser,
+    QApplication,
+)
+from PyQt6.QtCore import Qt, QSize, QUrl, QT_VERSION_STR, PYQT_VERSION_STR, pyqtSignal
+from PyQt6.QtGui import QPixmap, QIcon, QDesktopServices
+from .version import get_version
+from .language_manager import LanguageManager  # Import LanguageManager
 import os
 import sys
 import platform
 from pathlib import Path
-from .version import get_version  # Updated import to use relative import
-import logging
-from scripts.logger import get_logger
-logger = get_logger(__name__)
+import psutil
+import subprocess
 
-# Check if OpenGL is available
-OPENGL_AVAILABLE = False
-try:
-    from PyQt6.QtOpenGL import QOpenGLWidget  # noqa: F401
-    OPENGL_AVAILABLE = True
-except ImportError:
-    pass
 
-class About:
-    """
-    Static class for managing the About dialog window.
-    
-    Provides a method to display the About dialog with application information.
-    """
-    @staticmethod
-    def show_about(parent=None):
-        """
-        Display the About dialog.
-        
-        Args:
-            parent: The parent widget for the dialog.
-        """
-        dialog = QDialog(parent)
-        dialog.setWindowTitle("About STL to GCode Converter")
-        dialog.setMinimumWidth(400)
-        
-        # Create main layout
-        layout = QVBoxLayout(dialog)
-        
-        # Application title
-        title = QLabel("STL to GCode Converter")
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(14)
-        title.setFont(title_font)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Version information
-        version = QLabel(f"Version: {get_version()}")
-        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Copyright information
-        copyright = QLabel("© 2025 Nsfr750. All rights reserved.")
-        copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+class AboutDialog(QDialog):
+    def __init__(self, parent=None, language_manager=None):
+        super().__init__(parent)
+
+        # Initialize language manager
+        self.lang_manager = language_manager if language_manager else LanguageManager()
+
+        # Connect language changed signal
+        if self.lang_manager:
+            self.lang_manager.language_changed.connect(self.on_language_changed)
+
+        self.setWindowTitle(self.translate("about_title"))
+        self.setMinimumSize(500, 400)
+
+        # Initialize UI
+        self.setup_ui()
+
+    def translate(self, key, **kwargs):
+        """Helper method to get translated text."""
+        if hasattr(self, "lang_manager") and self.lang_manager:
+            return self.lang_manager.translate(key, **kwargs)
+        return key  # Fallback to key if no translation available
+
+    def on_language_changed(self, lang_code):
+        """Handle language change."""
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        """Retranslate the UI elements."""
+        self.setWindowTitle(self.translate("about_title"))
+
+        # Update title and version
+        if hasattr(self, "title_label"):
+            self.title_label.setText(self.translate("app_name"))
+
+        if hasattr(self, "version_label"):
+            self.version_label.setText(self.translate("version", version=get_version()))
+
+        # Update description
+        if hasattr(self, "description_label"):
+            self.description_label.setText(self.translate("about_description"))
+
+        # Update system info
+        if hasattr(self, "sys_info"):
+            self.sys_info.setHtml(self.get_system_info())
+
+        # Update copyright
+        if hasattr(self, "copyright_label"):
+            self.copyright_label.setText(
+                self.translate("copyright", year="2025", author="Nsfr750")
+            )
+
+        # Update buttons
+        if hasattr(self, "github_btn"):
+            self.github_btn.setText(self.translate("github"))
+
+        if hasattr(self, "close_btn"):
+            self.close_btn.setText(self.translate("close"))
+
+    def setup_ui(self):
+        """Initialize the user interface."""
+        layout = QVBoxLayout(self)
+
+        # App logo and title
+        header = QHBoxLayout()
+
+        # Load application logo
+        logo_path = Path(__file__).parent.parent / "assets" / "about-logo.png"
+        if logo_path.exists():
+            logo_label = QLabel()
+            pixmap = QPixmap(str(logo_path))
+            # Scale logo to a reasonable size while maintaining aspect ratio
+            scaled_pixmap = pixmap.scaled(
+                96,
+                96,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            logo_label.setPixmap(scaled_pixmap)
+            # Add some spacing
+            logo_label.setContentsMargins(0, 0, 20, 0)
+            header.addWidget(logo_label)
+        else:
+            # Add placeholder if logo not found
+            print(f"Logo not found at: {logo_path}")
+            logo_label = QLabel("LOGO")
+            logo_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #666;")
+            logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            logo_label.setFixedSize(96, 96)
+            header.addWidget(logo_label)
+
+        # App info
+        app_info = QVBoxLayout()
+
+        self.title_label = QLabel()
+        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+
+        self.version_label = QLabel()
+        self.version_label.setStyleSheet("color: #ffffff")
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        app_info.addWidget(self.title_label)
+        app_info.addWidget(self.version_label)
+        app_info.addStretch()
+
+        header.addLayout(app_info)
+        header.addStretch()
+
+        layout.addLayout(header)
+
         # Description
-        description = QLabel(
-            "A tool to convert STL 3D model files to GCode for 3D printing."
-        )
-        description.setWordWrap(True)
-        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # PyQt6 version information
-        pyqt_version = f"PyQt6 version: {PYQT_VERSION_STR}"
-        pyqt_label = QLabel(pyqt_version)
-        pyqt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # Qt version information
-        qt_version = f"Qt version: {QT_VERSION_STR}"
-        qt_label = QLabel(qt_version)
-        qt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.description_label = QLabel()
+        self.description_label.setWordWrap(True)
+        layout.addWidget(self.description_label)
 
         # System info
-        sys_info = QTextBrowser()
-        sys_info.setOpenLinks(True)
-        sys_info.setHtml(About.get_system_info())
-        sys_info.setMaximumHeight(250)
-        layout.addWidget(QLabel("<b>System Information:</b>"))
-        layout.addWidget(sys_info)
-                
+        layout.addWidget(QLabel(f"<b>{self.translate('system_information')}:</b>"))
+        self.sys_info = QTextBrowser()
+        self.sys_info.setOpenLinks(True)
+        self.sys_info.setMaximumHeight(150)
+        layout.addWidget(self.sys_info)
+
+        # Copyright and license
+        self.copyright_label = QLabel()
+        self.copyright_label.setStyleSheet("color: #ffffff; font-size: 11px;")
+        self.copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.copyright_label)
+
+        # Buttons
+        buttons = QHBoxLayout()
+
         # GitHub button
-        github_btn = QPushButton("GitHub")
-        github_btn.setStyleSheet("""
+        self.github_btn = QPushButton()
+        self.github_btn.setStyleSheet(
+            """
             QPushButton {
-                background-color: #2b579a;  /* Blue color */
+                background-color: #1976D2;
                 color: white;
-                padding: 5px 15px;
                 border: none;
+                padding: 6px 12px;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #1e4b8b;  /* Darker blue on hover */
+                background-color: #1565C0;
             }
             QPushButton:pressed {
-                background-color: #173f75;  /* Even darker when pressed */
+                background-color: #0D47A1;
             }
-        """)
-        github_btn.clicked.connect(lambda: QDesktopServices.openUrl(
-            QUrl("https://github.com/Nsfr750/STL_to_G-Code")))
+        """
+        )
+        self.github_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://github.com/Nsfr750/STL_to_G-Code")
+            )
+        )
 
-        # Add widgets to layout
-        layout.addWidget(title)
-        layout.addWidget(version)
-        layout.addSpacing(10)
-        layout.addWidget(description)
-        layout.addSpacing(10)
-        layout.addWidget(copyright)
-        
-        # Create a horizontal layout for the buttons
-        button_layout = QHBoxLayout()
-        
-        # Add GitHub button with stretch on the left
-        button_layout.addStretch()
-        button_layout.addWidget(github_btn)
-        
-        # Add OK button with some spacing
-        button_layout.addSpacing(10)  # Add some space between buttons
-        ok_button = QPushButton("OK")
-        ok_button.clicked.connect(dialog.accept)
-        button_layout.addWidget(ok_button)
-        button_layout.addStretch()  # Add stretch on the right
-        
-        # Add the button layout to the main layout
-        layout.addSpacing(10)
-        layout.addLayout(button_layout)
-        
-        # Set dialog properties
-        dialog.setLayout(layout)
-        dialog.setWindowTitle("About STL to GCode Converter")
-        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-        dialog.exec()
+        # Close button
+        self.close_btn = QPushButton()
+        self.close_btn.clicked.connect(self.accept)
 
-    @staticmethod
-    def get_system_info():
-        """Get system information for the about dialog."""
+        buttons.addStretch()
+        buttons.addWidget(self.github_btn)
+        buttons.addWidget(self.close_btn)
+
+        layout.addLayout(buttons)
+
+        # Set initial translations
+        self.retranslate_ui()
+
+    def get_system_info(self):
+        """Get system information as HTML."""
         try:
-            # Get PyQt version
-            python_version = sys.version.split(' ')[0]
-            
-            # Get operating system information
-            os_info = f"{platform.system()} {platform.release()} {platform.version()}"
-            
-            # Get screen resolution
-            screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            resolution = f"{screen_geometry.width()}x{screen_geometry.height()}"
+            import psutil
+
+            system = platform.system()
+            release = platform.release()
+            machine = platform.machine()
+            python_version = platform.python_version()
 
             # Get CPU information
-            cpu_info = ""
-            try:
-                if hasattr(platform, 'processor'):
-                    cpu_info = platform.processor() or "Not available"
-                else:
-                    cpu_info = "Not available"
-                
-                # Get CPU cores using os.cpu_count() which is more reliable
-                cpu_cores = os.cpu_count() or "Not available"
-            except Exception as e:
-                logger.warning(f"Error getting CPU info: {e}")
-                cpu_info = "Error getting CPU info"
-                cpu_cores = "Error"
-            
-            # Get memory information
-            memory_info = ""
-            try:
-                import psutil
-                memory = psutil.virtual_memory()
-                total_memory = memory.total / (1024 ** 3)  # Convert to GB
-                available_memory = memory.available / (1024 ** 3)
-                memory_info = f"{available_memory:.1f} GB available of {total_memory:.1f} GB"
-            except ImportError:
-                memory_info = "psutil not available"
-            except Exception as e:
-                logger.warning(f"Error getting memory info: {e}")
-                memory_info = "Error getting memory info"
-            
-            # Format the information as HTML
-            info = f"""
-            <html>
-            <body>
-            <table>
-            <tr><td><b>Operating System:</b></td><td>{os_info}</td></tr>
-            <tr><td><b>Python Version:</b></td><td>{python_version}</td></tr>
-            <tr><td><b>Qt Version:</b></td><td>{QT_VERSION_STR}</td></tr>
-            <tr><td><b>PyQt Version:</b></td><td>{PYQT_VERSION_STR}</td></tr>
-            <tr><td><b>Screen Resolution:</b></td><td>{resolution}</td></tr>
-            <tr><td><b>CPU:</b></td><td>{cpu_info}</td></tr>
-            <tr><td><b>CPU Cores:</b></td><td>{cpu_cores}</td></tr>
-            <tr><td><b>Memory:</b></td><td>{memory_info}</td></tr>
-            </table>
-            </body>
-            </html>
-            """
-            
-            return info
-            
+            cpu_info = platform.processor()
+            if not cpu_info and system == "Windows":
+                cpu_info = platform.processor() or "Unknown"
+            elif not cpu_info and system == "Darwin":
+                cpu_info = (
+                    subprocess.check_output(
+                        ["sysctl", "-n", "machdep.cpu.brand_string"]
+                    )
+                    .strip()
+                    .decode()
+                )
+            elif not cpu_info and system == "Linux":
+                cpu_info = ""
+                with open("/proc/cpuinfo", "r") as f:
+                    for line in f:
+                        if "model name" in line:
+                            cpu_info = line.split(":", 1)[1].strip()
+                            break
+
+            # Get core count
+            core_count = psutil.cpu_count(logical=True)
+            physical_cores = psutil.cpu_count(logical=False) or core_count
+
+            # Get RAM information
+            ram = psutil.virtual_memory()
+            total_ram = ram.total / (1024**3)  # Convert to GB
+            available_ram = ram.available / (1024**3)  # Convert to GB
+
+            return (
+                f"<table style='width:100%; color:#ffffff;'>"
+                f"<tr><td style='width:40%;'>{self.translate('operating_system')}:</td>"
+                f"<td>{system} {release} ({machine})</td></tr>"
+                f"<tr><td>CPU:</td><td>{cpu_info}</td></tr>"
+                f"<tr><td>Cores:</td><td>{physical_cores} physical, {core_count} logical</td></tr>"
+                f"<tr><td>RAM:</td><td>{total_ram:.1f} GB total, {available_ram:.1f} GB available</td></tr>"
+                f"<tr><td>Python:</td><td>{python_version}</td></tr>"
+                f"<tr><td>Qt:</td><td>{QT_VERSION_STR}</td></tr>"
+                f"<tr><td>PyQt:</td><td>{PYQT_VERSION_STR}</td></tr>"
+                f"</table>"
+            )
         except Exception as e:
-            logger.error(f"Error getting system info: {e}")
-            return f"<p>Error getting system information: {str(e)}</p>"
+            import traceback
+
+            print(f"Error getting system info: {e}")
+            print(traceback.format_exc())
+            return self.translate("error_loading_system_info")

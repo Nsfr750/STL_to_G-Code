@@ -395,7 +395,7 @@ class UI:
         # Add a subtle background to the toolbar
         container.setStyleSheet("""
             QWidget#toolbar {
-                background-color: #333;
+                background-color: #f6c8a5;
                 border-radius: 4px;
                 padding: 2px;
             }

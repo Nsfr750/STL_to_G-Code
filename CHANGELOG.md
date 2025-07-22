@@ -129,6 +129,13 @@ All notable changes to this project will be documented in this file. This projec
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Logging**: Added file logging configuration to ensure logs are properly written to 'stl_to_gcode.log'
+
+---
+
 ## [1.2.0] - 2025-06-23
 
 ### Added

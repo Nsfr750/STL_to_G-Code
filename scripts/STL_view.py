@@ -1,20 +1,20 @@
 """
 STL visualization module for the STL to GCode Converter.
 
-This module provides functionality for visualizing STL files using matplotlib.
+This module provides functionality for visualizing STL files and infill patterns using matplotlib.
 """
 import numpy as np
 import os
 import logging
 from scripts.logger import get_logger
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 
 # Set up logging
 logger = get_logger(__name__)
 
 class STLVisualizer:
     """
-    A class to handle visualization of STL files using matplotlib.
+    A class to handle visualization of STL files and infill patterns using matplotlib.
     """
     
     def __init__(self, ax, canvas):
@@ -31,6 +31,9 @@ class STLVisualizer:
         self.faces = np.zeros((0, 3), dtype=np.uint32)
         self.mesh = None
         self.file_path = None
+        self.infill_lines = []  # Store infill line segments
+        self.infill_collection = None  # Store the infill Line3DCollection
+        self.show_infill = True  # Whether to show infill
         
         # Set up the 3D axes with better default settings
         self._setup_axes()
@@ -40,7 +43,9 @@ class STLVisualizer:
         self.edge_color = 'k'  # Black edges
         self.alpha = 0.8  # Slightly transparent
         self.line_width = 0.5
-    
+        self.infill_color = [1.0, 0.0, 0.0, 0.6]  # Red with transparency
+        self.infill_width = 0.5  # Line width for infill
+
     def _setup_axes(self):
         """Set up the 3D axes with proper labels and grid."""
         self.ax.clear()
@@ -94,6 +99,82 @@ class STLVisualizer:
             self._show_error(f"Error updating mesh: {str(e)}")
             return False
     
+    def update_infill(self, infill_lines):
+        """
+        Update the infill lines to be visualized.
+        
+        Args:
+            infill_lines: List of (x1, y1, z1, x2, y2, z2) line segments
+        """
+        try:
+            self.infill_lines = np.array(infill_lines, dtype=np.float32)
+            self._render_infill()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating infill: {str(e)}", exc_info=True)
+            return False
+
+    def _render_infill(self):
+        """Render the infill lines."""
+        if not self.show_infill or len(self.infill_lines) == 0:
+            if self.infill_collection is not None:
+                self.infill_collection.remove()
+                self.infill_collection = None
+            return
+        
+        # Create line segments in the correct format for Line3DCollection
+        segments = self.infill_lines.reshape(-1, 2, 3)
+        
+        # Remove existing infill collection if it exists
+        if self.infill_collection is not None:
+            self.infill_collection.remove()
+        
+        # Create new line collection
+        self.infill_collection = Line3DCollection(
+            segments,
+            colors=self.infill_color,
+            linewidths=self.infill_width,
+            linestyles='-',
+            alpha=self.infill_color[3] if len(self.infill_color) > 3 else 0.6
+        )
+        
+        # Add to the axes
+        self.ax.add_collection3d(self.infill_collection)
+        self.canvas.draw_idle()
+
+    def toggle_infill(self, visible=None):
+        """
+        Toggle infill visibility.
+        
+        Args:
+            visible: If provided, set visibility to this value. Otherwise, toggle.
+        """
+        if visible is None:
+            self.show_infill = not self.show_infill
+        else:
+            self.show_infill = bool(visible)
+        
+        self._render_infill()
+        return self.show_infill
+
+    def set_infill_style(self, color=None, width=None, alpha=None):
+        """
+        Set the visual style of the infill.
+        
+        Args:
+            color: RGB or RGBA color tuple/list
+            width: Line width
+            alpha: Opacity (0-1)
+        """
+        if color is not None:
+            self.infill_color = list(color)
+        if width is not None:
+            self.infill_width = float(width)
+        if alpha is not None and len(self.infill_color) > 3:
+            self.infill_color[3] = float(alpha)
+        
+        self._render_infill()
+
     def _render(self):
         """Render the current mesh data."""
         try:
@@ -134,6 +215,11 @@ class STLVisualizer:
             
             # Update the display
             self.canvas.draw_idle()
+            
+            # Re-render infill if needed
+            if len(self.infill_lines) > 0:
+                self._render_infill()
+                
             return True
             
         except Exception as e:
@@ -141,7 +227,7 @@ class STLVisualizer:
             logger.error(error_msg, exc_info=True)
             self._show_error(error_msg)
             return False
-    
+
     def _auto_scale(self):
         """Auto-scale the view to fit the mesh with proper aspect ratio."""
         if len(self.vertices) == 0:
@@ -179,6 +265,8 @@ class STLVisualizer:
         self.faces = np.zeros((0, 3), dtype=np.uint32)
         self.mesh = None
         self.file_path = None
+        self.infill_lines = []
+        self.infill_collection = None
         
         self._setup_axes()
         
