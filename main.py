@@ -510,6 +510,14 @@ class STLToGCodeApp(QMainWindow):
         
         # Initialize with empty plot
         self.stl_visualizer.clear()
+        
+        # Add infill toggle button to the 3D view toolbar
+        self.toggle_infill_action = QAction("Toggle Infill", self)
+        self.toggle_infill_action.setCheckable(True)
+        self.toggle_infill_action.setChecked(True)  # Infill visible by default
+        self.toggle_infill_action.toggled.connect(self.toggle_infill_visibility)
+        self.toggle_infill_action.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogYesButton))
+        self.stl_toolbar.addAction(self.toggle_infill_action)
     
     def _setup_gcode_view(self):
         """Set up the G-code view tab."""
