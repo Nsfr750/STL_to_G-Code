@@ -3,6 +3,7 @@ UI styling and layout management for STL to GCode Converter using PyQt6.
 """
 
 from scripts.logger import get_logger
+from scripts.language_manager import LanguageManager
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStatusBar,
@@ -16,10 +17,48 @@ from PyQt6.Qsci import QsciScintilla, QsciLexerCustom, QsciLexerPython
 class UI:
     """UI styling and widget management class for PyQt6."""
     
-    def __init__(self, parent=None):
-        """Initialize the UI manager with the given parent widget."""
+    def __init__(self, parent=None, language_manager: LanguageManager = None):
+        """
+        Initialize the UI manager with the given parent widget and language manager.
+        
+        Args:
+            parent: Parent widget
+            language_manager: Instance of LanguageManager for localization
+        """
         self.parent = parent
+        self.language_manager = language_manager or LanguageManager()
         self._setup_styles()
+    
+    def tr(self, key: str, default: str = None, **kwargs) -> str:
+        """
+        Translate a string using the language manager.
+        
+        Args:
+            key: Translation key
+            default: Default text if key not found
+            **kwargs: Format arguments for the translated string
+            
+        Returns:
+            str: Translated string or original key if not found
+        """
+        if not key:
+            return ""
+        
+        # If no language manager, return the default or key
+        if not self.language_manager:
+            return default or key
+            
+        # Try to get translation
+        translated = self.language_manager.get_translation(key, default=default or key)
+        
+        # Format with kwargs if any
+        if kwargs and isinstance(translated, str):
+            try:
+                return translated.format(**kwargs)
+            except (KeyError, ValueError):
+                return translated
+                
+        return translated
     
     def _setup_styles(self):
         """Configure application styles using QSS (Qt Style Sheets)."""
@@ -336,16 +375,20 @@ class UI:
         
         Args:
             parent: Parent widget
-            text (str): Button text
+            text (str): Button text or translation key
             slot (callable, optional): Slot to connect to the clicked signal
-            tooltip (str, optional): Tooltip text
+            tooltip (str, optional): Tooltip text or translation key
             style (str): Button style ('default', 'primary', 'success', 'danger')
             icon (QIcon, optional): Optional icon for the button
             
         Returns:
             QPushButton: The created button
         """
-        button = QPushButton(text, parent)
+        # Translate text and tooltip
+        translated_text = self.tr(text) if isinstance(text, str) and text.startswith("ui.") else text
+        translated_tooltip = self.tr(tooltip) if isinstance(tooltip, str) and tooltip.startswith("ui.") else tooltip
+        
+        button = QPushButton(translated_text, parent)
         
         # Set button style
         if style == 'primary':
@@ -361,9 +404,9 @@ class UI:
             button.setIconSize(QSize(16, 16))
             
         # Set tooltip if provided
-        if tooltip:
-            button.setToolTip(tooltip)
-            button.setStatusTip(tooltip)
+        if translated_tooltip:
+            button.setToolTip(translated_tooltip)
+            button.setStatusTip(translated_tooltip)
             
         # Connect slot if provided
         if slot is not None:
@@ -409,14 +452,17 @@ class UI:
         Create a styled QLabel.
         
         Args:
-            text (str): Label text
+            text (str): Label text or translation key
             title (bool): Whether to use title style
             align (Qt.Alignment): Text alignment
             
         Returns:
             QLabel: The created label
         """
-        label = QLabel(text, self.parent)
+        # Translate text if it's a translation key
+        translated_text = self.tr(text) if isinstance(text, str) and text.startswith("ui.") else text
+        
+        label = QLabel(translated_text, self.parent)
         if title:
             label.setObjectName("titleLabel")
         label.setAlignment(align)
@@ -507,17 +553,21 @@ class UI:
         
         Args:
             parent: Parent widget
-            text (str): Checkbox text
+            text (str): Checkbox text or translation key
             checked (bool): Initial checked state
-            tooltip (str, optional): Tooltip text
+            tooltip (str, optional): Tooltip text or translation key
             
         Returns:
             QCheckBox: The created checkbox
         """
-        checkbox = QCheckBox(text, parent)
+        # Translate text and tooltip
+        translated_text = self.tr(text) if isinstance(text, str) and text.startswith("ui.") else text
+        translated_tooltip = self.tr(tooltip) if isinstance(tooltip, str) and tooltip.startswith("ui.") else tooltip
+        
+        checkbox = QCheckBox(translated_text, parent)
         checkbox.setChecked(checked)
-        if tooltip:
-            checkbox.setToolTip(tooltip)
+        if translated_tooltip:
+            checkbox.setToolTip(translated_tooltip)
             
         # Apply styling with checkmark
         checkbox.setStyleSheet("""
@@ -571,19 +621,22 @@ class UI:
             value (float): Initial value
             step (float): Step size
             decimals (int): Number of decimal places
-            tooltip (str, optional): Tooltip text
+            tooltip (str, optional): Tooltip text or translation key
             
         Returns:
             QDoubleSpinBox: The created spinbox
         """
+        # Translate tooltip if it's a translation key
+        translated_tooltip = self.tr(tooltip) if isinstance(tooltip, str) and tooltip.startswith("ui.") else tooltip
+        
         spinbox = QDoubleSpinBox(parent)
         spinbox.setRange(minimum, maximum)
         spinbox.setValue(value)
         spinbox.setSingleStep(step)
         spinbox.setDecimals(decimals)
         
-        if tooltip:
-            spinbox.setToolTip(tooltip)
+        if translated_tooltip:
+            spinbox.setToolTip(translated_tooltip)
             
         # Apply styling
         spinbox.setStyleSheet("""

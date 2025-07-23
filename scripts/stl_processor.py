@@ -12,6 +12,7 @@ import mmap
 import struct
 import logging
 from scripts.logger import get_logger
+from scripts.language_manager import LanguageManager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,13 +39,15 @@ class MemoryEfficientSTLProcessor:
     memory usage low, making it suitable for very large STL files.
     """
     
-    def __init__(self, file_path: Union[str, os.PathLike], chunk_size: int = 10000):
+    def __init__(self, file_path: Union[str, os.PathLike], chunk_size: int = 10000, 
+                 language_manager: Optional[LanguageManager] = None):
         """
         Initialize the STL processor.
         
         Args:
             file_path: Path to the STL file
             chunk_size: Number of triangles to process at once (default: 10,000)
+            language_manager: Optional LanguageManager for localization
         """
         self.file_path = Path(file_path)
         self.chunk_size = chunk_size
@@ -54,6 +57,7 @@ class MemoryEfficientSTLProcessor:
         self._is_binary = None
         self._current_position = 0
         self._progressive_chunk_size = max(1000, chunk_size // 10)  # Smaller chunks for progressive loading
+        self.language_manager = language_manager or LanguageManager()
         
     def __enter__(self):
         """Context manager entry."""
@@ -78,7 +82,13 @@ class MemoryEfficientSTLProcessor:
         else:
             self._header = self._read_ascii_header()
             
-        logger.info(f"Opened STL file: {self.file_path.name} ({self._header.num_triangles} triangles)")
+        logger.info(
+            self.language_manager.translate(
+                "stl_processor.file_opened",
+                filename=self.file_path.name,
+                num_triangles=self._header.num_triangles
+            )
+        )
     
     def close(self) -> None:
         """Close the STL file and clean up resources."""
@@ -99,43 +109,18 @@ class MemoryEfficientSTLProcessor:
         
         # If we find a null byte in the first 100 bytes, it's likely binary
         if b'\x00' in start:
-            logger.debug("Binary STL detected (null byte found in first 100 bytes)")
+            logger.debug(self.language_manager.translate("stl_processor.detection.binary_detected"))
             return True
             
         # If it starts with 'solid ' and has no null bytes, it's likely ASCII
         if start.startswith(b'solid '):
-            logger.debug("ASCII STL detected (starts with 'solid' and no null bytes)")
+            logger.debug(self.language_manager.translate("stl_processor.detection.ascii_detected"))
             return False
             
         # Default to binary if we can't determine
-        logger.debug("Could not determine STL format, defaulting to binary")
+        logger.debug(self.language_manager.translate("stl_processor.detection.default_to_binary"))
         return True
-    
-    def _read_binary_header(self) -> STLHeader:
-        """Read the header of a binary STL file."""
-        # Binary STL format:
-        # 80 bytes: header/comment
-        # 4 bytes: number of triangles (uint32, little-endian)
-        self._mmap.seek(0)
-        comment = self._mmap.read(80)
-        num_triangles = struct.unpack('<I', self._mmap.read(4))[0]
         
-        # Log header information
-        try:
-            comment_str = comment.decode('ascii', errors='replace').strip('\x00').strip()
-            logger.debug(f"Binary STL header - Comment: {comment_str}")
-        except Exception as e:
-            logger.debug(f"Binary STL header - Could not decode comment: {e}")
-        
-        logger.debug(f"Binary STL header - Number of triangles: {num_triangles}")
-        
-        # Verify the file size matches the header
-        expected_size = 84 + num_triangles * 50  # 50 bytes per triangle
-        if len(self._mmap) != expected_size:
-            logger.warning(f"STL file size doesn't match header. Expected {expected_size} bytes, got {len(self._mmap)}.")
-            
-        return STLHeader(comment=comment, num_triangles=num_triangles)
-    
     def _read_ascii_header(self) -> STLHeader:
         """Read the header of an ASCII STL file."""
         self._mmap.seek(0)
@@ -148,14 +133,75 @@ class MemoryEfficientSTLProcessor:
         
         try:
             first_line_str = first_line.decode('ascii', errors='replace')
-            logger.debug(f"ASCII STL header - First line: {first_line_str}")
+            logger.debug(
+                self.language_manager.translate(
+                    "stl_processor.ascii_header.first_line",
+                    line=first_line_str
+                )
+            )
         except Exception as e:
-            logger.debug(f"ASCII STL header - Could not decode first line: {e}")
+            logger.debug(
+                self.language_manager.translate(
+                    "stl_processor.ascii_header.decode_error",
+                    error=str(e)
+                )
+            )
             
-        logger.debug(f"ASCII STL header - Number of triangles: {num_triangles}")
+        logger.debug(
+            self.language_manager.translate(
+                "stl_processor.ascii_header.triangle_count",
+                count=num_triangles
+            )
+        )
         
         return STLHeader(comment=first_line, num_triangles=num_triangles)
-    
+        
+    def _read_binary_header(self) -> STLHeader:
+        """Read the header of a binary STL file."""
+        # Binary STL format:
+        # 80 bytes: header/comment
+        # 4 bytes: number of triangles (uint32, little-endian)
+        self._mmap.seek(0)
+        comment = self._mmap.read(80)
+        num_triangles = struct.unpack('<I', self._mmap.read(4))[0]
+        
+        # Log header information
+        try:
+            comment_str = comment.decode('ascii', errors='replace').strip('\x00').strip()
+            logger.debug(
+                self.language_manager.translate(
+                    "stl_processor.binary_header.comment",
+                    comment=comment_str
+                )
+            )
+        except Exception as e:
+            logger.debug(
+                self.language_manager.translate(
+                    "stl_processor.binary_header.decode_error",
+                    error=str(e)
+                )
+            )
+        
+        logger.debug(
+            self.language_manager.translate(
+                "stl_processor.binary_header.triangle_count",
+                count=num_triangles
+            )
+        )
+        
+        # Verify the file size matches the header
+        expected_size = 84 + num_triangles * 50  # 50 bytes per triangle
+        if len(self._mmap) != expected_size:
+            logger.warning(
+                self.language_manager.translate(
+                    "stl_processor.binary_header.size_mismatch",
+                    expected=expected_size,
+                    actual=len(self._mmap)
+                )
+            )
+            
+        return STLHeader(comment=comment, num_triangles=num_triangles)
+
     def get_bounds(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the bounding box of the STL model.
@@ -204,6 +250,84 @@ class MemoryEfficientSTLProcessor:
         else:
             yield from self._iter_ascii_triangles()
     
+    def _iter_ascii_triangles(self) -> Iterator[STLTriangle]:
+        """Iterate over triangles in an ASCII STL file."""
+        if self._header is None:
+            self.open()
+            
+        self._mmap.seek(0)
+        
+        # Skip the 'solid' line
+        line = self._mmap.readline()
+        if not line.startswith(b'solid'):
+            raise ValueError(
+                self.language_manager.translate("stl_processor.error.invalid_ascii_stl")
+            )
+        
+        triangle_count = 0
+        
+        while True:
+            # Find the next 'facet' line
+            pos = self._mmap.tell()
+            line = self._mmap.readline()
+            
+            if not line:
+                break  # End of file
+                
+            if not line.startswith(b'facet'):
+                continue
+                
+            try:
+                # Parse the normal vector
+                normal = np.array(line.strip().split()[2:], dtype=np.float32)
+                
+                # Skip 'outer loop' line
+                while b'outer loop' not in self._mmap.readline():
+                    pass
+                
+                # Read three vertices
+                vertices = []
+                for _ in range(3):
+                    vertex_line = self._mmap.readline()
+                    if not vertex_line.startswith(b'vertex'):
+                        raise ValueError(
+                            self.language_manager.translate("stl_processor.error.expected_vertex")
+                        )
+                    vertex = np.array(vertex_line.strip().split()[1:], dtype=np.float32)
+                    vertices.append(vertex)
+                
+                # Skip 'endloop' and 'endfacet' lines
+                while b'endloop' not in self._mmap.readline():
+                    pass
+                while b'endfacet' not in self._mmap.readline():
+                    pass
+                
+                triangle_count += 1
+                
+                yield STLTriangle(
+                    normal=normal,
+                    vertices=np.array(vertices, dtype=np.float32),
+                    attributes=0
+                )
+                
+            except (ValueError, IndexError) as e:
+                logger.warning(
+                    self.language_manager.translate(
+                        "stl_processor.warning.triangle_parse_error",
+                        position=pos,
+                        error=str(e)
+                    )
+                )
+                # Try to recover by finding the next 'facet' or 'endsolid'
+                self._mmap.seek(pos + 5)  # Skip past the current 'facet'
+        
+        logger.info(
+            self.language_manager.translate(
+                "stl_processor.ascii_processing_complete",
+                count=triangle_count
+            )
+        )
+
     def _iter_binary_triangles(self) -> Iterator[STLTriangle]:
         """Iterate over triangles in a binary STL file."""
         if self._header is None:
@@ -222,119 +346,44 @@ class MemoryEfficientSTLProcessor:
         for i in range(self._header.num_triangles):
             data = self._mmap.read(triangle_size)
             if len(data) < triangle_size:
-                logger.warning(f"Incomplete triangle data at triangle {i+1}, expected {triangle_size} bytes, got {len(data)}")
+                logger.warning(
+                    self.language_manager.translate(
+                        "stl_processor.warning.incomplete_triangle",
+                        expected=triangle_size,
+                        actual=len(data)
+                    )
+                )
                 break
                 
-            normal = np.frombuffer(data[0:12], dtype=np.float32).astype(np.float32)
-            vertices = np.frombuffer(data[12:48], dtype=np.float32).reshape(3, 3).astype(np.float32)
-            attributes = struct.unpack('<H', data[48:50])[0]
+            # Unpack the triangle data
+            normal = np.frombuffer(data[0:12], dtype=np.float32)
+            vertices = np.frombuffer(data[12:48], dtype=np.float32).reshape(3, 3)
+            attributes = int.from_bytes(data[48:50], byteorder='little')
             
-            # Log first few triangles for debugging
-            if triangle_count < 3:  # Only log first 3 triangles to avoid too much output
-                logger.debug(f"Triangle {triangle_count + 1}:")
-                logger.debug(f"  Normal: {normal}")
-                logger.debug(f"  Vertex 1: {vertices[0]}")
-                logger.debug(f"  Vertex 2: {vertices[1]}")
-                logger.debug(f"  Vertex 3: {vertices[2]}")
-                logger.debug(f"  Attributes: {attributes}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    self.language_manager.translate(
+                        "stl_processor.debug.triangle_info",
+                        index=triangle_count + 1,
+                        normal=normal,
+                        vertex1=vertices[0],
+                        vertex2=vertices[1],
+                        vertex3=vertices[2],
+                        attributes=attributes
+                    )
+                )
             
             triangle_count += 1
             
             yield STLTriangle(normal=normal, vertices=vertices, attributes=attributes)
             
-        logger.info(f"Processed {triangle_count} triangles from binary STL file")
-    
-    def _iter_ascii_triangles(self) -> Iterator[STLTriangle]:
-        """Iterate over triangles in an ASCII STL file."""
-        if self._header is None:
-            self.open()
-            
-        self._mmap.seek(0)
-        
-        # Skip the 'solid' line
-        line = self._mmap.readline()
-        if not line.startswith(b'solid'):
-            raise ValueError("Not a valid ASCII STL file")
-        
-        triangle_count = 0
-        
-        while True:
-            # Find the next 'facet' line
-            pos = self._mmap.tell()
-            line = self._mmap.readline()
-            
-            if not line:
-                break  # End of file
-                
-            if not line.strip().startswith(b'facet'):
-                continue
-                
-            try:
-                # Read normal
-                normal_parts = line.strip().split()
-                if len(normal_parts) < 5 or normal_parts[0] != b'facet' or normal_parts[1] != b'normal':
-                    logger.warning(f"Invalid facet normal at position {pos}")
-                    continue
-                    
-                normal = np.array([
-                    float(normal_parts[2]),
-                    float(normal_parts[3]),
-                    float(normal_parts[4])
-                ], dtype=np.float32)
-                
-                # Skip 'outer loop'
-                line = self._mmap.readline().strip()
-                if line != b'outer loop':
-                    logger.warning(f"Expected 'outer loop' at position {self._mmap.tell()}, got '{line.decode('ascii', errors='replace')}'")
-                    continue
-                
-                # Read vertices
-                vertices = []
-                for _ in range(3):
-                    line = self._mmap.readline().strip()
-                    vertex_parts = line.split()
-                    if len(vertex_parts) < 4 or vertex_parts[0] != b'vertex':
-                        logger.warning(f"Invalid vertex at position {self._mmap.tell()}")
-                        break
-                        
-                    vertex = np.array([
-                        float(vertex_parts[1]),
-                        float(vertex_parts[2]),
-                        float(vertex_parts[3])
-                    ], dtype=np.float32)
-                    vertices.append(vertex)
-                
-                if len(vertices) != 3:
-                    logger.warning(f"Incomplete triangle at position {pos}")
-                    continue
-                
-                # Skip 'endloop' and 'endfacet'
-                line = self._mmap.readline().strip()  # endloop
-                line = self._mmap.readline().strip()  # endfacet
-                
-                # Log first few triangles for debugging
-                if triangle_count < 3:  # Only log first 3 triangles to avoid too much output
-                    logger.debug(f"Triangle {triangle_count + 1}:")
-                    logger.debug(f"  Normal: {normal}")
-                    logger.debug(f"  Vertex 1: {vertices[0]}")
-                    logger.debug(f"  Vertex 2: {vertices[1]}")
-                    logger.debug(f"  Vertex 3: {vertices[2]}")
-                
-                triangle_count += 1
-                
-                yield STLTriangle(
-                    normal=normal,
-                    vertices=np.array(vertices, dtype=np.float32),
-                    attributes=0
-                )
-                
-            except (ValueError, IndexError) as e:
-                logger.warning(f"Error parsing triangle at position {pos}: {e}")
-                # Try to recover by finding the next 'facet' or 'endsolid'
-                self._mmap.seek(pos + 5)  # Skip past the current 'facet'
-        
-        logger.info(f"Processed {triangle_count} triangles from ASCII STL file")
-    
+        logger.info(
+            self.language_manager.translate(
+                "stl_processor.binary_processing_complete",
+                count=triangle_count
+            )
+        )
+
     def iter_chunks(self, chunk_size: Optional[int] = None) -> Iterator[List[STLTriangle]]:
         """
         Iterate over triangles in chunks to reduce memory usage.
@@ -460,17 +509,19 @@ class MemoryEfficientSTLProcessor:
         }
 
 
-def load_stl(file_path: Union[str, os.PathLike], chunk_size: int = 10000) -> MemoryEfficientSTLProcessor:
+def load_stl(file_path: Union[str, os.PathLike], chunk_size: int = 10000, 
+            language_manager: Optional[LanguageManager] = None) -> MemoryEfficientSTLProcessor:
     """
     Convenience function to create and open an STL processor.
     
     Args:
         file_path: Path to the STL file
         chunk_size: Number of triangles to process at once (default: 10,000)
+        language_manager: Optional LanguageManager for localization
         
     Returns:
         An initialized and opened MemoryEfficientSTLProcessor
     """
-    processor = MemoryEfficientSTLProcessor(file_path, chunk_size)
+    processor = MemoryEfficientSTLProcessor(file_path, chunk_size, language_manager)
     processor.open()
     return processor

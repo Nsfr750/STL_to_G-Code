@@ -1,5 +1,5 @@
 """
-Sponsor dialog for the Image Deduplicator application.
+Sponsor dialog for the STL to G-Code application.
 """
 
 from PyQt6.QtWidgets import (

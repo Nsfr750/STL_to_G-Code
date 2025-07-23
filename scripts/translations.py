@@ -222,6 +222,46 @@ TRANSLATIONS = {
         "worker.debug.loading_cancellation_requested": "STL loading cancellation requested",
         "worker.warning.no_stl_header": "STL processor has no _header attribute",
         
+        # STL Processor
+        "stl_processor": {
+            "file_opened": "Opened STL file: {filename} ({num_triangles} triangles)",
+            
+            "detection": {
+                "binary_detected": "Binary STL detected (null byte found in first 100 bytes)",
+                "ascii_detected": "ASCII STL detected (starts with 'solid' and no null bytes)",
+                "default_to_binary": "Could not determine STL format, defaulting to binary"
+            },
+            
+            "ascii_header": {
+                "first_line": "ASCII STL header - First line: {line}",
+                "decode_error": "ASCII STL header - Could not decode first line: {error}",
+                "triangle_count": "ASCII STL header - Number of triangles: {count}",
+                "processing_complete": "Processed {count} triangles from ASCII STL file"
+            },
+            
+            "binary_header": {
+                "comment": "Binary STL header - Comment: {comment}",
+                "decode_error": "Binary STL header - Could not decode comment: {error}",
+                "triangle_count": "Binary STL header - Number of triangles: {count}",
+                "size_mismatch": "STL file size doesn't match header. Expected {expected} bytes, got {actual}.",
+                "processing_complete": "Processed {count} triangles from binary STL file"
+            },
+            
+            "error": {
+                "invalid_ascii_stl": "Not a valid ASCII STL file",
+                "expected_vertex": "Expected 'vertex' in STL file"
+            },
+            
+            "warning": {
+                "triangle_parse_error": "Error parsing triangle at position {position}: {error}",
+                "incomplete_triangle": "Incomplete triangle data, expected {expected} bytes, got {actual}"
+            },
+            
+            "debug": {
+                "triangle_info": "Triangle {index}:\n  Normal: {normal}\n  Vertex 1: {vertex1}\n  Vertex 2: {vertex2}\n  Vertex 3: {vertex3}\n  Attributes: {attributes}"
+            }
+        },
+        
         # Progress module
         "progress": {
             "ui": {
@@ -589,33 +629,220 @@ TRANSLATIONS = {
             }
         },
         
-        # Italian translations for G-code Optimizer
-        "gcode_optimizer.error.optimized_infill": "Errore in generate_optimized_infill: {error}",
-        "gcode_optimizer.error.invalid_command": "Comando G-code non valido: {command} alla riga {line_num}",
-        "gcode_optimizer.error.missing_variable_start": "Variabile mancante nel G-code di inizio: {error}",
-        "gcode_optimizer.error.invalid_start_gcode": "Errore nel G-code di inizio: {error}",
-        "gcode_optimizer.error.unsupported_mesh_format": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiave 'vertices'.",
-        "gcode_optimizer.error.generating_gcode": "Errore durante la generazione del G-code: {error}",
-        "gcode_optimizer.error.missing_variable_end": "Variabile mancante nel G-code di fine: {error}",
-        "gcode_optimizer.error.invalid_end_gcode": "Errore nel G-code di fine: {error}",
-        "gcode_optimizer.error.unsupported_mesh_with_faces": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiavi 'vertices' e 'faces'.",
-        "gcode_optimizer.error.no_face_info": "Impossibile determinare le informazioni sulle facce dalla mesh",
+        # UI Elements
+        "ui": {
+            # Buttons
+            "buttons": {
+                "open": "Open",
+                "save": "Save",
+                "save_as": "Save As",
+                "run": "Run",
+                "stop": "Stop",
+                "settings": "Settings",
+                "about": "About",
+                "exit": "Exit",
+                "browse": "Browse...",
+                "add": "Add",
+                "remove": "Remove",
+                "clear": "Clear",
+                "apply": "Apply",
+                "cancel": "Cancel",
+                "ok": "OK",
+                "reset": "Reset",
+                "help": "Help"
+            },
+            
+            # Labels
+            "labels": {
+                "input_file": "Input File:",
+                "output_file": "Output File:",
+                "no_file_selected": "No file selected",
+                "status": "Status:",
+                "progress": "Progress:",
+                "ready": "Ready",
+                "processing": "Processing...",
+                "complete": "Complete",
+                "error": "Error",
+                "warning": "Warning",
+                "info": "Information"
+            },
+            
+            # Tooltips
+            "tooltips": {
+                "open_file": "Open an STL file for processing",
+                "save_file": "Save the generated G-code to a file",
+                "run_conversion": "Start the conversion process",
+                "stop_conversion": "Stop the current operation"
+            },
+            
+            # Messages
+            "messages": {
+                "file_opened": "File opened: {filename}",
+                "file_saved": "File saved: {filename}",
+                "conversion_complete": "Conversion completed successfully",
+                "conversion_failed": "Conversion failed: {error}",
+                "no_file_selected": "Please select an input file first",
+                "invalid_file": "Invalid file format. Please select an STL file.",
+                "processing_file": "Processing file: {filename}",
+                "saving_file": "Saving to: {filename}"
+            },
+            
+            # Settings
+            "settings": {
+                "title": "Settings",
+                "general": "General",
+                "appearance": "Appearance",
+                "language": "Language:",
+                "theme": "Theme:",
+                "dark": "Dark",
+                "light": "Light",
+                "system": "System",
+                "units": "Units:",
+                "millimeters": "Millimeters (mm)",
+                "inches": "Inches (in)",
+                "precision": "Precision:",
+                "decimal_places": "{n} decimal places"
+            },
+            
+            # Menu items
+            "menu": {
+                "file": "&File",
+                "edit": "&Edit",
+                "view": "&View",
+                "tools": "&Tools",
+                "help": "&Help"
+            },
+            
+            # File menu
+            "file_menu": {
+                "new": "&New",
+                "open": "&Open...",
+                "save": "&Save",
+                "save_as": "Save &As...",
+                "recent_files": "Recent Files",
+                "exit": "E&xit"
+            },
+            
+            # Edit menu
+            "edit_menu": {
+                "undo": "&Undo",
+                "redo": "&Redo",
+                "cut": "Cu&t",
+                "copy": "&Copy",
+                "paste": "&Paste",
+                "delete": "&Delete",
+                "select_all": "Select &All"
+            },
+            
+            # View menu
+            "view_menu": {
+                "toolbar": "&Toolbar",
+                "statusbar": "Status &Bar",
+                "fullscreen": "&Full Screen",
+                "zoom_in": "Zoom &In",
+                "zoom_out": "Zoom &Out",
+                "reset_zoom": "&Reset Zoom"
+            },
+            
+            # Help menu
+            "help_menu": {
+                "documentation": "&Documentation",
+                "check_updates": "Check for &Updates",
+                "about": "&About"
+            },
+            
+            # About dialog
+            "about": {
+                "title": "About STL to G-Code Converter",
+                "version": "Version {version}",
+                "description": "A tool for converting STL 3D models to G-code for CNC machines.",
+                "copyright": " 2025 Nsfr750",
+                "license": "Licensed under the GPLv3 License."
+            }
+        },
         
-        # Italian translations for G-code Comments
-        "gcode_optimizer.comment.custom_start_code": "--- G-code personalizzato di inizio ---",
-        "gcode_optimizer.comment.end_start_code": "--- Fine del G-code personalizzato di inizio ---",
-        "gcode_optimizer.comment.custom_end_code": "--- G-code personalizzato di fine ---",
-        "gcode_optimizer.comment.end_end_code": "--- Fine del G-code personalizzato di fine ---",
-        "gcode_optimizer.comment.layer_z": "--- Strato a Z={z} ---",
-        "gcode_optimizer.comment.move_to_layer": "Sposta all'altezza dello strato",
-        "gcode_optimizer.comment.infill_section": "--- Riempimento ---",
-        "gcode_optimizer.comment.set_infill_speed": "Imposta velocità di riempimento",
-        "gcode_optimizer.comment.move_to_start": "Sposta all'inizio",
-        "gcode_optimizer.comment.draw_infill_line": "Disegna linea di riempimento",
+        # Help Dialog
+        "help.dialog.title": "Help - STL to G-Code",
+        "help.buttons.full_documentation": "Full Documentation",
+        "help.tooltips.full_documentation": "Open the full documentation in your web browser",
+        "common.buttons.close": "Close",
         
-        # Italian translations for Retraction Comments
-        "gcode_optimizer.retract.retract": "ritrazione",
-        "gcode_optimizer.retract.unretract": "estrusione",
+        # Help Content
+        "help.title": "STL to G-Code Help",
+        
+        # Overview Section
+        "help.overview.title": "Overview",
+        "help.overview.description": "STL to G-Code is a powerful tool for converting 3D models (STL files) into G-code for 3D printing.",
+        
+        # Getting Started Section
+        "help.getting_started.title": "Getting Started",
+        "help.getting_started.step1": "1. Open an STL file using File > Open STL or drag and drop a file",
+        "help.getting_started.step2": "2. Adjust the print settings as needed",
+        "help.getting_started.step3": "3. Click 'Convert to G-code' to generate the G-code",
+        "help.getting_started.step4": "4. Preview the generated G-code and make adjustments if needed",
+        "help.getting_started.step5": "5. Save the G-code to a file or send it directly to your 3D printer",
+        
+        # Features Section
+        "help.features.title": "Features",
+        
+        # File Management Features
+        "help.features.file_management.title": "File Management",
+        "help.features.file_management.item1": "• Open and view STL files",
+        "help.features.file_management.item2": "• Save and export G-code",
+        "help.features.file_management.item3": "• Recent files list",
+        "help.features.file_management.item4": "• Import/export settings profiles",
+        "help.features.file_management.item5": "• Drag and drop support",
+        
+        # Visualization Features
+        "help.features.visualization.title": "3D Visualization",
+        "help.features.visualization.item1": "• Interactive 3D model preview",
+        "help.features.visualization.item2": "• Layer-by-layer visualization",
+        "help.features.visualization.item3": "• Multiple view modes (solid, wireframe, etc.)",
+        "help.features.visualization.item4": "• Zoom, pan, and rotate controls",
+        "help.features.visualization.item5": "• Measurement tools",
+        
+        # G-code Tools
+        "help.features.gcode_tools.title": "G-code Tools",
+        "help.features.gcode_tools.item1": "• G-code editor with syntax highlighting",
+        "help.features.gcode_tools.item2": "• G-code validation and analysis",
+        "help.features.gcode_tools.item3": "• Optimize G-code for better print quality",
+        "help.features.gcode_tools.item4": "• Preview G-code execution",
+        "help.features.gcode_tools.item5": "• Custom start/end G-code scripts",
+        
+        # Documentation
+        "help.features.documentation.title": "Documentation",
+        "help.features.documentation.item1": "• Built-in help system",
+        "help.features.documentation.item2": "• Tooltips and hints throughout the UI",
+        "help.features.documentation.item3": "• Online documentation and tutorials",
+        "help.features.documentation.item4": "• Keyboard shortcuts reference",
+        
+        # Advanced Features
+        "help.features.advanced.title": "Advanced Features",
+        "help.features.advanced.item1": "• Customizable print profiles",
+        "help.features.advanced.item2": "• Support for multiple extruders",
+        "help.features.advanced.item3": "• Advanced infill patterns",
+        "help.features.advanced.item4": "• Support for custom post-processing scripts",
+        "help.features.advanced.item5": "• Plugin system for extending functionality",
+        
+        # Keyboard Shortcuts
+        "help.shortcuts.title": "Keyboard Shortcuts",
+        "help.shortcuts.ctrl_o": "Ctrl+O",
+        "help.shortcuts.ctrl_o_desc": "Open STL file",
+        "help.shortcuts.ctrl_s": "Ctrl+S",
+        "help.shortcuts.ctrl_s_desc": "Save G-code",
+        "help.shortcuts.f1": "F1",
+        "help.shortcuts.f1_desc": "Show this help dialog",
+        "help.shortcuts.ctrl_q": "Ctrl+Q",
+        "help.shortcuts.ctrl_q_desc": "Quit application",
+        "help.shortcuts.ctrl_l": "Ctrl+L",
+        "help.shortcuts.ctrl_l_desc": "Show log viewer",
+        "help.shortcuts.ctrl_g": "Ctrl+G",
+        "help.shortcuts.ctrl_g_desc": "View G-code editor",
+        
+        # Support Section
+        "help.support.title": "Support",
+        "help.support.description": "For more help, please visit our documentation or contact support.",
+        
     },
     "it": {
         # Application
@@ -1067,6 +1294,248 @@ TRANSLATIONS = {
                 "level_critical": "Critico"
             }
         },
+        
+        # UI Elements
+        "ui": {
+            # Buttons
+            "buttons": {
+                "open": "Apri",
+                "save": "Salva",
+                "save_as": "Salva con nome",
+                "run": "Esegui",
+                "stop": "Ferma",
+                "settings": "Impostazioni",
+                "about": "Informazioni",
+                "exit": "Esci",
+                "browse": "Sfoglia...",
+                "add": "Aggiungi",
+                "remove": "Rimuovi",
+                "clear": "Pulisci",
+                "apply": "Applica",
+                "cancel": "Annulla",
+                "ok": "OK",
+                "reset": "Reimposta",
+                "help": "Aiuto"
+            },
+            
+            # Labels
+            "labels": {
+                "input_file": "File di input:",
+                "output_file": "File di output:",
+                "no_file_selected": "Nessun file selezionato",
+                "status": "Stato:",
+                "progress": "Avanzamento:",
+                "ready": "Pronto",
+                "processing": "Elaborazione in corso...",
+                "complete": "Completato",
+                "error": "Errore",
+                "warning": "Attenzione",
+                "info": "Informazione"
+            },
+            
+            # Tooltips
+            "tooltips": {
+                "open_file": "Apri un file STL da elaborare",
+                "save_file": "Salva il G-code generato in un file",
+                "run_conversion": "Avvia il processo di conversione",
+                "stop_conversion": "Interrompi l'operazione corrente"
+            },
+            
+            # Messages
+            "messages": {
+                "file_opened": "File aperto: {filename}",
+                "file_saved": "File salvato: {filename}",
+                "conversion_complete": "Conversione completata con successo",
+                "conversion_failed": "Conversione fallita: {error}",
+                "no_file_selected": "Selezionare prima un file di input",
+                "invalid_file": "Formato file non valido. Selezionare un file STL.",
+                "processing_file": "Elaborazione file: {filename}",
+                "saving_file": "Salvataggio in: {filename}"
+            },
+            
+            # Settings
+            "settings": {
+                "title": "Impostazioni",
+                "general": "Generale",
+                "appearance": "Aspetto",
+                "language": "Lingua:",
+                "theme": "Tema:",
+                "dark": "Scuro",
+                "light": "Chiaro",
+                "system": "Sistema",
+                "units": "Unità di misura:",
+                "millimeters": "Millimetri (mm)",
+                "inches": "Pollici (in)",
+                "precision": "Precisione:",
+                "decimal_places": "{n} cifre decimali"
+            },
+            
+            # Menu items
+            "menu": {
+                "file": "&File",
+                "edit": "&Modifica",
+                "view": "&Visualizza",
+                "tools": "&Strumenti",
+                "help": "&Aiuto"
+            },
+            
+            # File menu
+            "file_menu": {
+                "new": "&Nuovo",
+                "open": "&Apri...",
+                "save": "&Salva",
+                "save_as": "Salva &con nome...",
+                "recent_files": "File recenti",
+                "exit": "&Esci"
+            },
+            
+            # Edit menu
+            "edit_menu": {
+                "undo": "&Annulla",
+                "redo": "&Ripeti",
+                "cut": "Ta&glia",
+                "copy": "&Copia",
+                "paste": "I&ncolla",
+                "delete": "&Elimina",
+                "select_all": "Seleziona &tutto"
+            },
+            
+            # View menu
+            "view_menu": {
+                "toolbar": "Barra &strumenti",
+                "statusbar": "Barra di &stato",
+                "fullscreen": "&Schermo intero",
+                "zoom_in": "Ingrandisci",
+                "zoom_out": "Riduci",
+                "reset_zoom": "&Ripristina zoom"
+            },
+            
+            # Help menu
+            "help_menu": {
+                "documentation": "&Documentazione",
+                "check_updates": "Verifica a&ggiornamenti",
+                "about": "&Informazioni"
+            },
+            
+            # About dialog
+            "about": {
+                "title": "Informazioni su STL a G-Code",
+                "version": "Versione {version}",
+                "description": "Uno strumento per convertire modelli 3D STL in G-code per macchine CNC.",
+                "copyright": " 2025 Nsfr750",
+                "license": "Distribuito con licenza GPLv3."
+            }
+        },
+        
+        # Help Dialog
+        "help.dialog.title": "Aiuto - STL a G-Code",
+        "help.buttons.full_documentation": "Documentazione Completa",
+        "help.tooltips.full_documentation": "Apri la documentazione completa nel browser web",
+        "common.buttons.close": "Chiudi",
+        
+        # Help Content
+        "help.title": "Aiuto per STL a G-Code",
+        
+        # Overview Section
+        "help.overview.title": "Panoramica",
+        "help.overview.description": "STL a G-Code è un potente strumento per convertire modelli 3D (file STL) in G-code per la stampa 3D.",
+        
+        # Getting Started Section
+        "help.getting_started.title": "Per Iniziare",
+        "help.getting_started.step1": "1. Apri un file STL utilizzando File > Apri STL o trascina e rilascia un file",
+        "help.getting_started.step2": "2. Regola le impostazioni di stampa secondo necessità",
+        "help.getting_started.step3": "3. Fai clic su 'Converti in G-code' per generare il G-code",
+        "help.getting_started.step4": "4. Anteprima del G-code generato e apporta modifiche se necessario",
+        "help.getting_started.step5": "5. Salva il G-code in un file o invialo direttamente alla tua stampante 3D",
+        
+        # Features Section
+        "help.features.title": "Caratteristiche",
+        
+        # File Management Features
+        "help.features.file_management.title": "Gestione File",
+        "help.features.file_management.item1": "• Apri e visualizza file STL",
+        "help.features.file_management.item2": "• Salva ed esporta G-code",
+        "help.features.file_management.item3": "• Elenco file recenti",
+        "help.features.file_management.item4": "• Importa/esporta profili di impostazioni",
+        "help.features.file_management.item5": "• Supporto per trascinamento",
+        
+        # Visualization Features
+        "help.features.visualization.title": "Visualizzazione 3D",
+        "help.features.visualization.item1": "• Anteprima interattiva del modello 3D",
+        "help.features.visualization.item2": "• Visualizzazione strato per strato",
+        "help.features.visualization.item3": "• Modalità di visualizzazione multiple (solido, wireframe, ecc.)",
+        "help.features.visualization.item4": "• Controlli per zoom, panoramica e rotazione",
+        "help.features.visualization.item5": "• Strumenti di misurazione",
+        
+        # G-code Tools
+        "help.features.gcode_tools.title": "Strumenti G-code",
+        "help.features.gcode_tools.item1": "• Editor G-code con evidenziazione della sintassi",
+        "help.features.gcode_tools.item2": "• Validazione e analisi G-code",
+        "help.features.gcode_tools.item3": "• Ottimizza il G-code per una migliore qualità di stampa",
+        "help.features.gcode_tools.item4": "• Anteprima dell'esecuzione del G-code",
+        "help.features.gcode_tools.item5": "• Script G-code personalizzati per inizio/fine",
+        
+        # Documentation
+        "help.features.documentation.title": "Documentazione",
+        "help.features.documentation.item1": "• Sistema di aiuto integrato",
+        "help.features.documentation.item2": "• Suggerimenti e descrizioni nell'interfaccia",
+        "help.features.documentation.item3": "• Documentazione e tutorial online",
+        "help.features.documentation.item4": "• Riferimento alle scorciatoie da tastiera",
+        
+        # Advanced Features
+        "help.features.advanced.title": "Funzionalità Avanzate",
+        "help.features.advanced.item1": "• Profili di stampa personalizzabili",
+        "help.features.advanced.item2": "• Supporto per più estrusori",
+        "help.features.advanced.item3": "• Modelli di riempimento avanzati",
+        "help.features.advanced.item4": "• Supporto per script di post-elaborazione personalizzati",
+        "help.features.advanced.item5": "• Sistema di plugin per estendere le funzionalità",
+        
+        # Keyboard Shortcuts
+        "help.shortcuts.title": "Scorciatoie da Tastiera",
+        "help.shortcuts.ctrl_o": "Ctrl+O",
+        "help.shortcuts.ctrl_o_desc": "Apri file STL",
+        "help.shortcuts.ctrl_s": "Ctrl+S",
+        "help.shortcuts.ctrl_s_desc": "Salva G-code",
+        "help.shortcuts.f1": "F1",
+        "help.shortcuts.f1_desc": "Mostra questa finestra di aiuto",
+        "help.shortcuts.ctrl_q": "Ctrl+Q",
+        "help.shortcuts.ctrl_q_desc": "Esci dall'applicazione",
+        "help.shortcuts.ctrl_l": "Ctrl+L",
+        "help.shortcuts.ctrl_l_desc": "Mostra il visualizzatore di log",
+        "help.shortcuts.ctrl_g": "Ctrl+G",
+        "help.shortcuts.ctrl_g_desc": "Visualizza l'editor G-code",
+        
+        # Italian translations for G-code Optimizer
+        "gcode_optimizer.error.optimized_infill": "Errore in generate_optimized_infill: {error}",
+        "gcode_optimizer.error.invalid_command": "Comando G-code non valido: {command} alla riga {line_num}",
+        "gcode_optimizer.error.missing_variable_start": "Variabile mancante nel G-code di inizio: {error}",
+        "gcode_optimizer.error.invalid_start_gcode": "Errore nel G-code di inizio: {error}",
+        "gcode_optimizer.error.unsupported_mesh_format": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiave 'vertices'.",
+        "gcode_optimizer.error.generating_gcode": "Errore durante la generazione del G-code: {error}",
+        "gcode_optimizer.error.missing_variable_end": "Variabile mancante nel G-code di fine: {error}",
+        "gcode_optimizer.error.invalid_end_gcode": "Errore nel G-code di fine: {error}",
+        "gcode_optimizer.error.unsupported_mesh_with_faces": "Formato mesh non supportato. Previsto trimesh object o dictionary con chiavi 'vertices' e 'faces'.",
+        "gcode_optimizer.error.no_face_info": "Impossibile determinare le informazioni sulle facce dalla mesh",
+        
+        # Italian translations for G-code Comments
+        "gcode_optimizer.comment.custom_start_code": "--- G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.end_start_code": "--- Fine del G-code personalizzato di inizio ---",
+        "gcode_optimizer.comment.custom_end_code": "--- G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.end_end_code": "--- Fine del G-code personalizzato di fine ---",
+        "gcode_optimizer.comment.layer_z": "--- Strato a Z={z} ---",
+        "gcode_optimizer.comment.move_to_layer": "Sposta all'altezza dello strato",
+        "gcode_optimizer.comment.infill_section": "--- Riempimento ---",
+        "gcode_optimizer.comment.set_infill_speed": "Imposta velocità di riempimento",
+        "gcode_optimizer.comment.move_to_start": "Sposta all'inizio",
+        "gcode_optimizer.comment.draw_infill_line": "Disegna linea di riempimento",
+        
+        # Italian translations for Retraction Comments
+        "gcode_optimizer.retract.retract": "ritrazione",
+        "gcode_optimizer.retract.unretract": "estrusione",
+                
+        # Support Section
+        "help.support.title": "Supporto",
+        "help.support.description": "Per ulteriore assistenza, visita la nostra documentazione o contatta il supporto.",
     },
 }
 

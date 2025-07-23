@@ -169,10 +169,17 @@ class LanguageManager(QObject):
                         result = None
                         break
                     result = result.get(part)
+                
+                if result is not None:
+                    # Only log missing translations in non-English languages
+                    logger.debug("Using English fallback for key: %s", key)
             
-            # If still not found, return the key
+            # If still not found, return the key and log a warning
             if result is None:
-                logger.warning("Translation key not found: %s", key)
+                # Only log a warning for non-debug keys to avoid log spam
+                if not key.startswith('debug.') and not key.startswith('tooltips.'):
+                    logger.warning("Translation key not found: %s (lang: %s)", 
+                                key, self._current_lang)
                 return key
                 
             # Format the string with any provided arguments
