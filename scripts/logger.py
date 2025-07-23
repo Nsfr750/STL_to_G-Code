@@ -11,6 +11,10 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
+from typing import Optional
+
+# Import the language manager
+from .language_manager import LanguageManager
 
 # Flag to track if logging has been configured
 _logging_configured = False
@@ -20,7 +24,7 @@ LOG_DIR = Path("logs")
 
 class DailyRotatingFileHandler(TimedRotatingFileHandler):
     """Custom handler that creates a new log file each day with the date in the filename."""
-    def __init__(self, filename, **kwargs):
+    def __init__(self, filename: str, **kwargs):
         # Ensure the logs directory exists
         LOG_DIR.mkdir(exist_ok=True, parents=True)
         
@@ -65,10 +69,13 @@ class DailyRotatingFileHandler(TimedRotatingFileHandler):
         # Update the modification time for the next rollover check
         self.rolloverAt = self.rolloverAt + self.interval
 
-def setup_logging():
+def setup_logging(language_manager: Optional[LanguageManager] = None) -> Optional[str]:
     """
     Set up logging configuration for the application with daily rotation.
     
+    Args:
+        language_manager: Optional LanguageManager instance for localized log messages
+        
     Returns:
         str: Absolute path to the current log file or None if not applicable
     """
@@ -89,40 +96,47 @@ def setup_logging():
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
     
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+    # Get log format from language system or use default
+    log_format = (
+        language_manager.get_translation("logging.format") 
+        if language_manager else 
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
+    
+    date_format = (
+        language_manager.get_translation("logging.date_format") 
+        if language_manager else 
+        "%Y-%m-%d %H:%M:%S"
+    )
+    
+    # Create formatter
+    formatter = logging.Formatter(log_format, datefmt=date_format)
     
     # Create console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
-    
-    # Create daily rotating file handler
-    file_handler = DailyRotatingFileHandler("stl_to_gcode")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    
-    # Add handlers to the logger
     logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
     
-    # Configure specific loggers with higher levels to reduce noise
-    for logger_name in ['matplotlib', 'PyQt6', 'PIL', 'numpy']:
-        logging.getLogger(logger_name).setLevel(logging.WARNING)
-    
-    # Log startup information
-    logger.info("=" * 80)
-    logger.info("STL to GCode Converter - Logging initialized")
-    logger.info(f"Log directory: {LOG_DIR.absolute()}")
-    logger.info(f"Log file: {file_handler.baseFilename}")
-    logger.info(f"Log level: {logging.getLevelName(logger.getEffectiveLevel())}")
-    logger.info("=" * 80)
+    # Create file handler with daily rotation
+    try:
+        file_handler = DailyRotatingFileHandler("stl_to_gcode")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        log_file = file_handler.baseFilename
+    except Exception as e:
+        logger.warning(
+            "Failed to create log file: %s. Logging to console only.",
+            str(e),
+            exc_info=True
+        )
+        log_file = None
     
     _logging_configured = True
-    return str(Path(file_handler.baseFilename).absolute())
+    logger.debug("Logging configured successfully")
+    
+    return log_file
 
 def get_logger(name: str = None) -> logging.Logger:
     """
@@ -135,18 +149,18 @@ def get_logger(name: str = None) -> logging.Logger:
     Returns:
         Configured logger instance with the specified name
     """
-    # Ensure logging is configured
+    # If logging hasn't been configured yet, set it up with defaults
     if not _logging_configured:
         setup_logging()
     
-    if name is None:
-        return logging.getLogger()
-        
-    # Create a child logger that inherits the parent's handlers
-    if not name.startswith("STLtoGCode"):
-        name = f"STLtoGCode.{name}"
-        
-    return logging.getLogger(name)
+    # Get the logger with the specified name
+    logger = logging.getLogger("STLtoGCode" + (f".{name}" if name else ""))
+    
+    # Ensure the logger has at least one handler
+    if not logger.handlers:
+        logger.addHandler(logging.NullHandler())
+    
+    return logger
 
 # Initialize logging when this module is imported
 if not _logging_configured:

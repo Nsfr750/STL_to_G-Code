@@ -566,6 +566,29 @@ TRANSLATIONS = {
             "error_dialog_title": "Error"
         },
         
+        # Logging
+        "logging": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "date_format": "%Y-%m-%d %H:%M:%S",
+            "config_success": "Logging configured successfully",
+            "file_creation_failed": "Failed to create log file: {error}. Logging to console only.",
+            "log_viewer": {
+                "title": "Log Viewer",
+                "filter_placeholder": "Filter logs...",
+                "clear_confirm": "Are you sure you want to clear all log messages?",
+                "clear_button": "Clear Log",
+                "save_button": "Save Log",
+                "save_title": "Save Log File",
+                "save_success": "Log saved successfully to {path}",
+                "save_failed": "Failed to save log file: {error}",
+                "level_debug": "Debug",
+                "level_info": "Info",
+                "level_warning": "Warning",
+                "level_error": "Error",
+                "level_critical": "Critical"
+            }
+        },
+        
         # Italian translations for G-code Optimizer
         "gcode_optimizer.error.optimized_infill": "Errore in generate_optimized_infill: {error}",
         "gcode_optimizer.error.invalid_command": "Comando G-code non valido: {command} alla riga {line_num}",
@@ -739,9 +762,9 @@ TRANSLATIONS = {
         "validation.error.invalid_fan_speed": "La velocità della ventola {speed} è al di fuori dell'intervallo valido (0-255)",
         
         "validation.warning.feedrate_exceeds_max": "La velocità di avanzamento {feedrate} supera il massimo di {max_feedrate}",
-        "validation.warning.temp_out_of_range": "La temperatura dell'estrusore {temp}°C è al di fuori dell'intervallo di sicurezza ({min_temp}-{max_temp}°C)",
+        "validation.warning.temp_out_of_range": "Extruder temperature {temp}°C is outside safe range ({min_temp}-{max_temp}°C)",
         "validation.warning.no_heated_bed": "La stampante non ha un piano riscaldato",
-        "validation.warning.bed_temp_out_of_range": "La temperatura del piano {temp}°C è al di fuori dell'intervallo di sicurezza ({min_temp}-{max_temp}°C)",
+        "validation.warning.bed_temp_out_of_range": "Bed temperature {temp}°C is outside safe range ({min_temp}-{max_temp}°C)",
         "validation.warning.no_controllable_fan": "La stampante non ha una ventola controllabile",
         "validation.warning.hotend_hot_fan_off": "L'hotend è caldo ma la ventola di raffreddamento è spenta",
         "validation.warning.hotend_hot_away_from_bed": "L'hotend è caldo ma sembra essere lontano dall'area di stampa",
@@ -1021,6 +1044,29 @@ TRANSLATIONS = {
         # Retraction Comments
         "gcode_optimizer.retract.retract": "ritrazione",
         "gcode_optimizer.retract.unretract": "estrusione",
+        
+        # Logging
+        "logging": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "date_format": "%Y-%m-%d %H:%M:%S",
+            "config_success": "Configurazione del logging completata con successo",
+            "file_creation_failed": "Impossibile creare il file di log: {error}. Verranno mostrati solo i messaggi nella console.",
+            "log_viewer": {
+                "title": "Visualizzatore Log",
+                "filter_placeholder": "Filtra log...",
+                "clear_confirm": "Sei sicuro di voler cancellare tutti i messaggi di log?",
+                "clear_button": "Pulisci Log",
+                "save_button": "Salva Log",
+                "save_title": "Salva File di Log",
+                "save_success": "Log salvato con successo in {path}",
+                "save_failed": "Impossibile salvare il file di log: {error}",
+                "level_debug": "Debug",
+                "level_info": "Informazioni",
+                "level_warning": "Avviso",
+                "level_error": "Errore",
+                "level_critical": "Critico"
+            }
+        },
     },
 }
 
