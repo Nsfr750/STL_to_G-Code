@@ -34,7 +34,7 @@ class LineNumberArea(QFrame):
         self.editor.lineNumberAreaPaintEvent(event)
 
 class CodeEditor(QPlainTextEdit):
-    """Custom text editor with line numbers and syntax highlighting."""
+    """Custom text editor with syntax highlighting for G-code."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.language_manager = get_language_manager()
@@ -42,93 +42,86 @@ class CodeEditor(QPlainTextEdit):
         
         self.setReadOnly(True)
         self.setFont(QFont('Consolas', 10))
+        
+        # Imposta lo stile con sfondo scuro e testo chiaro
         self.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #2b2b2b;
                 color: white;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 5px;
+                font-family: 'Consolas', 'Monaco', monospace;
+            }
+            
+            QScrollBar:vertical {
                 border: none;
+                background: #252526;
+                width: 12px;
+                margin: 0px;
+            }
+            
+            QScrollBar::handle:vertical {
+                background: #424242;
+                min-height: 20px;
+                border-radius: 6px;
+            }
+            
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
             }
         """)
         
-        # Line number area
-        self.lineNumberArea = LineNumberArea(self)
+        # Imposta i margini
+        self.setViewportMargins(10, 5, 5, 5)
         
-        # Update the line number area when the text changes
-        self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
-        self.verticalScrollBar().valueChanged.connect(self.updateLineNumberArea)
-        self.textChanged.connect(self.updateLineNumberArea)
+        # Abilita il wrapping del testo
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         
-        # Set the viewport margins to make room for the line number area
-        self.updateLineNumberAreaWidth(0)
-    
-    def lineNumberAreaWidth(self):
-        """Calculate the width of the line number area."""
-        digits = 1
-        max_num = max(1, self.blockCount())
-        while max_num >= 10:
-            max_num /= 10
-            digits += 1
+        # Nascondi la barra di scorrimento orizzontale
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        space = 10 + self.fontMetrics().horizontalAdvance('9') * digits
-        return space
-    
-    def updateLineNumberAreaWidth(self, newBlockCount=0):
-        """Update the viewport margins to make room for the line number area."""
-        self.setViewportMargins(self.lineNumberAreaWidth(), 0, 0, 0)
-    
-    def updateLineNumberArea(self, rect=None, dy=0):
-        """Update the line number area."""
-        if rect is not None and dy != 0:
-            self.lineNumberArea.scroll(0, dy)
-        elif rect is not None and hasattr(rect, 'y'):
-            self.lineNumberArea.update(0, rect.y(), self.lineNumberArea.width(), rect.height())
-        elif rect is not None and isinstance(rect, int):
-            self.lineNumberArea.update(0, rect, self.lineNumberArea.width(), self.viewport().height())
-        else:
-            self.lineNumberArea.update()
+        # Imposta il colore di selezione
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#264F78"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+        self.setPalette(palette)
         
-        if rect is not None and hasattr(rect, 'contains') and rect.contains(self.viewport().rect()):
-            self.updateLineNumberAreaWidth()
+        # Rimuovi il numero di riga
+        self.line_number_area = None
+        
+    def setPlainText(self, text):
+        """Override per assicurarsi che il testo venga formattato correttamente."""
+        super().setPlainText(text)
+        
+        # Opzionale: evidenzia la sintassi G-code
+        self.highlight_gcode()
     
+    def highlight_gcode(self):
+        """Evidenzia la sintassi G-code."""
+        cursor = self.textCursor()
+        format_normal = QTextCharFormat()
+        format_normal.setForeground(QColor("#e0e0e0"))
+        
+        # Applica la formattazione a tutto il testo
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.mergeCharFormat(format_normal)
+        
+        # Opzionale: aggiungi qui la logica per evidenziare comandi G-code specifici
+        # es. G0, G1, M104, ecc.
+        
+        self.setTextCursor(cursor)
+        
     def resizeEvent(self, event):
-        """Handle the resize event."""
+        """Override del resize event per gestire il ridimensionamento."""
         super().resizeEvent(event)
-        cr = self.contentsRect()
-        self.lineNumberArea.setGeometry(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height())
-    
-    def lineNumberAreaPaintEvent(self, event):
-        """Paint the line numbers in the line number area."""
-        painter = QPainter(self.lineNumberArea)
-        painter.fillRect(event.rect(), QColor("#2b2b2b"))
-        
-        # Set up the text format
-        text_format = QTextCharFormat()
-        text_format.setForeground(QColor("#808080"))
-        
-        # Get the first visible block
-        block = self.firstVisibleBlock()
-        block_number = block.blockNumber()
-        
-        # Get the top position of the first visible block
-        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
-        bottom = top + self.blockBoundingRect(block).height()
-        
-        # Draw the line numbers
-        while block.isValid() and top <= event.rect().bottom():
-            if block.isVisible() and bottom >= event.rect().top():
-                number = str(block_number + 1)
-                painter.setPen(QColor("#808080"))
-                painter.drawText(
-                    0, int(top),
-                    self.lineNumberArea.width() - 5, int(self.fontMetrics().height()),
-                    int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter),
-                    number
-                )
-            
-            block = block.next()
-            top = bottom
-            bottom = top + self.blockBoundingRect(block).height()
-            block_number += 1
+        # Aggiorna l'area del numero di riga se necessario
+        if self.line_number_area is not None:
+            self.line_number_area.setGeometry(0, 0, 0, 0)
 
 class GCodeViewer(QDialog):
     """G-code viewer dialog with syntax highlighting and search functionality."""
@@ -281,7 +274,7 @@ class GCodeViewer(QDialog):
             
             self.current_file = file_path
             self.setWindowTitle(self.translate("gcode_viewer.title_with_file", filename=os.path.basename(file_path)))
-            self.highlight_gcode(content)
+            self.editor.setPlainText(content)
             self.save_btn.setEnabled(True)
             
         except Exception as e:
@@ -291,68 +284,6 @@ class GCodeViewer(QDialog):
                 self.translate("gcode_viewer.messages.error"),
                 self.translate("gcode_viewer.messages.load_error", error=str(e))
             )
-    
-    def highlight_gcode(self, content):
-        """Apply syntax highlighting to the G-code content."""
-        # Clear existing content
-        self.editor.clear()
-        
-        # Set the content
-        self.editor.setPlainText(content)
-        
-        # Define text formats
-        gcode_format = QTextCharFormat()
-        gcode_format.setForeground(QColor("#4FC1FF"))  # Light blue for G-codes
-        
-        mcode_format = QTextCharFormat()
-        mcode_format.setForeground(QColor("#FF79C6"))  # Pink for M-codes
-        
-        comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor("#6A9955"))  # Green for comments
-        comment_format.setFontItalic(True)
-        
-        # Apply highlighting
-        cursor = self.editor.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.Start)
-        
-        # Highlight G-codes (G followed by numbers)
-        self._highlight_pattern(r'\bG\d+\b', gcode_format, cursor)
-        
-        # Highlight M-codes (M followed by numbers)
-        self._highlight_pattern(r'\bM\d+\b', mcode_format, cursor)
-        
-        # Highlight comments (semicolon to end of line or parentheses)
-        self._highlight_pattern(r';\([^)]*\)|;.*$', comment_format, cursor, True)
-    
-    def _highlight_pattern(self, pattern, format, cursor, is_regex=False):
-        """Helper method to highlight text matching a pattern."""
-        cursor.beginEditBlock()
-        
-        if is_regex:
-            regex = re.compile(pattern, re.MULTILINE)
-            text = self.editor.toPlainText()
-            
-            for match in regex.finditer(text):
-                start = match.start()
-                length = match.end() - start
-                
-                cursor.setPosition(start)
-                cursor.movePosition(
-                    QTextCursor.MoveOperation.Right,
-                    QTextCursor.MoveMode.KeepAnchor,
-                    length
-                )
-                cursor.mergeCharFormat(format)
-        else:
-            # Simple text search
-            cursor.setPosition(0)
-            while True:
-                cursor = self.editor.document().find(pattern, cursor)
-                if cursor.isNull():
-                    break
-                cursor.mergeCharFormat(format)
-        
-        cursor.endEditBlock()
     
     def update_line_number(self):
         """Update the current line number display."""
