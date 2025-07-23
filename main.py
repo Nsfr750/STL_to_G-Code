@@ -178,61 +178,11 @@ class STLToGCodeApp(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_layout.addWidget(self.splitter)
         
-        # Main 3D view widget
-        self.view_3d_widget = QWidget()
-        self.view_3d_layout = QVBoxLayout(self.view_3d_widget)
-        
-        # Add 3D visualization
-        self.figure = Figure(figsize=(10, 8), dpi=100)
-        self.ax = self.figure.add_subplot(111, projection='3d')
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        
-        # Initialize STL visualizer
-        self.stl_visualizer = STLVisualizer(self.ax, self.canvas)
-        
-        # Add to layout
-        self.view_3d_layout.addWidget(self.toolbar)
-        self.view_3d_layout.addWidget(self.canvas)
-        
-        # Add infill controls
-        self.infill_controls = QHBoxLayout()
-        self.infill_checkbox = QCheckBox("Show Infill")
-        self.infill_checkbox.setChecked(True)
-        self.infill_checkbox.stateChanged.connect(self.toggle_infill_visibility)
-        self.infill_controls.addWidget(self.infill_checkbox)
-        
-        # Infill color button
-        self.infill_color_btn = QPushButton("Infill Color")
-        self.infill_color_btn.clicked.connect(self.change_infill_color)
-        self.infill_controls.addWidget(self.infill_color_btn)
-        
-        # Infill width control
-        self.infill_width_spin = QDoubleSpinBox()
-        self.infill_width_spin.setRange(0.1, 5.0)
-        self.infill_width_spin.setValue(0.5)
-        self.infill_width_spin.setSingleStep(0.1)
-        self.infill_width_spin.valueChanged.connect(self.update_infill_style)
-        self.infill_controls.addWidget(QLabel("Infill Width:"))
-        self.infill_controls.addWidget(self.infill_width_spin)
-        
-        # Add stretch to push controls to the left
-        self.infill_controls.addStretch()
-        
-        # Add controls to layout
-        control_frame = QFrame()
-        control_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        control_frame.setLayout(self.infill_controls)
-        self.view_3d_layout.addWidget(control_frame)
-        
-        # Add to splitter
-        self.splitter.addWidget(self.view_3d_widget)
-        
-        # Right panel for settings and controls
+        # Set up the right panel (settings and controls)
         self.setup_right_panel()
         
-        # Set initial sizes for splitter (give more space to 3D view)
-        self.splitter.setSizes([int(self.width() * 0.8), int(self.width() * 0.2)])
+        # Set initial sizes for splitter (give more space to right panel)
+        self.splitter.setSizes([0, int(self.width() * 0.9)])  # Hide left panel, show right panel
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -842,26 +792,32 @@ class STLToGCodeApp(QMainWindow):
                 logger.warning("Received chunk with no vertices")
                 return
                 
-            new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
-            new_faces = np.array(chunk_data.get('faces', []), dtype=np.uint32)
-            
-            # Initialize arrays if they don't exist
-            if not hasattr(self, 'current_vertices') or self.current_vertices is None:
-                self.current_vertices = np.zeros((0, 3), dtype=np.float32)
-            if not hasattr(self, 'current_faces') or self.current_faces is None:
-                self.current_faces = np.zeros((0, 3), dtype=np.uint32)
-            
-            # Store the current vertex count for face index offset
-            vertex_offset = len(self.current_vertices)
-            
             try:
+                # Convert vertices to numpy array and ensure shape is (N, 3)
+                new_vertices = np.array(chunk_data['vertices'], dtype=np.float32)
+                if new_vertices.ndim == 1:
+                    # Reshape flat array to (N, 3)
+                    new_vertices = new_vertices.reshape(-1, 3)
+                
+                # Convert faces to numpy array if they exist
+                new_faces = np.array(chunk_data.get('faces', []), dtype=np.uint32)
+                
+                # Initialize arrays if they don't exist
+                if not hasattr(self, 'current_vertices') or self.current_vertices is None:
+                    self.current_vertices = np.zeros((0, 3), dtype=np.float32)
+                if not hasattr(self, 'current_faces') or self.current_faces is None:
+                    self.current_faces = np.zeros((0, 3), dtype=np.uint32)
+                
+                # Store the current vertex count for face index offset
+                vertex_offset = self.current_vertices.shape[0]
+                
                 # Add the new vertices
                 self.current_vertices = np.vstack((self.current_vertices, new_vertices))
                 
                 # If we have faces, add them with the correct offset
                 if len(new_faces) > 0:
                     new_faces_offset = new_faces + vertex_offset
-                    self.current_faces = np.vstack((self.current_faces, new_faces_offset))
+                    self.current_faces = np.vstack((self.current_faces, new_faces_offset.reshape(-1, 3)))
                 
                 logger.debug(f"Processed chunk. Total vertices: {len(self.current_vertices)}, "
                            f"Total faces: {len(self.current_faces)}")
