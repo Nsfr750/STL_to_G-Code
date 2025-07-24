@@ -383,7 +383,7 @@ TRANSLATIONS = {
         "about.title": "About STL to G-Code Converter",
         "about.app_name": "STL to G-Code Converter",
         "about.version": "Version: {version}",
-        "about.copyright": " 2025 Nsfr750",
+        "about.copyright": "(c) 2025 Nsfr750",
         "about.description": (
             "A powerful application for converting STL files to G-code for 3D printing.\n\n"
             "This tool provides advanced features for 3D model preparation and G-code optimization "
@@ -705,7 +705,7 @@ TRANSLATIONS = {
                 "title": "About STL to G-Code Converter",
                 "version": "Version {version}",
                 "description": "A tool for converting STL 3D models to G-code for CNC machines.",
-                "copyright": " 2025 Nsfr750",
+                "copyright": "(c) 2025 Nsfr750",
                 "license": "Licensed under the GPLv3 License."
             }
         },
@@ -750,7 +750,7 @@ TRANSLATIONS = {
         "operating_system": "Sistema Operativo",
         "error_loading_system_info": "Errore nel caricamento delle informazioni di sistema",
         "about_description": "Questa applicazione è sviluppata e mantenuta da un singolo sviluppatore.\nIl tuo supporto aiuta a mantenere in vita il progetto e a sviluppare nuove funzionalità e miglioramenti.",
-        "copyright": " 2025 Nsfr750",
+        "copyright": "(c)2025 Nsfr750",
         "license": "Distribuito con licenza GPLv3",
         
         # Sponsor dialog
@@ -1015,7 +1015,7 @@ TRANSLATIONS = {
         "about.title": "Informazioni su STL to G-Code Converter",
         "about.app_name": "Convertitore STL in G-Code",
         "about.version": "Versione: {version}",
-        "about.copyright": " 2025 Nsfr750",
+        "about.copyright": "(c) 2025 Nsfr750",
         "about.description": (
             "Un'applicazione avanzata per convertire file STL in G-code per la stampa 3D.\n\n"
             "Questo strumento offre funzionalità avanzate per la preparazione di modelli 3D e "

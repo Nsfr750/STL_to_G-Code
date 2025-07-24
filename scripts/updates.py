@@ -1,27 +1,27 @@
 """
 Update checking functionality for the STL to G-Code application.
 """
-import logging
-from scripts.logger import get_logger
-from typing import Optional, Dict, Any
-import requests
 import json
-from pathlib import Path
+import logging
+import os
+import sys
 import time
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, Union
 
-# Import language manager for translations
+import requests
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
+
 from scripts.language_manager import LanguageManager
+from scripts.logger import get_logger
+from scripts.version import __version__
 
-# Create a global language manager instance
-language_manager = LanguageManager()
-
-# Get the application directory
-APP_DIR = Path(__file__).parent.parent
-UPDATES_FILE = APP_DIR / 'updates.json'
-
-# Configure logger
+# Configure logging
 logger = get_logger(__name__)
+
+# Constants
+UPDATES_FILE = Path("updates.json")
 
 class UpdateChecker(QObject):
     """Handles checking for application updates."""
@@ -30,18 +30,22 @@ class UpdateChecker(QObject):
     no_update_available = pyqtSignal()
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, current_version: str, config_path: Optional[Path] = None):
+    def __init__(self, current_version: str = None, config_path: Optional[Path] = None, parent=None):
         """
         Initialize the update checker.
         
         Args:
             current_version: Current application version string (e.g., '1.0.0')
+                           If None, will be read from version.py
             config_path: Optional path to configuration file
+            parent: Parent QObject
         """
-        super().__init__()
-        self.current_version = current_version
+        super().__init__(parent)
+        self.current_version = current_version or __version__
         self.config_path = config_path or UPDATES_FILE
-        self.language_manager = language_manager
+        
+        # Initialize language manager
+        self.language_manager = LanguageManager()
         self.translate = self.language_manager.translate
         
         # Load update configuration
@@ -53,7 +57,7 @@ class UpdateChecker(QObject):
         self.worker = None
         self.thread = None
         
-        logger.debug(f"Update checker initialized for version {current_version}")
+        logger.debug(f"Update checker initialized for version {self.current_version}")
     
     def _setup_directories(self):
         """Create necessary directories and files."""
@@ -117,7 +121,7 @@ class UpdateChecker(QObject):
     def _handle_update_response(self, update_info: Dict[str, Any]) -> None:
         """Process update information from the worker thread."""
         try:
-            self._save_last_check_time()
+            self._save_last_check(self.current_version)
             self.update_available.emit(update_info)
         except Exception as e:
             error_msg = self.translate("updates.error.check_failed", error=str(e))
@@ -140,19 +144,80 @@ class UpdateChecker(QObject):
             logger.error(f"Error checking last update time: {e}")
             return True
     
-    def _save_last_check_time(self) -> None:
-        """Record the current time as the last update check time."""
+    def _save_last_check(self, version: str) -> None:
+        """
+        Save the last update check time and version to the config file.
+        
+        Args:
+            version: The version that was checked
+        """
         try:
-            data = {
-                'last_check': time.time(),
-                'check_interval': 86400  # 24 hours in seconds
-            }
+            self.config['last_check'] = int(time.time())
+            self.config['last_version'] = version
+            self._save_config(self.config)
             
-            with open(self.last_check_file, 'w') as f:
-                json.dump(data, f)
-                
         except Exception as e:
             logger.error(f"Error saving last update check time: {e}")
+    
+    def _save_config(self, config: Dict[str, Any]) -> None:
+        """
+        Save the update configuration to file in the config/ directory.
+        
+        Args:
+            config: The configuration to save
+        """
+        try:
+            # Ensure the config directory exists
+            config_dir = self.config_path.parent / 'config'
+            config_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Update the config path to include the config directory
+            config_file = config_dir / 'updates.json'
+            
+            # Save the configuration
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4)
+                
+            logger.debug(f"Configuration saved to {config_file}")
+                
+        except Exception as e:
+            logger.error(f"Error saving update config: {e}")
+            raise
+    
+    def _load_config(self) -> Dict[str, Any]:
+        """
+        Load the update configuration from file in the config/ directory.
+        
+        Returns:
+            dict: The loaded configuration or default values if file doesn't exist
+        """
+        default_config = {
+            'last_check': 0,
+            'last_version': '',
+            'update_url': 'https://api.github.com/repos/Nsfr750/STL_to_G-Code/releases/latest',
+            'check_interval': 86400  # 24 hours in seconds
+        }
+        
+        try:
+            # Check for config file in the config/ directory
+            config_dir = self.config_path.parent / 'config'
+            config_file = config_dir / 'updates.json'
+            
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # Ensure all required keys exist
+                    for key, value in default_config.items():
+                        if key not in config:
+                            config[key] = value
+                    return config
+                    
+            logger.debug(f"No config file found at {config_file}, using default configuration")
+                    
+        except Exception as e:
+            logger.warning(f"Error loading update config: {str(e)}")
+            
+        return default_config
 
 
 class UpdateWorker(QObject):
@@ -232,6 +297,8 @@ def check_for_updates(parent=None, current_version: str = "0.0.0",
     from PyQt6.QtWidgets import QMessageBox
     
     # Get language manager for translations
+    from scripts.language_manager import LanguageManager
+    language_manager = LanguageManager()
     translate = language_manager.translate
     
     def on_update_available(update_info: dict) -> None:
@@ -323,6 +390,8 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     # Initialize language manager
+    from scripts.language_manager import LanguageManager
+    language_manager = LanguageManager()
     language_manager.set_language('en')  # or 'it' for Italian
     
     # Test with the current version as 0.0.1 to force an update check

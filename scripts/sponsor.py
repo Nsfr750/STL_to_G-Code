@@ -67,7 +67,7 @@ class SponsorDialog(QDialog):
             self.title_label.setText(self.translate("support_app_name"))
 
         if hasattr(self, "message_label"):
-            self.message_label.setText(self.translate("support_message"))
+            self.message_label.setText(self.translate("support_project_description"))
 
         if hasattr(self, "github_btn"):
             self.github_btn.setText(self.translate("github_sponsors"))

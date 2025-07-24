@@ -98,10 +98,7 @@ HELP_TRANSLATIONS = {
         
         <h3>Issue Reporting</h3>
         <p>If you find a bug or have a feature request, please open an issue on GitHub.</p>
-        
-        <div class="note">
-            <p><strong>Note:</strong> This is a community-supported project. For the best support, please check the documentation and existing issues before opening new ones.</p>
-        </div>
+
         """
     },
     "it": {
@@ -198,10 +195,6 @@ HELP_TRANSLATIONS = {
         
         <h3>Segnalazione Problemi</h3>
         <p>Se riscontri un bug o hai una richiesta di funzionalità, apri una segnalazione su GitHub.</p>
-        
-        <div class="note">
-            <p><strong>Nota:</strong> Questo è un progetto supportato dalla community. Per il miglior supporto, consulta la documentazione e i problemi esistenti prima di segnalarne di nuovi.</p>
-        </div>
         """
     }
 }

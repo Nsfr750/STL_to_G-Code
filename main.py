@@ -96,6 +96,11 @@ class STLToGCodeApp(QMainWindow):
         # Initialize the log viewer
         self.log_viewer = None
         
+        # Initialize G-code related attributes
+        self.gcode = []
+        self.gcode_editor = None
+        self.view_gcode_action = None
+        
         # Set up the UI
         self._setup_ui()
         
@@ -105,7 +110,6 @@ class STLToGCodeApp(QMainWindow):
         # Initialize other attributes
         self.current_file = None
         self.stl_mesh = None
-        self.gcode = []
         self.file_path = None
         self.worker_thread = None
         self.worker = None
@@ -167,6 +171,9 @@ class STLToGCodeApp(QMainWindow):
         # Add progress reporter
         self.progress_reporter = ProgressReporter()
         
+        # Update G-code action state
+        self._update_gcode_action_state()
+    
     def _setup_ui(self):
         """Set up the main UI components using the UI module."""
         # Main widget and layout
@@ -341,18 +348,14 @@ class STLToGCodeApp(QMainWindow):
         self.convert_action.setEnabled(False)
         toolbar.addAction(convert_action)
         
-        # View Group
-        view_gcode_action = QAction(
-            self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_FileDialogDetailedView')),
-            "View G-code",
-            self
-        )
-        view_gcode_action.setShortcut("Ctrl+G")
-        view_gcode_action.setStatusTip("View and edit the generated G-code")
-        view_gcode_action.triggered.connect(self.view_gcode)
-        self.view_gcode_action = view_gcode_action  # Save reference for enabling/disabling
-        self.view_gcode_action.setEnabled(False)
-        toolbar.addAction(view_gcode_action)
+        # View G-code button
+        view_gcode_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        self.view_gcode_action = QAction(view_gcode_icon, "View G-code", self)
+        self.view_gcode_action.setShortcut("Ctrl+G")
+        self.view_gcode_action.setStatusTip("View and edit the generated G-code")
+        self.view_gcode_action.triggered.connect(self.view_gcode)
+        self.view_gcode_action.setEnabled(False)  # Disable by default
+        toolbar.addAction(self.view_gcode_action)
         
         # Add stretch to push help button to the right
         spacer = QWidget()
@@ -1142,23 +1145,40 @@ class STLToGCodeApp(QMainWindow):
     def _on_gcode_generation_finished(self):
         """Handle completion of G-code generation."""
         try:
+            # Stop the update timer
+            self.gcode_update_timer.stop()
+            
             # Process any remaining G-code in the buffer
-            if hasattr(self, 'gcode_buffer') and self.gcode_buffer:
-                self._process_gcode_buffer()
+            self._process_gcode_buffer()
+            
+            # Clean up the worker thread
+            if hasattr(self, 'gcode_worker'):
+                self.gcode_worker.deleteLater()
+                self.gcode_worker = None
                 
-            # Clean up
-            if hasattr(self, 'progress_dialog') and self.progress_dialog:
-                self.progress_dialog.close()
-                
-            if hasattr(self, 'gcode_thread') and self.gcode_thread.isRunning():
+            if hasattr(self, 'gcode_thread'):
                 self.gcode_thread.quit()
                 self.gcode_thread.wait()
-                
-            self.statusBar().showMessage("G-code generation completed", 5000)
-            logger.info("G-code generation completed successfully")
+                self.gcode_thread = None
             
+            # Close the progress dialog if it exists
+            if hasattr(self, 'progress_dialog') and self.progress_dialog:
+                self.progress_dialog.close()
+            
+            # Update the UI
+            self.statusBar().showMessage("G-code generation completed", 5000)
+            
+            # Update G-code action states
+            self._update_gcode_action_state()
+            
+            # Switch to the G-code tab if not already there
+            if hasattr(self, 'tab_widget') and self.tab_widget.currentIndex() != 1:
+                self.view_gcode()
+                
         except Exception as e:
-            logger.error(f"Error finalizing G-code generation: {str(e)}", exc_info=True)
+            error_msg = f"Error finalizing G-code generation: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
     
     def _on_gcode_generation_error(self, error_msg):
         """Handle errors during G-code generation."""
@@ -1235,11 +1255,19 @@ class STLToGCodeApp(QMainWindow):
             
             def on_update_available(update_info):
                 try:
+                    # Extract version and URL from GitHub API response
+                    latest_version = update_info.get('tag_name', '').lstrip('v')
+                    download_url = update_info.get('html_url', '')
+                    
+                    if not latest_version or not download_url:
+                        logger.warning("Invalid update information received")
+                        return
+                        
                     # Show update dialog
                     msg = QMessageBox(self)
                     msg.setIcon(QMessageBox.Icon.Information)
                     msg.setWindowTitle("Update Available")
-                    msg.setText(f"Version {update_info['version']} is available!")
+                    msg.setText(f"Version {latest_version} is available!")
                     msg.setInformativeText("Would you like to download the latest version?")
                     
                     download_btn = msg.addButton("Download", QMessageBox.ButtonRole.AcceptRole)
@@ -1249,7 +1277,7 @@ class STLToGCodeApp(QMainWindow):
                     
                     if msg.clickedButton() == download_btn:
                         import webbrowser
-                        webbrowser.open(update_info['url'])
+                        webbrowser.open(download_url)
                 except Exception as e:
                     logger.error(f"Error showing update dialog: {str(e)}", exc_info=True)
                     QMessageBox.warning(
@@ -1258,12 +1286,6 @@ class STLToGCodeApp(QMainWindow):
                         "An error occurred while showing update information.",
                         QMessageBox.StandardButton.Ok
                     )
-                finally:
-                    self.statusBar().showMessage("Update check complete", 3000)
-                    # Clean up the update checker
-                    if hasattr(self, 'update_checker'):
-                        self.update_checker.deleteLater()
-                        del self.update_checker
             
             def on_no_update():
                 if force_check:  # Only show message if user explicitly checked
@@ -1381,6 +1403,10 @@ class STLToGCodeApp(QMainWindow):
                 logger.warning("Tab widget not initialized")
                 return
                 
+            # Make sure the G-code tab is set up
+            if not hasattr(self, 'gcode_editor'):
+                self._setup_editor_tab()
+                
             # Switch to the G-code Editor tab (index 1)
             self.tab_widget.setCurrentIndex(1)
             
@@ -1391,7 +1417,7 @@ class STLToGCodeApp(QMainWindow):
                 # If there's G-code content, ensure it's visible
                 if hasattr(self, 'gcode') and self.gcode:
                     cursor = self.gcode_editor.textCursor()
-                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    cursor.movePosition(QTextCursor.MoveOperation.Start) 
                     self.gcode_editor.setTextCursor(cursor)
                     
             # Update status bar with a temporary message
@@ -1900,6 +1926,14 @@ class STLToGCodeApp(QMainWindow):
         """Show the help dialog."""
         from scripts.help import show_help
         show_help(self)
+
+    def _update_gcode_action_state(self):
+        """Update the enabled state of the G-code related actions."""
+        has_gcode = bool(getattr(self, 'gcode', None))
+        if hasattr(self, 'view_gcode_action'):
+            self.view_gcode_action.setEnabled(has_gcode)
+        if hasattr(self, 'save_gcode_action'):
+            self.save_gcode_action.setEnabled(has_gcode)
 
 # Run the application
 if __name__ == "__main__":
