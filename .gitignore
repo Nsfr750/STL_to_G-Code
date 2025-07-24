@@ -100,3 +100,6 @@ STL.txt
 organize_test_scripts.py
 setup.py
 publish_to_pypi.py
+pyproject.toml
+STL_to_G-code.spec
+installer.nsi
