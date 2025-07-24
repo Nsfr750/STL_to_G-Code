@@ -1,11 +1,11 @@
-# 🔍 API Reference
+# API Reference
 
 > [!NOTE]
 > Comprehensive API documentation for the STL to GCode Converter.
 
-## 🏗 Core Application
+## Core Application
 
-### 🏛 `STLToGCodeApp` Class
+### `STLToGCodeApp` Class
 
 Main application class that initializes and runs the STL to GCode Converter.
 
@@ -40,9 +40,9 @@ classDiagram
 
 ---
 
-## 📊 UI Components
+## UI Components
 
-### 📈 `GCodeViewer` Class
+### `GCodeViewer` Class
 
 Interactive G-code viewer with syntax highlighting.
 
@@ -67,7 +67,7 @@ classDiagram
 | `find_text(text)` | Find and highlight text in the G-code |
 | `setup_ui()` | Initialize the user interface components |
 
-### 📝 `LogViewer` Class
+### `LogViewer` Class
 
 Interactive log viewer with filtering capabilities.
 
@@ -94,9 +94,9 @@ classDiagram
 
 ---
 
-## 🤖 Utility Classes
+## Utility Classes
 
-### 📊 `STLProcessor` Class
+### `STLProcessor` Class
 
 Handles STL file processing and G-code generation.
 
@@ -125,7 +125,7 @@ classDiagram
 | `processing_finished(str)` | Signal emitted when processing is finished |
 | `error_occurred(str)` | Signal emitted when an error occurs |
 
-### 📈 `SettingsManager` Class
+### `SettingsManager` Class
 
 Manages application settings and preferences.
 
@@ -152,9 +152,9 @@ classDiagram
 
 ---
 
-## 📝 Enumerations
+## Enumerations
 
-### 🔍 `LogLevel` Enum
+### `LogLevel` Enum
 
 ```python
 class LogLevel(IntEnum):
@@ -165,7 +165,7 @@ class LogLevel(IntEnum):
     CRITICAL = logging.CRITICAL
 ```
 
-### 📊 `ViewMode` Enum
+### `ViewMode` Enum
 
 ```python
 class ViewMode(Enum):
@@ -177,9 +177,9 @@ class ViewMode(Enum):
 
 ---
 
-## 📝 Signals
+## Signals
 
-### 🔍 `ProcessingSignals` Class
+### `ProcessingSignals` Class
 
 ```python
 class ProcessingSignals(QObject):
@@ -191,9 +191,9 @@ class ProcessingSignals(QObject):
 
 ---
 
-## 📊 Constants
+## Constants
 
-### 🔍 Default G-code Parameters
+### Default G-code Parameters
 
 ```python
 DEFAULT_PARAMETERS = {
@@ -223,13 +223,13 @@ LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 ---
 
-## 📋 Additional Notes
+## Additional Notes
 
 - All units in millimeters (mm)
 - Angles in degrees
 - Speeds in mm/s
 
-## 🧩 Core Modules
+## Core Modules
 
 ### `language_manager.py` Module
 
@@ -256,7 +256,7 @@ Interactive G-code visualization.
 
 ---
 
-## 📝 Example Usage
+## Example Usage
 
 ```python
 # Create and show the main application window
@@ -268,7 +268,7 @@ sys.exit(app.exec())
 
 ---
 
-## 📊 Dependencies
+## Dependencies
 
 - PyQt6 >= 6.4.0
 - numpy-stl >= 2.17.1
@@ -278,13 +278,13 @@ sys.exit(app.exec())
 
 ---
 
-## 📈 Versioning
+## Versioning
 
 This API follows [Semantic Versioning](https://semver.org/). The current API version is 2.0.0.
 
 ---
 
-## 📝 License
+## License
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

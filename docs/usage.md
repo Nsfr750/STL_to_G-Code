@@ -1,9 +1,9 @@
-# 📖 User Guide
+# User Guide
 
 > [!TIP]
 > Looking for quick answers? Try our [FAQ section](#frequently-asked-questions) or use `Ctrl+F` to search this page!
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [🖥️ Interface Overview](#interface-overview)
 - [🛠 Basic Workflow](#basic-workflow)
@@ -14,7 +14,7 @@
 
 ---
 
-## 🖥️ Interface Overview
+## Interface Overview
 
 ```mermaid
 graph TD
@@ -33,7 +33,7 @@ graph TD
     style E fill:#ddd,stroke:#333,stroke-width:2px
 ```
 
-### 🏗️ Main Components
+### Main Components
 
 #### 1. Menu Bar
 
@@ -98,9 +98,9 @@ G1 X10 Y10 F3000 ; Move to start
 
 ---
 
-## ⚡ Advanced Features
+## Advanced Features
 
-### 🎛 Custom Profiles
+### Custom Profiles
 
 Create and save custom print profiles for different materials:
 
@@ -118,7 +118,7 @@ Create and save custom print profiles for different materials:
 }
 ```
 
-### 🔄 Post-Processing Scripts
+### Post-Processing Scripts
 
 Add custom G-code scripts to run before/after printing:
 
@@ -134,7 +134,7 @@ G29 ; Auto bed leveling
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 ### Navigation
 
@@ -156,7 +156,7 @@ G29 ; Auto bed leveling
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -186,7 +186,7 @@ G29 ; Auto bed leveling
 
 ---
 
-## ❓ Frequently Asked Questions
+## Frequently Asked Questions
 
 ### How do I update the software?
 
@@ -211,13 +211,12 @@ G29 ; Auto bed leveling
 
 ---
 
-## 📚 Additional Resources
+## Additional Resources
 
 - [API Documentation](api.md)
 - [GitHub Repository](https://github.com/Nsfr750/STL_to_G-Code)
 
-## 📞 Need Help?
+## Need Help?
 
-- **Email**: [support@example.com](mailto:nsfr750@yandex.com)
+- **Email**: [nsfr750@yandex.com](mailto:nsfr750@yandex.com)
 - **Discord**: [Join our server](https://discord.gg/BvvkUEP9)
-- **Twitter**: [@STL2GCode](https://twitter.com/STL2GCode)

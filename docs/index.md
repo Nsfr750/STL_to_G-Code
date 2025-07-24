@@ -1,14 +1,8 @@
 # STL to GCode Converter
 
-![STL to GCode Logo](https://raw.githubusercontent.com/Nsfr750/STL_to_G-Code/main/assets/icon.png)
-
 A powerful, open-source application for converting STL files to G-code for 3D printing and CNC machining, featuring a modern PyQt6 interface.
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![PyPI Version](https://img.shields.io/pypi/v/stl-to-gcode)](https://pypi.org/project/stl-to-gcode/)
-
-## 📋 Table of Contents
+## Table of Contents
 
 - [Features](#-features)
 - [Installation](#-installation)
@@ -20,7 +14,7 @@ A powerful, open-source application for converting STL files to G-code for 3D pr
 - [License](#-license)
 - [Support](#-support)
 
-## ✨ Features
+## Features
 
 - **Modern PyQt6 Interface** - Clean, responsive UI with dark/light themes
 - **Advanced 3D Visualization** - Interactive model manipulation and preview
@@ -83,7 +77,7 @@ pip install stl-to-gcode
 
 5. Save the G-code or send it directly to your 3D printer
 
-## 📖 User Guide
+## User Guide
 
 For detailed usage instructions, see the [User Guide](usage.md).
 
@@ -91,19 +85,19 @@ For detailed usage instructions, see the [User Guide](usage.md).
 
 Interested in contributing? Check out our [Development Guide](development.md) for setup instructions and coding standards.
 
-## 📚 API Reference
+## API Reference
 
 For developers looking to extend the application, see the [API Reference](api.md).
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests, report issues, or suggest new features.
 
-## 📄 License
+## License
 
 This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
 
-## 💬 Support
+## Support
 
 - **Documentation**: [GitHub Wiki](https://github.com/Nsfr750/STL_to_G-Code/wiki)
 - **Issues**: [GitHub Issues](https://github.com/Nsfr750/STL_to_G-Code/issues)

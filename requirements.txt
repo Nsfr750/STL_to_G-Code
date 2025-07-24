@@ -20,6 +20,7 @@ qrcode>=8.2
 # Documentation & Markup
 markdown>=3.5.0  # For rendering markdown
 pygments>=2.16.0  # For syntax highlighting in markdown
+pymdown-extensions>=10.0.0  # Enhanced markdown features including TOC and syntax highlighting
 
 # Network & Utilities
 requests>=2.31.0
