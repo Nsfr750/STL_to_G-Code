@@ -1,187 +1,223 @@
 # 📖 User Guide
 
-## Table of Contents
-- [Interface Overview](#-interface-overview)
-- [Basic Workflow](#-basic-workflow)
-- [Advanced Features](#-advanced-features)
-- [Keyboard Shortcuts](#-keyboard-shortcuts)
-- [Troubleshooting](#-troubleshooting)
-- [FAQ](#-frequently-asked-questions)
+> [!TIP]
+> Looking for quick answers? Try our [FAQ section](#frequently-asked-questions) or use `Ctrl+F` to search this page!
+
+## 📋 Table of Contents
+
+- [🖥️ Interface Overview](#interface-overview)
+- [🛠 Basic Workflow](#basic-workflow)
+- [⚡ Advanced Features](#advanced-features)
+- [⌨️ Keyboard Shortcuts](#keyboard-shortcuts)
+- [🔧 Troubleshooting](#troubleshooting)
+- [❓ FAQ](#frequently-asked-questions)
+
+---
 
 ## 🖥️ Interface Overview
 
-The STL to GCode Converter features a modern, dockable interface that can be customized to your workflow:
-
-```
-+---------------------------------------------------+
-|  Menu Bar                                        |
-|--------------------------------------------------|
-|  +-------------------+  +---------------------+  |
-|  |                   |  |                     |  |
-|  |   3D Preview      |  |    G-code Viewer    |  |
-|  |                   |  |                     |  |
-|  |                   |  |                     |  |
-|  +-------------------+  +---------------------+  |
-|  |                                                 |
-|  |                  Log Viewer                    |
-|  |                                                 |
-|  +-------------------------------------------------+
-|  | Status Bar | Progress | Memory Usage | FPS      |
-+---------------------------------------------------+
+```mermaid
+graph TD
+    A[Menu Bar] --> B[Toolbar]
+    B --> C[3D Preview]
+    B --> D[G-code Viewer]
+    C --> E[Status Bar]
+    D --> E
+    E --> F[Progress]
+    E --> G[Memory Usage]
+    E --> H[FPS Counter]
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#9f9,stroke:#333,stroke-width:2px
+    style D fill:#f99,stroke:#333,stroke-width:2px
+    style E fill:#ddd,stroke:#333,stroke-width:2px
 ```
 
-### Main Components
+### 🏗️ Main Components
 
-1. **Menu Bar**
-   - Access all application functions
-   - Configure settings and preferences
-   - Access help and documentation
+#### 1. Menu Bar
 
-2. **Toolbar**
-   - Quick access to frequently used functions
-   - Model manipulation tools
-   - View controls
+- **File**: Open/Save projects, import/export files
+- **Edit**: Undo/Redo, preferences
+- **View**: Toggle panels, reset view
+- **Tools**: Advanced utilities
+- **Help**: Documentation and support
 
-3. **3D Preview**
-   - Interactive 3D model visualization
-   - Real-time rendering with OpenGL
-   - Multiple view modes (solid, wireframe, etc.)
+#### 2. Toolbar
 
-4. **G-code Viewer**
-   - Syntax-highlighted G-code display
-   - Line-by-line execution preview
-   - Error highlighting and validation
+| Icon | Function | Shortcut |
+|------|----------|----------|
+| 📁   | Open File | `Ctrl+O` |
+| 💾   | Save G-code | `Ctrl+S` |
+| 🔄   | Refresh View | `F5` |
+| 🔍   | Zoom to Fit | `F` |
 
-5. **Log Viewer**
-   - Real-time application logging
-   - Filter by log level (Debug, Info, Warning, Error)
-   - Search and highlight functionality
+#### 3. 3D Preview
 
-## 🚀 Basic Workflow
+- Rotate: `Left-click + drag`
+- Pan: `Right-click + drag`
+- Zoom: `Mouse wheel`
+- Reset view: `Home`
 
-### 1. Opening an STL File
+#### 4. G-code Viewer
 
-#### Methods:
-- **Menu**: `File > Open STL`
-- **Toolbar**: Click the 'Open' icon
-- **Drag & Drop**: Drag an STL file into the application window
-- **Recent Files**: `File > Recent Files`
+```gcode
+; Sample G-code preview
+G28 ; Home all axes
+G1 Z5 F5000 ; Lift nozzle
+G1 X10 Y10 F3000 ; Move to start
+```
 
-#### Supported Formats:
-- STL (.stl)
-- OBJ (.obj) - Basic support
-- 3MF (.3mf) - Experimental
+---
 
-### 2. Viewing and Manipulating the 3D Model
+## 🛠 Basic Workflow
 
-#### Navigation:
-- **Rotate**: Left-click + drag
-- **Pan**: Right-click + drag or Middle-click + drag
-- **Zoom**: Scroll wheel or pinch gesture
-- **Reset View**: Click the 'Home' button or press `Home` key
+### 1. Importing Models
 
-#### View Modes:
-- **Solid**: Filled polygons (default)
-- **Wireframe**: Show model edges only
-- **Point Cloud**: Show vertices only
-- **X-Ray**: Semi-transparent view
+- Click `File > Open` or drag-drop STL files
+- Supported formats: `.stl`, `.obj`, `.3mf`
+- Multiple files can be loaded simultaneously
 
-### 3. Converting to G-code
+### 2. Model Preparation
 
-1. **Set Up Print Parameters**
-   - Layer height
-   - Print speed
-   - Infill density
-   - Support structures
+- Use the transform tools to position your model
+- Check for potential printing issues
+- Adjust print settings as needed
 
-2. **Generate G-code**
-   - Click `Tools > Generate G-code` or press `Ctrl+G`
-   - Monitor progress in the status bar
-   - Preview the generated toolpaths
+### 3. Generate G-code
 
-3. **Save or Export**
-   - Save G-code to file (`File > Save G-code`)
-   - Export settings as profile
-   - Send directly to printer (if configured)
+1. Click the `Generate G-code` button
+2. Monitor progress in the status bar
+3. Preview the toolpath in the 3D view
 
-## ⚙️ Advanced Features
+### 4. Export & Print
 
-### Custom Profiles
-- Save and load printer profiles
-- Import/export settings
-- Create material-specific configurations
+- Save G-code to your computer
+- Transfer to your 3D printer
+- Or send directly to OctoPrint
 
-### G-code Optimization
-- Travel optimization
-- Retraction settings
-- Cooling strategies
+---
 
-### Scripting
-- Custom start/end G-code
-- Post-processing scripts
-- Automation support
+## ⚡ Advanced Features
+
+### 🎛 Custom Profiles
+
+Create and save custom print profiles for different materials:
+
+```python
+{
+  "profile_name": "PLA_Quality",
+  "nozzle_temp": 210,
+  "bed_temp": 60,
+  "print_speed": 60,
+  "retraction": {
+    "enable": true,
+    "distance": 5,
+    "speed": 45
+  }
+}
+```
+
+### 🔄 Post-Processing Scripts
+
+Add custom G-code scripts to run before/after printing:
+
+```gcode
+; Start G-code
+M140 S{material_bed_temperature} ; Set bed temp
+M190 S{material_bed_temperature} ; Wait for bed
+M104 S{material_print_temperature} ; Set nozzle temp
+M109 S{material_print_temperature} ; Wait for nozzle
+G28 ; Home all axes
+G29 ; Auto bed leveling
+```
+
+---
 
 ## ⌨️ Keyboard Shortcuts
 
 ### Navigation
+
 | Shortcut | Action |
 |----------|--------|
-| `R` | Reset view |
-| `F` | Fit model to view |
-| `Ctrl++` | Zoom in |
-| `Ctrl+-` | Zoom out |
-| `Ctrl+0` | Reset zoom |
+| `WASD`   | Move camera |
+| `Q/E`    | Rotate view |
+| `R/F`    | Zoom in/out |
+| `Space`  | Reset view |
 
-### File Operations
+### Model Manipulation
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+O` | Open STL file |
-| `Ctrl+S` | Save G-code |
-| `Ctrl+Shift+S` | Save As... |
-| `Ctrl+Q` | Quit application |
-
-### View Controls
-| Shortcut | Action |
-|----------|--------|
-| `1` | Front view |
-| `3` | Side view |
-| `7` | Top view |
-| `5` | Toggle perspective/orthographic |
-| `Space` | Toggle rotation |
-
-## 🛠 Troubleshooting
-
-### Common Issues
-
-#### Model Won't Load
-- Verify the file is not corrupted
-- Check that the file format is supported
-- Try simplifying the model in a 3D modeling program
-
-#### G-code Generation Fails
-- Check log for specific error messages
-- Verify print settings are valid
-- Ensure the model is manifold (watertight)
-
-#### Performance Issues
-- Reduce model complexity
-- Lower preview quality in settings
-- Close other resource-intensive applications
-
-## ❓ Frequently Asked Questions
-
-### How do I update the application?
-Check for updates in `Help > Check for Updates` or visit the [GitHub repository](https://github.com/Nsfr750/STL_to_G-Code).
-
-### Can I use custom post-processing scripts?
-Yes! Place your Python scripts in the `scripts/post_processing` directory and they'll appear in the post-processing menu.
-
-### How do I report a bug?
-Please open an issue on [GitHub](https://github.com/Nsfr750/STL_to_G-Code/issues) with detailed steps to reproduce the problem.
-
-### Is there a command-line interface?
-Yes! Run `python main.py --help` to see available command-line options.
+| `G`      | Grab selected |
+| `R`      | Rotate selected |
+| `S`      | Scale selected |
+| `Del`    | Delete selected |
 
 ---
 
-For additional help, please visit our [GitHub Discussions](https://github.com/Nsfr750/STL_to_G-Code/discussions) or join our [Discord community](https://discord.gg/BvvkUEP9).
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### 1. Model Won't Load
+
+✅ **Solution**:
+
+- Check file format (.stl, .obj, .3mf)
+- Ensure file isn't corrupted
+- Try repairing the mesh
+
+#### 2. G-code Generation Fails
+
+✅ **Solution**:
+
+- Check model for errors
+- Verify print settings
+- Update to latest version
+
+#### 3. Poor Print Quality
+
+✅ **Solution**:
+
+- Calibrate your printer
+- Adjust layer height
+- Check filament quality
+
+---
+
+## ❓ Frequently Asked Questions
+
+### How do I update the software?
+
+> [!NOTE]
+> The application checks for updates automatically on startup. You can also manually check under `Help > Check for Updates`.
+
+### Can I use custom G-code scripts?
+
+> Yes! You can add custom start/end G-code in the printer settings.
+
+### Is there a dark mode?
+
+> Absolutely! Enable it in `Preferences > Appearance > Theme`.
+
+### How do I report a bug?
+
+> Please open an issue on [GitHub](https://github.com/Nsfr750/STL_to_G-Code/issues) with detailed steps to reproduce the problem.
+
+### Is there a command-line interface?
+
+> Yes! Run `python main.py --help` to see available command-line options.
+
+---
+
+## 📚 Additional Resources
+
+- [API Documentation](api.md)
+- [GitHub Repository](https://github.com/Nsfr750/STL_to_G-Code)
+
+## 📞 Need Help?
+
+- **Email**: [support@example.com](mailto:nsfr750@yandex.com)
+- **Discord**: [Join our server](https://discord.gg/BvvkUEP9)
+- **Twitter**: [@STL2GCode](https://twitter.com/STL2GCode)

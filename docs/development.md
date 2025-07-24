@@ -423,7 +423,7 @@ This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) fi
 ## Getting Help
 
 - Check the [GitHub Issues](https://github.com/Nsfr750/STL_to_G-Code/issues)
-- Join our [Discord community](https://discord.gg/your-invite-link)
+- Join our [Discord community](https://discord.gg/BvvkUEP9)
 - Read the [PyQt6 documentation](https://www.riverbankcomputing.com/static/Docs/PyQt6/)
 
 ## Versioning

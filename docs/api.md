@@ -1,168 +1,160 @@
-# API Reference
+# 🔍 API Reference
 
-## Core Application
+> [!NOTE]
+> Comprehensive API documentation for the STL to GCode Converter.
 
-### Class: `STLToGCodeApp`
+## 🏗 Core Application
+
+### 🏛 `STLToGCodeApp` Class
 
 Main application class that initializes and runs the STL to GCode Converter.
 
-```python
-class STLToGCodeApp(QMainWindow):
-    def __init__(self, parent=None):
-        """Initialize the main application window."""
-        super().__init__(parent)
-        self.setup_ui()
-        self.setup_connections()
-        self.setup_logging()
-    
-    def open_file(self, file_path=None):
-        """Open and load an STL file."""
-        pass
-    
-    def convert_to_gcode(self):
-        """Convert the loaded STL to G-code."""
-        pass
-    
-    def save_gcode(self, file_path=None):
-        """Save the generated G-code to a file."""
-        pass
-    
-    def show_gcode_viewer(self):
-        """Display the G-code viewer with the current G-code."""
-        pass
-    
-    def show_log_viewer(self, show=True):
-        """Show or hide the log viewer panel."""
-        pass
-    
-    def setup_ui(self):
-        """Initialize the user interface components."""
-        pass
-    
-    def setup_connections(self):
-        """Set up signal-slot connections."""
-        pass
-    
-    def setup_logging(self):
-        """Configure the logging system."""
-        pass
+```mermaid
+classDiagram
+    class STLToGCodeApp {
+        +__init__(parent=None)
+        +open_file(file_path=None)
+        +convert_to_gcode()
+        +save_gcode(file_path=None)
+        +show_gcode_viewer()
+        +show_log_viewer(show=True)
+        +setup_ui()
+        +setup_connections()
+        +setup_logging()
+    }
 ```
 
-## UI Components
+#### Key Methods
 
-### Class: `GCodeViewer`
+| Method | Description |
+|--------|-------------|
+| `__init__(parent)` | Initialize the main application window |
+| `open_file(file_path)` | Open and load an STL file |
+| `convert_to_gcode()` | Convert the loaded STL to G-code |
+| `save_gcode(file_path)` | Save the generated G-code to a file |
+| `show_gcode_viewer()` | Display the G-code viewer with the current G-code |
+| `show_log_viewer(show)` | Show or hide the log viewer panel |
+| `setup_ui()` | Initialize the user interface components |
+| `setup_connections()` | Set up signal-slot connections |
+| `setup_logging()` | Configure the logging system |
+
+---
+
+## 📊 UI Components
+
+### 📈 `GCodeViewer` Class
 
 Interactive G-code viewer with syntax highlighting.
 
-```python
-class GCodeViewer(QDockWidget):
-    def __init__(self, parent=None):
-        """Initialize the G-code viewer."""
-        super().__init__("G-code Viewer", parent)
-        self.setup_ui()
-    
-    def set_gcode(self, gcode):
-        """Set the G-code to display."""
-        pass
-    
-    def highlight_line(self, line_number):
-        """Highlight a specific line in the G-code."""
-        pass
-    
-    def find_text(self, text):
-        """Find and highlight text in the G-code."""
-        pass
+```mermaid
+classDiagram
+    class GCodeViewer {
+        +__init__(parent=None)
+        +set_gcode(gcode)
+        +highlight_line(line_number)
+        +find_text(text)
+        +setup_ui()
+    }
 ```
 
-### Class: `LogViewer`
+#### Key Methods
+
+| Method | Description |
+|--------|-------------|
+| `__init__(parent)` | Initialize the G-code viewer |
+| `set_gcode(gcode)` | Set the G-code to display |
+| `highlight_line(line_number)` | Highlight a specific line in the G-code |
+| `find_text(text)` | Find and highlight text in the G-code |
+| `setup_ui()` | Initialize the user interface components |
+
+### 📝 `LogViewer` Class
 
 Interactive log viewer with filtering capabilities.
 
-```python
-class LogViewer(QDockWidget):
-    def __init__(self, parent=None):
-        """Initialize the log viewer."""
-        super().__init__("Log Viewer", parent)
-        self.setup_ui()
-    
-    def add_log_entry(self, level, message):
-        """Add a new log entry."""
-        pass
-    
-    def set_log_level(self, level):
-        """Set the minimum log level to display."""
-        pass
-    
-    def clear_logs(self):
-        """Clear all log entries."""
-        pass
+```mermaid
+classDiagram
+    class LogViewer {
+        +__init__(parent=None)
+        +add_log_entry(level, message)
+        +set_log_level(level)
+        +clear_logs()
+        +setup_ui()
+    }
 ```
 
-## Utility Classes
+#### Key Methods
 
-### Class: `STLProcessor`
+| Method | Description |
+|--------|-------------|
+| `__init__(parent)` | Initialize the log viewer |
+| `add_log_entry(level, message)` | Add a new log entry |
+| `set_log_level(level)` | Set the minimum log level to display |
+| `clear_logs()` | Clear all log entries |
+| `setup_ui()` | Initialize the user interface components |
+
+---
+
+## 🤖 Utility Classes
+
+### 📊 `STLProcessor` Class
 
 Handles STL file processing and G-code generation.
 
-```python
-class STLProcessor(QObject):
-    progress_updated = pyqtSignal(int)
-    processing_finished = pyqtSignal(str)
-    error_occurred = pyqtSignal(str)
-    
-    def __init__(self, parent=None):
-        """Initialize the STL processor."""
-        super().__init__(parent)
-    
-    def load_stl(self, file_path):
-        """Load an STL file for processing."""
-        pass
-    
-    def generate_gcode(self, parameters):
-        """Generate G-code from the loaded STL."""
-        pass
-    
-    def cancel_processing(self):
-        """Cancel the current processing operation."""
-        pass
+```mermaid
+classDiagram
+    class STLProcessor {
+        +__init__(parent=None)
+        +load_stl(file_path)
+        +generate_gcode(parameters)
+        +cancel_processing()
+        +progress_updated(int)
+        +processing_finished(str)
+        +error_occurred(str)
+    }
 ```
 
-### Class: `SettingsManager`
+#### Key Methods
+
+| Method | Description |
+|--------|-------------|
+| `__init__(parent)` | Initialize the STL processor |
+| `load_stl(file_path)` | Load an STL file for processing |
+| `generate_gcode(parameters)` | Generate G-code from the loaded STL |
+| `cancel_processing()` | Cancel the current processing operation |
+| `progress_updated(int)` | Signal emitted when progress is updated |
+| `processing_finished(str)` | Signal emitted when processing is finished |
+| `error_occurred(str)` | Signal emitted when an error occurs |
+
+### 📈 `SettingsManager` Class
 
 Manages application settings and preferences.
 
-```python
-class SettingsManager(QObject):
-    def __init__(self, parent=None):
-        """Initialize the settings manager."""
-        super().__init__(parent)
-        self.settings = QSettings("STLToGCode", "STL to GCode Converter")
-    
-    def get_setting(self, key, default=None):
-        """Get a setting value."""
-        return self.settings.value(key, default)
-    
-    def set_setting(self, key, value):
-        """Set a setting value."""
-        self.settings.setValue(key, value)
-    
-    def get_recent_files(self):
-        """Get the list of recently opened files."""
-        return self.get_setting("recentFiles", [])
-    
-    def add_recent_file(self, file_path):
-        """Add a file to the recent files list."""
-        recent = self.get_recent_files()
-        if file_path in recent:
-            recent.remove(file_path)
-        recent.insert(0, file_path)
-        recent = recent[:10]  # Keep only the 10 most recent files
-        self.set_setting("recentFiles", recent)
+```mermaid
+classDiagram
+    class SettingsManager {
+        +__init__(parent=None)
+        +get_setting(key, default=None)
+        +set_setting(key, value)
+        +get_recent_files()
+        +add_recent_file(file_path)
+    }
 ```
 
-## Enumerations
+#### Key Methods
 
-### `LogLevel`
+| Method | Description |
+|--------|-------------|
+| `__init__(parent)` | Initialize the settings manager |
+| `get_setting(key, default)` | Get a setting value |
+| `set_setting(key, value)` | Set a setting value |
+| `get_recent_files()` | Get the list of recently opened files |
+| `add_recent_file(file_path)` | Add a file to the recent files list |
+
+---
+
+## 📝 Enumerations
+
+### 🔍 `LogLevel` Enum
 
 ```python
 class LogLevel(IntEnum):
@@ -173,7 +165,7 @@ class LogLevel(IntEnum):
     CRITICAL = logging.CRITICAL
 ```
 
-### `ViewMode`
+### 📊 `ViewMode` Enum
 
 ```python
 class ViewMode(Enum):
@@ -183,9 +175,11 @@ class ViewMode(Enum):
     X_RAY = "X-Ray"
 ```
 
-## Signals
+---
 
-### `ProcessingSignals`
+## 📝 Signals
+
+### 🔍 `ProcessingSignals` Class
 
 ```python
 class ProcessingSignals(QObject):
@@ -195,30 +189,74 @@ class ProcessingSignals(QObject):
     error = pyqtSignal(str)     # Error message
 ```
 
-## Constants
+---
+
+## 📊 Constants
+
+### 🔍 Default G-code Parameters
 
 ```python
-# Default G-code parameters
 DEFAULT_PARAMETERS = {
-    'layer_height': 0.2,
-    'print_speed': 60,
-    'nozzle_temp': 200,
-    'bed_temp': 60,
-    'infill_density': 20,
+    'layer_height': 0.2,    # mm
+    'print_speed': 60,      # mm/s
+    'nozzle_temp': 200,     # °C
+    'bed_temp': 60,         # °C
+    'infill_density': 20,   # %
     'shells': 2,
     'retraction': True,
     'retraction_distance': 5.0,
     'retraction_speed': 45.0
 }
+```
 
-# Supported file extensions
+### 🔍 Supported File Extensions
+
+```python
 SUPPORTED_EXTENSIONS = ['.stl', '.STL', '.gcode', '.gco', '.g']
+```
 
-# Logging format
+### 🔍 Logging Format
+
+```python
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 ```
 
-## Example Usage
+---
+
+## 📋 Additional Notes
+
+- All units in millimeters (mm)
+- Angles in degrees
+- Speeds in mm/s
+
+## 🧩 Core Modules
+
+### `language_manager.py` Module
+
+Handles application internationalization.
+
+```mermaid
+classDiagram
+    class LanguageManager {
+        +set_language(code)
+        +translate(key, **kwargs)
+        +get_available_languages()
+    }
+```
+
+### `gcode_viewer.py` Module
+
+Interactive G-code visualization.
+
+**Features:**
+
+- 🎨 Syntax highlighting
+- 🔍 Zoom/pan controls
+- 📊 Layer visualization
+
+---
+
+## 📝 Example Usage
 
 ```python
 # Create and show the main application window
@@ -228,7 +266,9 @@ window.show()
 sys.exit(app.exec())
 ```
 
-## Dependencies
+---
+
+## 📊 Dependencies
 
 - PyQt6 >= 6.4.0
 - numpy-stl >= 2.17.1
@@ -236,11 +276,15 @@ sys.exit(app.exec())
 - numpy >= 1.21.0
 - packaging >= 21.0
 
-## Versioning
+---
+
+## 📈 Versioning
 
 This API follows [Semantic Versioning](https://semver.org/). The current API version is 2.0.0.
 
-## License
+---
+
+## 📝 License
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
