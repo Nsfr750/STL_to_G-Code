@@ -1,6 +1,21 @@
 # STL to GCode Converter - Development Roadmap
 
-## Completed (v2.0.0)
+## Completed (v2.1.0)
+
+### G-code Editor Improvements
+
+- [x] Add auto-completion for G-code commands
+- [x] Implement code folding for better navigation
+
+### Automatic Update System
+
+- [x] Implemented automatic update checking system
+- [x] Added support for GitHub API-based version checking
+- [x] Moved update configuration to `config/updates.json`
+- [x] Fixed language manager initialization issues
+- [x] Improved error handling in the update checker
+- [x] Added support for progressive STL loading
+- [x] Implemented G-code preview with layer navigation
 
 ### PyQt6 Migration
 
@@ -34,22 +49,34 @@
 - [x] Added inline code documentation
 
 
-## In Progress (v2.1.0)
+## In Progress (v2.2.0)
 
-### G-code Editor Improvements
+### Advanced Features
 
-- [ ] Add auto-completion for G-code commands
-- [ ] Implement code folding for better navigation
+- [ ] Implement advanced G-code optimization algorithms
+- [ ] Implement support for non-planar slicing
 
-## Future Features (v2.2.0+)
+### User Experience
+
+- [ ] Add a comprehensive settings manager
+- [ ] Implement a plugin system for extending functionality
+- [ ] Add more keyboard shortcuts for common operations
+- [ ] Improve the 3D view navigation controls
+
+### Features
+
+- [ ] Add support for project files to save all settings
+
+### Documentation
+
+- [ ] Add more detailed API documentation
+- [ ] Improve inline code documentation
+
+## Future Features (v2.3.0+)
 
 ### Advanced Features
 
 - [ ] Version control for G-code files
-
-### User Experience
-
-- [ ] Multi-language support
 
 ## How to Contribute
 

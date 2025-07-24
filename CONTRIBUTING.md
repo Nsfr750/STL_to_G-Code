@@ -1,154 +1,145 @@
-# Contributing to STL to G-Code Converter
+# Contributing to STL to GCode Converter
 
-Thank you for your interest in contributing to the STL to G-Code Converter! We welcome contributions from everyone, whether you're a developer, designer, tester, or documentation writer.
+Thank you for your interest in contributing to the STL to GCode Converter! We welcome contributions from everyone, whether you're a developer, designer, tester, or just someone with ideas.
 
-## Table of Contents
+## 📋 Table of Contents
+
 - [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Environment Setup](#development-environment-setup)
-- [Making Changes](#making-changes)
-- [Pull Request Process](#pull-request-process)
-- [Reporting Issues](#reporting-issues)
-- [Feature Requests](#feature-requests)
-- [Code Style](#code-style)
-- [Testing](#testing)
-- [Documentation](#documentation)
-- [License](#license)
+- [Getting Started](#-getting-started)
+- [Development Workflow](#-development-workflow)
+- [Code Style](#-code-style)
+- [Testing](#-testing)
+- [Documentation](#-documentation)
+- [Submitting Changes](#-submitting-changes)
+- [Reporting Issues](#-reporting-issues)
+- [Feature Requests](#-feature-requests)
+- [Community](#-community)
 
 ## Code of Conduct
 
-This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report any unacceptable behavior to the project maintainers.
+This project and everyone participating in it is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report any unacceptable behavior to the project maintainers.
 
-## Getting Started
+## 🚀 Getting Started
 
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Set up the development environment (see below)
-4. Create a new branch for your changes
-5. Make your changes
-6. Test your changes
-7. Submit a pull request
-
-## Development Environment Setup
-
-### Prerequisites
-- Python 3.8 or higher
-- pip 23.0 or later
-- Git
-- (Optional) A Python virtual environment (recommended)
-
-### Setup Steps
-
-1. Clone the repository:
+1. **Fork** the repository on GitHub
+2. **Clone** your fork locally
    ```bash
    git clone https://github.com/Nsfr750/STL_to_G-Code.git
    cd STL_to_G-Code
    ```
-
-2. Create and activate a virtual environment (recommended):
-   ```bash
-   # On Windows
-   python -m venv venv
-   .\venv\Scripts\activate
-   
-   # On Linux/macOS
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install development dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Making Changes
-
-1. Create a new branch for your feature or bugfix:
+3. **Set up** the development environment (see [PREREQUISITES.md](PREREQUISITES.md))
+4. **Create a branch** for your changes
    ```bash
    git checkout -b feature/your-feature-name
-   # or
-   git checkout -b bugfix/issue-number-description
    ```
 
-2. Make your changes following the code style guidelines below
+## 🔄 Development Workflow
 
-3. Run tests to ensure nothing is broken:
+1. **Sync** your fork with the main repository
    ```bash
-   pytest
+   git remote add upstream https://github.com/Nsfr750/STL_to_G-Code.git
+   git fetch upstream
+   git merge upstream/main
    ```
 
-4. Format your code:
+2. **Make your changes** following the code style guidelines
+
+3. **Run tests** to ensure everything works
    ```bash
-   black .
+   pytest tests/
    ```
 
-5. Check for linting errors:
+4. **Commit your changes** with a descriptive message
    ```bash
-   flake8 .
+   git commit -m "Add your detailed description here"
    ```
 
-6. Commit your changes with a descriptive message:
+5. **Push** to your fork
    ```bash
-   git add .
-   git commit -m "feat: add new feature"
-   # or
-   git commit -m "fix: resolve issue with gcode generation"
+   git push origin feature/your-feature-name
    ```
 
-## Pull Request Process
+6. **Open a Pull Request** against the `main` branch
 
-1. Push your changes to your fork:
-   ```bash
-   git push origin your-branch-name
-   ```
+## 🎨 Code Style
 
-2. Open a pull request against the `main` branch
-3. Fill out the pull request template with all relevant information
-4. Ensure all CI checks pass
-5. Request a review from one of the maintainers
-6. Address any review feedback
-7. Once approved, your PR will be merged by a maintainer
+We use the following tools to maintain code quality:
 
-## Reporting Issues
+- **Black** for code formatting
+  ```bash
+  black .
+  ```
+  
+- **Flake8** for linting
+  ```bash
+  flake8 .
+  ```
+  
+- **mypy** for type checking
+  ```bash
+  mypy .
+  ```
 
-When reporting issues, please include:
-- A clear, descriptive title
-- Steps to reproduce the issue
-- Expected vs. actual behavior
-- Screenshots if applicable
-- Your operating system and Python version
-- Any error messages or logs from `stl_to_gcode.log`
+### Python Style Guide
 
-## Feature Requests
+- Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) style guide
+- Use type hints for all function parameters and return values
+- Write docstrings for all public functions, classes, and modules following [Google style](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html)
+- Keep lines under 100 characters
+
+## 🧪 Testing
+
+- Write tests for new features and bug fixes
+- Ensure all tests pass before submitting a PR
+- Use descriptive test function names (e.g., `test_function_name_does_what`)
+- Group related tests in classes when appropriate
+
+## 📝 Documentation
+
+- Update documentation when adding new features or changing behavior
+- Keep docstrings up to date
+- Add examples for complex functionality
+- Document any breaking changes in the [CHANGELOG.md](CHANGELOG.md)
+
+## 🔄 Submitting Changes
+
+1. Ensure your branch is up to date with the latest changes from `main`
+2. Run all tests and ensure they pass
+3. Update documentation if needed
+4. Push your changes to your fork
+5. Open a Pull Request with a clear title and description
+   - Reference any related issues
+   - Describe your changes and the reasoning behind them
+   - Include screenshots or screen recordings for UI changes
+
+## 🐛 Reporting Issues
+
+When reporting bugs, please include:
+
+1. A clear, descriptive title
+2. Steps to reproduce the issue
+3. Expected vs. actual behavior
+4. Screenshots or screen recordings if applicable
+5. Your operating system and Python version
+6. Any error messages or logs
+
+## 💡 Feature Requests
 
 We welcome feature requests! Please:
-1. Check if a similar feature already exists
-2. Explain why this feature would be valuable
-3. Provide as much detail as possible about the implementation
 
-## Code Style
+1. Check if a similar feature request already exists
+2. Describe the feature and why it would be useful
+3. Provide examples of how it would work
+4. Consider contributing the feature yourself if possible
 
-- Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) guidelines
-- Use [Google style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
-- Keep lines under 88 characters (Black's default)
-- Type hints are encouraged for all new code
-- Use f-strings for string formatting (Python 3.6+)
+## 🌍 Community
 
-## Testing
+Join our community to get help, discuss features, and contribute:
 
-- Write tests for all new features and bug fixes
-- Ensure all tests pass before submitting a PR
-- Use descriptive test function names (e.g., `test_function_name_expected_behavior`)
-- Add integration tests for critical paths
-- Update tests when changing functionality
+- [Discord Server](https://discord.gg/BvvkUEP9)
+- [GitHub Discussions](https://github.com/Nsfr750/STL_to_G-Code/discussions)
+- [GitHub Issues](https://github.com/Nsfr750/STL_to_G-Code/issues)
 
-## Documentation
+## 🙏 Thank You!
 
-- Update relevant documentation when adding new features
-- Add docstrings to all public functions and classes
-- Keep the README up to date
-- Document any breaking changes in CHANGELOG.md
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the GPLv3 License. See the [LICENSE](LICENSE) file for details.
+Your contributions help make this project better for everyone. Thank you for taking the time to contribute!

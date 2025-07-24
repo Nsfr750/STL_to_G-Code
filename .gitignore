@@ -94,4 +94,9 @@ coverage.xml
 *.sqlite3
 *.stl
 *.gcode
+
+#working files
 STL.txt
+organize_test_scripts.py
+setup.py
+publish_to_pypi.py

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0-beta] - 2025-07-24
+
+### Added
+- **New Features**
+  - Added support for progressive STL loading
+  - Implemented G-code preview with layer navigation
+  - Added support for custom printer profiles
+  - Added ability to save/load print settings
+
+### Changed
+- **UI Improvements**
+  - Redesigned settings dialog
+  - Improved 3D view controls
+  - Enhanced tooltips and status messages
+
+### Fixed
+- Various bug fixes and performance improvements
+
 ## [2.0.0] - 2025-07-11
 
 ### ⚠️ BREAKING CHANGES
@@ -131,8 +149,25 @@ All notable changes to this project will be documented in this file. This projec
 
 ## [Unreleased]
 
+### Added
+- **Update System Improvements**
+  - Added support for GitHub API-based version checking
+  - Configuration now stored in `config/updates.json`
+  - Automatic version detection from `scripts/version.py`
+  - Better error handling and user feedback for update checks
+
+### Changed
+- **Update Checker**
+  - Refactored to use instance-based `LanguageManager`
+  - Improved handling of GitHub API responses
+  - More robust version comparison logic
+  - Better logging for update-related operations
+
 ### Fixed
-- **Logging**: Added file logging configuration to ensure logs are properly written to 'stl_to_gcode.log'
+- Fixed issue with update configuration file location
+- Fixed version string parsing in update checker
+- Resolved language manager initialization issues
+- Fixed error when checking for updates without internet connection
 
 ---
 

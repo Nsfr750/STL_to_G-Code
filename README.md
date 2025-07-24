@@ -14,12 +14,24 @@ A powerful Python application for converting STL files to G-code, designed for 3
 - High DPI display support
 - Comprehensive keyboard shortcuts
 
+### 🔄 Automatic Updates
+- Built-in update checker that notifies you of new versions
+- Seamless GitHub integration for version checking
+- Configuration stored in `config/updates.json`
+- Automatic version detection from project files
+
 ### 📚 Documentation
 - Built-in markdown documentation viewer
 - Accessible via Help menu or F1 key
 - Support for multiple documentation files
-- Syntax highlighting for code examples
-- Table of contents navigation
+- Multi-language support
+
+### 🛠️ Advanced Features
+- Progressive STL loading for large files
+- G-code preview with layer navigation
+- Custom printer profiles
+- Save/load print settings
+- Support for multiple 3D printer firmwares
 
 ### 📂 File Management
 - Open and manage STL files
@@ -62,42 +74,82 @@ A powerful Python application for converting STL files to G-code, designed for 3
 
 ### Prerequisites
 - Python 3.8 or higher
-- pip 23.0 or higher
+- pip (Python package manager)
 - Git (for development)
 
 ### Installation Steps
-1. Clone the repository:
+
+1. **Clone the repository**
    ```bash
    git clone https://github.com/Nsfr750/STL_to_G-Code.git
    cd STL_to_G-Code
    ```
 
-2. Install dependencies:
+2. **Create and activate a virtual environment** (recommended)
+   ```bash
+   # On Windows
+   python -m venv venv
+   .\venv\Scripts\activate
+   
+   # On macOS/Linux
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Run the application:
+4. **Run the application**
    ```bash
    python main.py
    ```
 
 ## 🛠️ Development
 
-### Running Tests
-```bash
-pytest
+### Project Structure
+```
+STL_to_G-Code/
+├── assets/             # Application assets (icons, images, etc.)
+├── config/             # Configuration files
+├── docs/               # Documentation files
+├── scripts/            # Python modules
+│   ├── __init__.py
+│   ├── gcode_editor.py # G-code editor implementation
+│   ├── language_manager.py # Multi-language support
+│   ├── log_viewer.py   # Log viewing functionality
+│   ├── stl_processor.py # STL processing logic
+│   ├── updates.py      # Update checking functionality
+│   └── version.py      # Version management
+├── tests/              # Test files
+├── main.py             # Main application entry point
+├── README.md           # This file
+└── requirements.txt    # Python dependencies
 ```
 
-### Building Documentation
-```bash
-cd docs
-make html
-```
+### Building from Source
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Nsfr750/STL_to_G-Code.git
+   cd STL_to_G-Code
+   ```
+
+2. **Set up development environment**
+   ```bash
+   python -m pip install --upgrade pip
+   pip install -r requirements-dev.txt
+   ```
+
+3. **Run tests**
+   ```bash
+   pytest tests/
+   ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to contribute to this project.
 
 ## 📄 License
 
@@ -105,9 +157,8 @@ This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) fi
 
 ## 📞 Support
 
-For support, please open an issue on GitHub or join our [Discord server](https://discord.gg/BvvkUEP9).
+For support, please open an issue in the [GitHub repository](https://github.com/Nsfr750/STL_to_G-Code/issues) or join our [Discord server](https://discord.gg/BvvkUEP9).
 
-## 🙏 Acknowledgments
+## 📜 Changelog
 
-- Thanks to all contributors who have helped improve this project
-- Built with ❤️ by Nsfr750
+See [CHANGELOG.md](CHANGELOG.md) for a complete list of changes.
