@@ -450,7 +450,6 @@ class STLToGCodeApp(QMainWindow):
         
         # Add tabs with proper names
         self.tab_widget.addTab(self.stl_view_tab, "3D View")
-        self.tab_widget.addTab(self.gcode_view_tab, "G-code Editor")
         
         # Set up each tab's content
         self._setup_stl_view()

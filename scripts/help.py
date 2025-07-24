@@ -64,11 +64,6 @@ class HelpDialog(QDialog):
         button_box = QHBoxLayout()
         button_box.addStretch()
         
-        # Add documentation button
-        self.docs_button = QPushButton()
-        self.docs_button.clicked.connect(self._open_documentation)
-        button_box.addWidget(self.docs_button)
-        
         # Add close button
         self.close_button = QPushButton()
         self.close_button.clicked.connect(self.accept)
@@ -201,15 +196,9 @@ class HelpDialog(QDialog):
         
         content.setHtml(html)
     
-    def _open_documentation(self):
-        """Open the online documentation in the default web browser."""
-        docs_url = "https://github.com/Nsfr750/STL_to_G-Code/wiki"
-        QDesktopServices.openUrl(QUrl(docs_url))
-    
     def retranslate_ui(self):
         """Update the UI with the current language."""
         self.setWindowTitle(self.translate("help.window_title"))
-        self.docs_button.setText(self.translate("help.buttons.documentation"))
         self.close_button.setText(self.translate("common.buttons.close"))
         
         # Update tab titles and content
