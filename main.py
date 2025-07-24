@@ -874,14 +874,17 @@ class STLToGCodeApp(QMainWindow):
         Args:
             file_path (str, optional): Path to save the file. If None, a save dialog will be shown.
         """
-        if not hasattr(self, 'editor_widget') or not self.editor_widget:
+        # Check if the editor is available
+        editor = getattr(self, 'gcode_editor', None)
+        if not editor:
             QMessageBox.warning(self, "Error", "No G-code editor is available.")
-            return
+            return False
         
-        content = self.editor_widget.text()
+        # Get the content from the editor
+        content = editor.toPlainText()
         
         # If file_path is provided, use it as the default filename
-        default_filename = file_path if file_path else self.gcode_file_path
+        default_filename = file_path if file_path else getattr(self, 'gcode_file_path', '')
         
         # Use the gcode_save module to handle file saving
         result = save_gcode_file(

@@ -26,7 +26,7 @@ class MarkdownViewer(QDialog):
         self.language_manager = language_manager
         self.translate = self.language_manager.translate
         
-        self.setWindowTitle(self.translate("markdown_viewer.title"))
+        self.setWindowTitle(self.translate("markdown_viewer_title"))
         self.setMinimumSize(800, 600)
         
         # Store the docs directory path
@@ -45,14 +45,14 @@ class MarkdownViewer(QDialog):
         # Document selector
         self.doc_selector = QComboBox()
         self.doc_selector.currentTextChanged.connect(self.load_markdown_file)
-        toolbar.addWidget(QLabel(self.translate("markdown_viewer.label.document")))
+        toolbar.addWidget(QLabel(self.translate("markdown_viewer_label_document")))
         toolbar.addWidget(self.doc_selector, 1)
         
         # Add some stretch
         toolbar.addStretch()
         
         # Close button
-        close_btn = QPushButton(self.translate("markdown_viewer.button.close"))
+        close_btn = QPushButton(self.translate("markdown_viewer_button_close"))
         close_btn.clicked.connect(self.accept)
         toolbar.addWidget(close_btn)
         
@@ -142,7 +142,7 @@ class MarkdownViewer(QDialog):
         filepath = os.path.join(self.docs_dir, filename)
         if not os.path.exists(filepath):
             self.text_browser.setHtml(
-                f"<p style='color: red;'>{self.translate('markdown_viewer.error.file_not_found', filename=filename)}</p>"
+                f"<p style='color: red;'>{self.translate('markdown_viewer_error_file_not_found', filename=filename)}</p>"
             )
             return
             
@@ -174,7 +174,7 @@ class MarkdownViewer(QDialog):
             
         except Exception as e:
             self.text_browser.setHtml(
-                f"<p style='color: red;'>{self.translate('markdown_viewer.error.load_error', filename=filename, error=str(e))}</p>"
+                f"<p style='color: red;'>{self.translate('markdown_viewer_error_load_error', filename=filename, error=str(e))}</p>"
             )
 
 def show_documentation(parent=None):
@@ -185,6 +185,6 @@ def show_documentation(parent=None):
     else:
         QMessageBox.information(
             parent, 
-            viewer.translate("markdown_viewer.message.no_docs_title"),
-            viewer.translate("markdown_viewer.message.no_docs_text")
+            viewer.translate("markdown_viewer_message_no_docs_title"),
+            viewer.translate("markdown_viewer_message_no_docs_text")
         )

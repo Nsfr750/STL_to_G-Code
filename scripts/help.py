@@ -1,231 +1,254 @@
 """
-Help documentation and user guide for STL to GCode Converter.
+Help system for STL to G-Code Converter.
 
-This module provides comprehensive help documentation and a user guide
-for the STL to GCode Converter application.
+This module provides a help system that supports multiple languages.
 """
 
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextEdit, QPushButton, 
-                            QHBoxLayout, QApplication, QWidget, QLabel, QFrame, QMessageBox)
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices
-import webbrowser
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QTextBrowser, QPushButton, 
+                           QHBoxLayout, QTabWidget, QWidget, QMessageBox, QDialogButtonBox)
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices, QIcon
 import os
+from pathlib import Path
 from scripts.logger import get_logger
 from scripts.language_manager import LanguageManager
+from scripts.help_translations import HELP_TRANSLATIONS
 
-# Import the markdown viewer
-from .markdown_viewer import show_documentation
-
-# Create a logger
 logger = get_logger(__name__)
-
-def get_help_content(language_manager):
-    """Generate help content with translated strings.
-    
-    Args:
-        language_manager: The LanguageManager instance to use for translations
-    """
-    try:
-        return f"""
-        <h1>{language_manager.translate('help.title')}</h1>
-
-        <h2>{language_manager.translate('help.overview.title')}</h2>
-        <p>{language_manager.translate('help.overview.description')}</p>
-
-        <h2>{language_manager.translate('help.getting_started.title')}</h2>
-        <ol>
-            <li>{language_manager.translate('help.getting_started.step1')}</li>
-            <li>{language_manager.translate('help.getting_started.step2')}</li>
-            <li>{language_manager.translate('help.getting_started.step3')}</li>
-            <li>{language_manager.translate('help.getting_started.step4')}</li>
-            <li>{language_manager.translate('help.getting_started.step5')}</li>
-        </ol>
-
-        <h2>{language_manager.translate('help.features.title')}</h2>
-
-        <h3>{language_manager.translate('help.features.file_management.title')}</h3>
-        <ul>
-            <li>{language_manager.translate('help.features.file_management.item1')}</li>
-            <li>{language_manager.translate('help.features.file_management.item2')}</li>
-            <li>{language_manager.translate('help.features.file_management.item3')}</li>
-            <li>{language_manager.translate('help.features.file_management.item4')}</li>
-            <li>{language_manager.translate('help.features.file_management.item5')}</li>
-        </ul>
-
-        <h3>{language_manager.translate('help.features.visualization.title')}</h3>
-        <ul>
-            <li>{language_manager.translate('help.features.visualization.item1')}</li>
-            <li>{language_manager.translate('help.features.visualization.item2')}</li>
-            <li>{language_manager.translate('help.features.visualization.item3')}</li>
-            <li>{language_manager.translate('help.features.visualization.item4')}</li>
-            <li>{language_manager.translate('help.features.visualization.item5')}</li>
-        </ul>
-
-        <h3>{language_manager.translate('help.features.gcode_tools.title')}</h3>
-        <ul>
-            <li>{language_manager.translate('help.features.gcode_tools.item1')}</li>
-            <li>{language_manager.translate('help.features.gcode_tools.item2')}</li>
-            <li>{language_manager.translate('help.features.gcode_tools.item3')}</li>
-            <li>{language_manager.translate('help.features.gcode_tools.item4')}</li>
-            <li>{language_manager.translate('help.features.gcode_tools.item5')}</li>
-        </ul>
-
-        <h3>{language_manager.translate('help.features.documentation.title')}</h3>
-        <ul>
-            <li>{language_manager.translate('help.features.documentation.item1')}</li>
-            <li>{language_manager.translate('help.features.documentation.item2')}</li>
-            <li>{language_manager.translate('help.features.documentation.item3')}</li>
-            <li>{language_manager.translate('help.features.documentation.item4')}</li>
-        </ul>
-
-        <h3>{language_manager.translate('help.features.advanced.title')}</h3>
-        <ul>
-            <li>{language_manager.translate('help.features.advanced.item1')}</li>
-            <li>{language_manager.translate('help.features.advanced.item2')}</li>
-            <li>{language_manager.translate('help.features.advanced.item3')}</li>
-            <li>{language_manager.translate('help.features.advanced.item4')}</li>
-            <li>{language_manager.translate('help.features.advanced.item5')}</li>
-        </ul>
-
-        <h2>{language_manager.translate('help.shortcuts.title')}</h2>
-        <ul>
-            <li><b>{language_manager.translate('help.shortcuts.ctrl_o')}</b>: {language_manager.translate('help.shortcuts.ctrl_o_desc')}</li>
-            <li><b>{language_manager.translate('help.shortcuts.ctrl_s')}</b>: {language_manager.translate('help.shortcuts.ctrl_s_desc')}</li>
-            <li><b>{language_manager.translate('help.shortcuts.f1')}</b>: {language_manager.translate('help.shortcuts.f1_desc')}</li>
-            <li><b>{language_manager.translate('help.shortcuts.ctrl_q')}</b>: {language_manager.translate('help.shortcuts.ctrl_q_desc')}</li>
-            <li><b>{language_manager.translate('help.shortcuts.ctrl_l')}</b>: {language_manager.translate('help.shortcuts.ctrl_l_desc')}</li>
-            <li><b>{language_manager.translate('help.shortcuts.ctrl_g')}</b>: {language_manager.translate('help.shortcuts.ctrl_g_desc')}</li>
-        </ul>
-
-        <h2>{language_manager.translate('help.support.title')}</h2>
-        <p>{language_manager.translate('help.support.description')}</p>
-        """
-    except Exception as e:
-        logger.error(f"Error generating help content: {e}")
-        # Fallback to English if there's an error
-        return """
-        <h1>Help - STL to G-Code</h1>
-        <p>An error occurred while loading the help content. Please check the logs for more details.</p>
-        """
 
 class HelpDialog(QDialog):
     """A dialog displaying help information for the application."""
     
-    def __init__(self, parent=None, language_manager=None):
-        """Initialize the help dialog.
-        
-        Args:
-            parent: The parent widget
-            language_manager: The LanguageManager instance to use for translations
-        """
+    def __init__(self, language_manager: LanguageManager = None, parent=None):
+        """Initialize the help dialog."""
         super().__init__(parent)
-        self.language_manager = language_manager or LanguageManager()
-        self.setWindowTitle(self.language_manager.translate("help.dialog.title"))
-        self.setMinimumSize(800, 600)
         
-        # Set window modality to make it modal
+        # Initialize language manager
+        self.lang_manager = language_manager or LanguageManager()
+        self.translate = self._translate
+        
+        # Connect language change signal
+        if hasattr(self.lang_manager, 'language_changed'):
+            self.lang_manager.language_changed.connect(self.retranslate_ui)
+        
+        self.setWindowTitle(self.translate("help.window_title"))
+        self.setMinimumSize(900, 700)
+        
+        # Set window properties
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        
-        # Set window flags to make it a proper dialog
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         
+        # Set application icon if available
+        icon_path = Path("assets/icon.png")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+        
         # Create main layout
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
         
-        # Create text edit for help content
-        self.text_edit = QTextEdit()
-        self.text_edit.setReadOnly(True)
-        self.text_edit.setHtml(get_help_content(self.language_manager))
+        # Create tab widget
+        self.tab_widget = QTabWidget()
         
-        # Set document to be scrollable with proper margins
-        self.text_edit.document().setDocumentMargin(20)
+        # Add tabs
+        self.tabs = {}
+        tab_ids = ['welcome', 'getting_started', 'features', 'shortcuts', 'support']
+        for tab_id in tab_ids:
+            self._add_tab(tab_id)
         
-        # Add text edit to layout
-        layout.addWidget(self.text_edit)
-        
-        # Create button box
-        button_box = QHBoxLayout()
-        
-        # Add full documentation button
-        self.full_docs_button = QPushButton(
-            self.language_manager.translate("help.buttons.full_documentation")
-        )
-        self.full_docs_button.setToolTip(
-            self.language_manager.translate("help.tooltips.full_documentation")
-        )
-        self.full_docs_button.clicked.connect(self.open_documentation)
+        # Add tab widget to main layout
+        main_layout.addWidget(self.tab_widget, 1)
         
         # Add close button
-        self.close_button = QPushButton(
-            self.language_manager.translate("common.buttons.close")
-        )
-        self.close_button.clicked.connect(self.accept)
-        
-        # Add buttons to button box
-        button_box.addWidget(self.full_docs_button)
+        button_box = QHBoxLayout()
         button_box.addStretch()
+        
+        # Add documentation button
+        self.docs_button = QPushButton()
+        self.docs_button.clicked.connect(self._open_documentation)
+        button_box.addWidget(self.docs_button)
+        
+        # Add close button
+        self.close_button = QPushButton()
+        self.close_button.clicked.connect(self.accept)
         button_box.addWidget(self.close_button)
         
-        # Add button box to main layout
-        layout.addLayout(button_box)
+        main_layout.addLayout(button_box)
+        self.setLayout(main_layout)
         
-        # Set the layout
-        self.setLayout(layout)
+        # Set initial translations
+        self.retranslate_ui()
     
-    def open_documentation(self):
-        """Open the full documentation in the default web browser."""
-        try:
-            # Get the base directory of the application
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            docs_path = os.path.join(base_dir, 'docs', 'index.html')
+    def _translate(self, key: str, **kwargs) -> str:
+        """Translate a key using the language manager."""
+        # First try to get from help translations
+        lang = self.lang_manager.current_language
+        if lang in HELP_TRANSLATIONS and key in HELP_TRANSLATIONS[lang]:
+            text = HELP_TRANSLATIONS[lang][key]
+            if isinstance(text, str) and kwargs:
+                return text.format(**kwargs)
+            return text
+        
+        # Fall back to main translations
+        return self.lang_manager.translate(key, **kwargs)
+    
+    def _add_tab(self, tab_id: str):
+        """Add a tab with the given ID to the tab widget."""
+        content = QTextBrowser()
+        content.setOpenExternalLinks(True)
+        content.setStyleSheet("""
+            QTextBrowser {
+                background-color: #f9f9f9;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+            }
+            a { color: #0066cc; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            h1, h2, h3, h4, h5, h6 { color: #333; }
+            .note {
+                background-color: #e7f4ff;
+                border-left: 4px solid #0066cc;
+                padding: 10px;
+                margin: 10px 0;
+                border-radius: 0 4px 4px 0;
+            }
+            code {
+                background-color: #f0f0f0;
+                padding: 2px 4px;
+                border-radius: 3px;
+                font-family: monospace;
+            }
+        """)
+        
+        self.tabs[tab_id] = content
+        self.tab_widget.addTab(content, self.translate(f"help.{tab_id}.tab_title"))
+        self._update_tab_content(tab_id)
+    
+    def _update_tab_content(self, tab_id: str):
+        """Update the content of a tab based on the current language."""
+        if tab_id not in self.tabs:
+            return
             
-            # Check if the documentation exists
-            if os.path.exists(docs_path):
-                # Open the local documentation
-                QDesktopServices.openUrl(QUrl.fromLocalFile(docs_path))
-            else:
-                # Fallback to online documentation
-                QDesktopServices.openUrl(QUrl("https://github.com/Nsfr750/STL_to_G-Code/wiki"))
-        except Exception as e:
-            logger.error(f"Error opening documentation: {e}")
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Could not open documentation: {str(e)}"
-            )
+        content = self.tabs[tab_id]
+        html = self.translate(f"help.{tab_id}.content")
+        
+        # Add basic HTML structure if not present
+        if not html.strip().lower().startswith(('<!doctype', '<html>')):
+            # Use double curly braces to escape them in the format string
+            html_template = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {{ 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }}
+        h1, h2, h3, h4, h5, h6 {{ 
+            color: #2c3e50; 
+            margin-top: 1.5em;
+        }}
+        h1 {{ font-size: 1.8em; }}
+        h2 {{ font-size: 1.5em; }}
+        h3 {{ font-size: 1.3em; }}
+        code {{ 
+            background-color: #f5f5f5; 
+            padding: 2px 5px; 
+            border-radius: 3px; 
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }}
+        pre {{
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }}
+        .note {{
+            background-color: #e7f4ff;
+            border-left: 4px solid #0066cc;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }}
+        .warning {{
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }}
+        .tip {{
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }}
+    </style>
+</head>
+<body>
+    {content}
+</body>
+</html>"""
+            # Format the template with the content
+            html = html_template.format(content=html)
+        
+        content.setHtml(html)
+    
+    def _open_documentation(self):
+        """Open the online documentation in the default web browser."""
+        docs_url = "https://github.com/Nsfr750/STL_to_G-Code/wiki"
+        QDesktopServices.openUrl(QUrl(docs_url))
+    
+    def retranslate_ui(self):
+        """Update the UI with the current language."""
+        self.setWindowTitle(self.translate("help.window_title"))
+        self.docs_button.setText(self.translate("help.buttons.documentation"))
+        self.close_button.setText(self.translate("common.buttons.close"))
+        
+        # Update tab titles and content
+        for tab_id, content in self.tabs.items():
+            tab_index = self.tab_widget.indexOf(content)
+            if tab_index >= 0:
+                self.tab_widget.setTabText(tab_index, self.translate(f"help.{tab_id}.tab_title"))
+            self._update_tab_content(tab_id)
 
 def show_help(parent=None, language_manager=None):
     """
     Show the help dialog.
     
     Args:
-        parent: The parent QWidget window
-        language_manager: The LanguageManager instance to use for translations
+        parent: The parent widget
+        language_manager: Optional LanguageManager instance
     """
     try:
-        dialog = HelpDialog(parent, language_manager)
+        dialog = HelpDialog(language_manager=language_manager, parent=parent)
         dialog.exec()
     except Exception as e:
-        logger.error(f"Error showing help dialog: {e}")
+        logger.error(f"Error showing help dialog: {e}", exc_info=True)
         QMessageBox.critical(
             parent,
             "Error",
-            f"Could not display help: {str(e)}"
+            f"Failed to display help: {str(e)}\n\nPlease check the logs for more details."
         )
 
 if __name__ == "__main__":
     import sys
     from PyQt6.QtWidgets import QApplication
     
-    # Set up logging
-    from scripts.logger import setup_logging
-    setup_logging()
-    
-    # Create application
     app = QApplication(sys.argv)
     
+    # Initialize language manager with test language
+    from scripts.language_manager import LanguageManager
+    lang_manager = LanguageManager()
+    
     # Show the help dialog
-    show_help()
+    show_help(language_manager=lang_manager)
     
     sys.exit(app.exec())

@@ -1,8 +1,16 @@
-# User Guide
+# 📖 User Guide
 
-## Interface Overview
+## Table of Contents
+- [Interface Overview](#-interface-overview)
+- [Basic Workflow](#-basic-workflow)
+- [Advanced Features](#-advanced-features)
+- [Keyboard Shortcuts](#-keyboard-shortcuts)
+- [Troubleshooting](#-troubleshooting)
+- [FAQ](#-frequently-asked-questions)
 
-The STL to GCode Converter features a modern, tabbed interface with the following main components:
+## 🖥️ Interface Overview
+
+The STL to GCode Converter features a modern, dockable interface that can be customized to your workflow:
 
 ```
 +---------------------------------------------------+
@@ -22,109 +30,158 @@ The STL to GCode Converter features a modern, tabbed interface with the followin
 +---------------------------------------------------+
 ```
 
-## Basic Workflow
+### Main Components
+
+1. **Menu Bar**
+   - Access all application functions
+   - Configure settings and preferences
+   - Access help and documentation
+
+2. **Toolbar**
+   - Quick access to frequently used functions
+   - Model manipulation tools
+   - View controls
+
+3. **3D Preview**
+   - Interactive 3D model visualization
+   - Real-time rendering with OpenGL
+   - Multiple view modes (solid, wireframe, etc.)
+
+4. **G-code Viewer**
+   - Syntax-highlighted G-code display
+   - Line-by-line execution preview
+   - Error highlighting and validation
+
+5. **Log Viewer**
+   - Real-time application logging
+   - Filter by log level (Debug, Info, Warning, Error)
+   - Search and highlight functionality
+
+## 🚀 Basic Workflow
 
 ### 1. Opening an STL File
 
-1. **Using the Menu**:
-   - Click `File > Open STL`
-   - Navigate to your STL file and click `Open`
+#### Methods:
+- **Menu**: `File > Open STL`
+- **Toolbar**: Click the 'Open' icon
+- **Drag & Drop**: Drag an STL file into the application window
+- **Recent Files**: `File > Recent Files`
 
-2. **Drag and Drop**:
-   - Simply drag an STL file from your file explorer and drop it onto the application window
+#### Supported Formats:
+- STL (.stl)
+- OBJ (.obj) - Basic support
+- 3MF (.3mf) - Experimental
 
-3. **Recent Files**:
-   - Click `File > Recent Files` to quickly access previously opened files
+### 2. Viewing and Manipulating the 3D Model
 
-### 2. Viewing the 3D Model
+#### Navigation:
+- **Rotate**: Left-click + drag
+- **Pan**: Right-click + drag or Middle-click + drag
+- **Zoom**: Scroll wheel or pinch gesture
+- **Reset View**: Click the 'Home' button or press `Home` key
 
-- **Rotate**: Click and drag with the left mouse button
-- **Pan**: Click and drag with the right mouse button
-- **Zoom**: Use the mouse wheel or pinch gesture on touchpads
-- **Reset View**: Click the `Home` button in the toolbar
+#### View Modes:
+- **Solid**: Filled polygons (default)
+- **Wireframe**: Show model edges only
+- **Point Cloud**: Show vertices only
+- **X-Ray**: Semi-transparent view
 
 ### 3. Converting to G-code
 
-1. Open an STL file
-2. Click `Tools > Convert to GCode` or press `Ctrl+G`
-3. Adjust conversion settings if needed
-4. Click `Convert` to start the process
-5. Monitor progress in the status bar
+1. **Set Up Print Parameters**
+   - Layer height
+   - Print speed
+   - Infill density
+   - Support structures
 
-### 4. Viewing and Saving G-code
+2. **Generate G-code**
+   - Click `Tools > Generate G-code` or press `Ctrl+G`
+   - Monitor progress in the status bar
+   - Preview the generated toolpaths
 
-- The G-code viewer will automatically open after conversion
-- Use the toolbar to navigate the G-code
-- Click `File > Save GCode` to save the generated G-code
-- Use `File > Save As...` to save with a different name or location
+3. **Save or Export**
+   - Save G-code to file (`File > Save G-code`)
+   - Export settings as profile
+   - Send directly to printer (if configured)
 
-## Advanced Features
+## ⚙️ Advanced Features
 
-### Log Viewer
+### Custom Profiles
+- Save and load printer profiles
+- Import/export settings
+- Create material-specific configurations
 
-The log viewer at the bottom of the window shows detailed information about application operations:
+### G-code Optimization
+- Travel optimization
+- Retraction settings
+- Cooling strategies
 
-- Use the filter dropdown to show only specific log levels
-- Click the `Clear` button to clear the log
-- Right-click on log entries for additional options
+### Scripting
+- Custom start/end G-code
+- Post-processing scripts
+- Automation support
 
-### Customizing the Interface
+## ⌨️ Keyboard Shortcuts
 
-- **Dockable Panels**: Drag panels by their title bars to rearrange them
-- **Themes**: Change between light and dark themes in `View > Theme`
-- **Toolbars**: Show/hide toolbars via `View > Toolbars`
+### Navigation
+| Shortcut | Action |
+|----------|--------|
+| `R` | Reset view |
+| `F` | Fit model to view |
+| `Ctrl++` | Zoom in |
+| `Ctrl+-` | Zoom out |
+| `Ctrl+0` | Reset zoom |
 
-## Keyboard Shortcuts
-
+### File Operations
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+O` | Open STL file |
 | `Ctrl+S` | Save G-code |
-| `Ctrl+G` | Convert to G-code |
-| `F1` | Show help |
-| `F5` | Refresh 3D view |
-| `Esc` | Cancel current operation |
+| `Ctrl+Shift+S` | Save As... |
 | `Ctrl+Q` | Quit application |
 
-## Troubleshooting
+### View Controls
+| Shortcut | Action |
+|----------|--------|
+| `1` | Front view |
+| `3` | Side view |
+| `7` | Top view |
+| `5` | Toggle perspective/orthographic |
+| `Space` | Toggle rotation |
+
+## 🛠 Troubleshooting
 
 ### Common Issues
 
-#### 3D Model Not Displaying
-- Ensure the file is a valid STL file
-- Check the log viewer for any error messages
-- Try zooming out (`Ctrl+-` or mouse wheel)
+#### Model Won't Load
+- Verify the file is not corrupted
+- Check that the file format is supported
+- Try simplifying the model in a 3D modeling program
 
-#### Conversion Fails
-- Check that the model is manifold (watertight)
-- Verify that the model is not too large or complex
-- Check the log viewer for specific error messages
+#### G-code Generation Fails
+- Check log for specific error messages
+- Verify print settings are valid
+- Ensure the model is manifold (watertight)
 
 #### Performance Issues
-- Close other applications to free up memory
-- Reduce the model resolution if possible
-- Update your graphics drivers
+- Reduce model complexity
+- Lower preview quality in settings
+- Close other resource-intensive applications
 
-## Getting Help
+## ❓ Frequently Asked Questions
 
-For additional assistance:
+### How do I update the application?
+Check for updates in `Help > Check for Updates` or visit the [GitHub repository](https://github.com/Nsfr750/STL_to_G-Code).
 
-1. Check the `Help > Documentation` menu
-2. Visit the [GitHub Issues](https://github.com/Nsfr750/STL_to_G-Code/issues) page
-3. Join our [Discord community](https://discord.gg/your-invite-link) for support
+### Can I use custom post-processing scripts?
+Yes! Place your Python scripts in the `scripts/post_processing` directory and they'll appear in the post-processing menu.
 
-## Reporting Issues
+### How do I report a bug?
+Please open an issue on [GitHub](https://github.com/Nsfr750/STL_to_G-Code/issues) with detailed steps to reproduce the problem.
 
-When reporting issues, please include:
+### Is there a command-line interface?
+Yes! Run `python main.py --help` to see available command-line options.
 
-1. Steps to reproduce the issue
-2. The STL file (if applicable)
-3. Any error messages from the log viewer
-4. Your system information (Help > About)
+---
 
-## Tips and Tricks
-
-- Use `Ctrl+Mouse Wheel` to adjust the movement sensitivity
-- Right-click on the 3D view for additional camera controls
-- The status bar shows useful information about the current operation
-- Press `F2` to rename the current file
+For additional help, please visit our [GitHub Discussions](https://github.com/Nsfr750/STL_to_G-Code/discussions) or join our [Discord community](https://discord.gg/BvvkUEP9).

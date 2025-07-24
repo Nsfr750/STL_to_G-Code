@@ -186,23 +186,222 @@ pyinstaller --onefile --windowed --icon=assets/icon.png --name="stl-to-gcode" ma
 
 ## Contributing
 
-1. Create a new branch for your feature:
-   ```bash
-   git checkout -b feature/your-feature-name
+### Welcome to the STL to G-Code development guide!
+
+This document will help you set up your development environment, understand the codebase structure, and contribute effectively.
+
+### Quick Start
+
+1. **Fork** the repository on GitHub
+2. **Clone** your fork locally
+3. Set up the development environment (see below)
+4. Create a feature branch
+5. Make your changes and test them
+6. Submit a pull request
+
+### Development Environment Setup
+
+#### Prerequisites
+
+- Python 3.8+
+- Git
+- pip (Python package manager)
+- Virtual environment (recommended)
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Nsfr750/STL_to_G-Code.git
+cd STL_to_G-Code
+```
+
+#### 2. Set Up Virtual Environment
+
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
+
+# macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+#### 3. Install Dependencies
+
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Install the package in development mode
+pip install -e .
+```
+
+### Project Structure
+
+```
+STL_to_G-Code/
+├── assets/             # Static assets (images, icons, etc.)
+├── docs/               # Documentation files
+├── scripts/            # Python modules
+│   ├── __init__.py
+│   ├── main.py         # Main application entry point
+│   ├── config.py       # Configuration management
+│   ├── language_manager.py  # Internationalization
+│   └── ...
+├── tests/              # Test files
+├── .github/            # GitHub configuration
+├── .gitignore
+├── LICENSE
+├── README.md
+└── requirements.txt    # Production dependencies
+```
+
+### Testing
+
+We use `pytest` for testing. To run the test suite:
+
+```bash
+pytest
+```
+
+Run tests with coverage report:
+
+```bash
+pytest --cov=scripts tests/
+```
+
+### Code Style
+
+We enforce consistent code style using several tools:
+
+#### Black (Code Formatter)
+```bash
+black .
+```
+
+#### Flake8 (Linter)
+```bash
+flake8 .
+```
+
+#### isort (Import Sorter)
+```bash
+isort .
+```
+
+#### Pre-commit Hooks
+
+We use pre-commit to automatically run code quality checks before each commit. Install it with:
+
+```bash
+pre-commit install
+```
+
+The following checks will run automatically:
+- Black code formatting
+- Flake8 linting
+- isort import sorting
+- MyPy type checking
+
+### Pull Request Guidelines
+
+1. **Branch Naming**: Use descriptive branch names (e.g., `feature/add-logging` or `bugfix/fix-imports`)
+2. **Commit Messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/)
+3. **Code Review**: All PRs require at least one review
+4. **Tests**: New features should include tests
+5. **Documentation**: Update relevant documentation
+
+### Internationalization (i18n)
+
+#### Adding New Translations
+
+1. Add new strings to `scripts/translations.py`
+2. Update all language dictionaries
+3. Use the translation system in your code:
+   ```python
+   from scripts.language_manager import get_language_manager
+   _ = get_language_manager().translate
+   
+   # Usage
+   message = _("your.translation.key")
    ```
 
-2. Make your changes and commit them:
+#### Testing Translations
+
+To test a specific language:
+
+```python
+from scripts.language_manager import get_language_manager
+language_manager = get_language_manager()
+language_manager.set_language("it")  # Test Italian
+```
+
+### Debugging
+
+#### Logging
+
+The application uses Python's built-in `logging` module. To enable debug logging:
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+#### VS Code Debugging
+
+A `.vscode/launch.json` configuration is provided for debugging in VS Code.
+
+### Packaging and Distribution
+
+#### Building the Package
+
+```bash
+python setup.py sdist bdist_wheel
+```
+
+#### Publishing to PyPI
+
+1. Install build tools:
    ```bash
-   git add .
-   git commit -m "Add your commit message"
+   pip install --upgrade build twine
    ```
 
-3. Push your changes:
+2. Build the package:
    ```bash
-   git push origin feature/your-feature-name
+   python -m build
    ```
 
-4. Create a pull request on GitHub
+3. Upload to PyPI:
+   ```bash
+   python -m twine upload dist/*
+   ```
+
+### Security
+
+- Never commit sensitive information
+- Validate all user inputs
+- Use environment variables for secrets
+- Keep dependencies up to date
+- Follow security best practices for file operations
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
+
+### License
+
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
+
+### Acknowledgments
+
+- Thanks to all contributors
+- Built with ❤️ using Python and PyQt6
+- Inspired by the open-source 3D printing community
 
 ## Code Review Process
 

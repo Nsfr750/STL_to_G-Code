@@ -98,14 +98,30 @@ class LanguageManager(QObject):
         return self._available_languages.copy()
 
     def _load_translations(self):
-        """Load translations from the translations module."""
+        """Load translations from the translations and help_translations modules."""
+        self._translations = {}
+        
         try:
+            # Load main translations
             from scripts.translations import TRANSLATIONS
             self._translations = TRANSLATIONS
-            logger.debug("Loaded translations for languages: %s", 
-                        ", ".join(TRANSLATIONS.keys()))
+            logger.debug("Loaded main translations for languages: %s", 
+                        ", ".join(TRANSLATIONS.keys()) if TRANSLATIONS else "none")
+            
+            # Load help translations and merge them
+            try:
+                from scripts.help_translations import HELP_TRANSLATIONS
+                for lang, translations in HELP_TRANSLATIONS.items():
+                    if lang not in self._translations:
+                        self._translations[lang] = {}
+                    self._translations[lang].update(translations)
+                logger.debug("Merged help translations for languages: %s", 
+                            ", ".join(HELP_TRANSLATIONS.keys()) if HELP_TRANSLATIONS else "none")
+            except ImportError as e:
+                logger.warning("Could not load help translations: %s", e)
+            
         except ImportError as e:
-            logger.error("Failed to load translations: %s", e)
+            logger.error("Failed to load main translations: %s", e)
             self._translations = {"en": {}}  # Fallback to empty English translations
 
     def set_language(self, lang_code: str) -> bool:

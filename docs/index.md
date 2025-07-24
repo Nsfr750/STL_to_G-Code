@@ -1,40 +1,50 @@
-# STL to GCode Converter Documentation
+# STL to GCode Converter
 
-Welcome to the documentation for the STL to GCode Converter application, now powered by PyQt6!
+![STL to GCode Logo](https://raw.githubusercontent.com/Nsfr750/STL_to_G-Code/main/assets/icon.png)
 
-## Table of Contents
+A powerful, open-source application for converting STL files to G-code for 3D printing and CNC machining, featuring a modern PyQt6 interface.
 
-- [Introduction](#introduction)
-- [Getting Started](#getting-started)
-- [Features](#features)
-- [User Interface](#user-interface)
-- [Usage](#usage)
-- [Development](#development)
-- [API Reference](#api-reference)
-- [Contributing](#contributing)
-- [License](#license)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![PyPI Version](https://img.shields.io/pypi/v/stl-to-gcode)](https://pypi.org/project/stl-to-gcode/)
 
-## Introduction
+## 📋 Table of Contents
 
-The STL to GCode Converter is a modern Python application that converts STL (STereoLithography) files into G-code for 3D printing and CNC machining. The application features a responsive PyQt6-based graphical user interface with advanced visualization and debugging tools.
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [User Guide](#-user-guide)
+- [Development](#-development)
+- [API Reference](#-api-reference)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Support](#-support)
 
-### What's New in PyQt6 Version
+## ✨ Features
 
-- **Modern UI**: Completely redesigned interface with PyQt6
-- **Dark Theme**: Built-in dark theme with customizable styles
-- **Dockable Panels**: Flexible workspace with resizable panels
-- **Enhanced Logging**: Built-in log viewer with filtering
-- **Improved Performance**: Faster rendering and processing
-- **High DPI Support**: Better display on high-resolution screens
+- **Modern PyQt6 Interface** - Clean, responsive UI with dark/light themes
+- **Advanced 3D Visualization** - Interactive model manipulation and preview
+- **Multi-language Support** - Built-in internationalization
+- **G-code Optimization** - Advanced algorithms for efficient toolpaths
+- **Plugin System** - Extend functionality with custom plugins
+- **Cross-platform** - Works on Windows, macOS, and Linux
+- **Logging & Debugging** - Built-in log viewer and debugging tools
 
-## Getting Started
+## 🚀 Installation
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- PyQt6 and other dependencies (see [PREREQUISITES.md](../PREREQUISITES.md))
+- pip (Python package manager)
+- Git (for development)
 
-### Installation
+### Using pip (Recommended)
+
+```bash
+pip install stl-to-gcode
+```
+
+### From Source
 
 1. Clone the repository:
    ```bash
@@ -44,11 +54,13 @@ The STL to GCode Converter is a modern Python application that converts STL (STe
 
 2. Create and activate a virtual environment:
    ```bash
-   python -m venv venv
    # Windows
+   python -m venv venv
    .\venv\Scripts\activate
+   
    # macOS/Linux
-   # source venv/bin/activate
+   python3 -m venv venv
+   source venv/bin/activate
    ```
 
 3. Install dependencies:
@@ -56,67 +68,52 @@ The STL to GCode Converter is a modern Python application that converts STL (STe
    pip install -r requirements.txt
    ```
 
-4. Run the application:
+## 🏃 Quick Start
+
+1. Launch the application:
    ```bash
-   python main_qt.py
+   python main.py
    ```
 
-## Features
+2. Open an STL file using `File > Open` or by dragging and dropping
 
-### Core Features
-- Open and visualize STL files in 3D
-- Convert STL models to G-code
-- Interactive 3D preview with rotation and zoom
-- Recent files history
-- Automatic update checking
+3. Adjust settings as needed in the right panel
 
-### Advanced Features
-- Built-in G-code viewer with syntax highlighting
-- Log viewer with filtering by log level
-- Support for multiple 3D file formats
-- Customizable interface with dockable panels
-- High DPI display support
+4. Click `Generate G-code` to convert your model
 
-## User Interface
+5. Save the G-code or send it directly to your 3D printer
 
-The application features a modern, tabbed interface with the following main components:
+## 📖 User Guide
 
-1. **Menu Bar**: Access to all application functions
-2. **Toolbar**: Quick access to common actions
-3. **File Browser**: Navigate and select STL files
-4. **3D Preview**: Interactive 3D model visualization
-5. **Log Viewer**: View and filter application logs
-6. **Status Bar**: Displays current status and progress
+For detailed usage instructions, see the [User Guide](usage.md).
 
-## Usage
+## 🛠 Development
 
-For detailed usage instructions, see the [Usage Guide](usage.md).
+Interested in contributing? Check out our [Development Guide](development.md) for setup instructions and coding standards.
 
-## Development
+## 📚 API Reference
 
-For information on setting up a development environment, running tests, and contributing to the project, see the [Development Guide](development.md).
+For developers looking to extend the application, see the [API Reference](api.md).
 
-## API Reference
+## 🤝 Contributing
 
-For detailed API documentation, see the [API Reference](api.md).
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests, report issues, or suggest new features.
 
-## Contributing
+## 📄 License
 
-Contributions are welcome! Please read our [Contributing Guidelines](../CONTRIBUTING.md) for details on how to contribute to this project.
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
 
-## License
+## 💬 Support
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+- **Documentation**: [GitHub Wiki](https://github.com/Nsfr750/STL_to_G-Code/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Nsfr750/STL_to_G-Code/issues)
+- **Discord**: [Join our community](https://discord.gg/BvvkUEP9)
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+---
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-For the full license text, see the [LICENSE](../LICENSE) file.
+<div align="center">
+  Made with ❤️ by <a href="https://github.com/Nsfr750">Nsfr750</a>
+  <br>
+  <a href="https://www.patreon.com/Nsfr750">Support on Patreon</a> | 
+  <a href="https://paypal.me/3dmega">Donate via PayPal</a>
+</div>

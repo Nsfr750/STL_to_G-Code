@@ -4,7 +4,7 @@ Run this script from the root directory of the project.
 """
 import os
 import shutil
-from pathlib import 
+from pathlib import Path
 from scripts.logger import get_loggerPath
 
 def create_directory(directory):
@@ -60,8 +60,7 @@ def main():
     test_files = [
         os.path.join(root_dir, 'test_stl_loading.py'),
         os.path.join(root_dir, 'test_update_check.py'),
-        os.path.join(scripts_dir, 'test_gcode_custom_commands.py'),
-        os.path.join(scripts_dir, 'test_gcode_simulator.py')
+        os.path.join(scripts_dir, 'test_progress_reporting.py')
     ]
     
     # Create test_scripts directory
