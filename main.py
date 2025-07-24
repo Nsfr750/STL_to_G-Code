@@ -1563,28 +1563,24 @@ class STLToGCodeApp(QMainWindow):
         self.editor_status_label.setText(f"Lines: {line_count}")
 
     def _load_recent_files(self):
-        """Load the list of recently opened files from settings."""
-        # Get recent files from settings, defaulting to an empty list
-        recent_files = self.settings.value('recent_files')
+        """Load the list of recently opened files from settings and update the file list widget."""
+        # Load recent files from settings
+        self.recent_files = self.settings.value('recent_files', [], type=list)
         
-        # Handle different possible return types from QSettings
-        if recent_files is None:
-            self.recent_files = []
-        elif isinstance(recent_files, str):
-            # If it's a single string, convert to a list
-            self.recent_files = [recent_files] if recent_files else []
-        elif isinstance(recent_files, list):
-            # If it's already a list, use it directly
-            self.recent_files = recent_files
-        else:
-            # For any other type, convert to string and wrap in a list
-            self.recent_files = [str(recent_files)]
-            
-        # Ensure all paths are strings and exist
-        self.recent_files = [str(path) for path in self.recent_files if path and os.path.exists(str(path))]
+        # Filter out files that no longer exist
+        self.recent_files = [f for f in self.recent_files if os.path.exists(f)]
         
-        # Update the menu
+        # Update the settings with the filtered list
+        self.settings.setValue('recent_files', self.recent_files)
+        
+        # Update the recent files menu
         self._update_recent_files_menu()
+        
+        # Update the file list widget if it exists
+        if hasattr(self, 'file_list'):
+            self.file_list.clear()
+            for file_path in self.recent_files:
+                self.file_list.addItem(file_path)
     
     def _update_recent_files_menu(self):
         """Update the recent files menu with the current list of recent files."""
@@ -1637,7 +1633,7 @@ class STLToGCodeApp(QMainWindow):
             self._update_recent_files_menu()
             
     def _add_to_recent_files(self, file_path):
-        """Add a file to the recent files list."""
+        """Add a file to the recent files list and update the UI."""
         if file_path in self.recent_files:
             self.recent_files.remove(file_path)
         self.recent_files.insert(0, file_path)
@@ -1645,7 +1641,14 @@ class STLToGCodeApp(QMainWindow):
         self.recent_files = list(dict.fromkeys(self.recent_files))[:10]
         self.settings.setValue('recent_files', self.recent_files)
         self._update_recent_files_menu()
-
+        
+        # Update the file list widget
+        if hasattr(self, 'file_list'):
+            self.file_list.clear()
+            for file_path in self.recent_files:
+                if os.path.exists(file_path):  # Only add files that still exist
+                    self.file_list.addItem(file_path)
+    
     def _cancel_loading(self):
         """Cancel the ongoing STL loading process."""
         try:
